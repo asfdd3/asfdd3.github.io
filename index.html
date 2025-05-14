@@ -210,7 +210,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-05-14 00:34:13" itemprop="dateModified" datetime="2025-05-14T00:34:13+08:00">2025-05-14</time>
+                <time title="修改时间：2025-05-15 00:07:11" itemprop="dateModified" datetime="2025-05-15T00:07:11+08:00">2025-05-15</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -263,21 +263,66 @@
 <p>用户应用程序调用socket()实际调用的的是上述glibc中的__socket，在__socket中 <code>INLINE_SYSCALL_CALL</code>宏经过一系列展开后变成宏<code>__INLINE_SYSCALL4</code> ，这个宏会进一步再展开，如下所示：</p>
 <figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">define</span> __INLINE_SYSCALL4(name, a1, a2, a3, a4) \</span></span><br><span class="line"><span class="meta">  INLINE_SYSCALL (name, 4, a1, a2, a3, a4)</span></span><br></pre></td></tr></table></figure>
 
-<p>上述的<code>INLINE_SYSCALL</code> 再展开，结果如下所示：</p>
+<p>上述的<code>INLINE_SYSCALL</code> 展开，结果如下所示：</p>
 <figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">define</span> INLINE_SYSCALL(name, nr, args...)				\</span></span><br><span class="line"><span class="meta">  (&#123;</span></span><br><span class="line">	<span class="comment">//sc_ret为系统调用的返回值</span></span><br><span class="line">    <span class="type">long</span> <span class="type">int</span> sc_ret = INTERNAL_SYSCALL (name, nr, args);</span><br><span class="line">	<span class="comment">//对返回值好像要简单检查一下</span></span><br><span class="line">    __glibc_unlikely (INTERNAL_SYSCALL_ERROR_P (sc_ret))		\</span><br><span class="line">    ? SYSCALL_ERROR_LABEL (INTERNAL_SYSCALL_ERRNO (sc_ret))		\</span><br><span class="line">    : sc_ret;								\</span><br><span class="line">  &#125;)</span><br></pre></td></tr></table></figure>
 
-<p><code>INTERNAL_SYSCALL</code> 进一步在再展开，会变成了<code>internal_syscall3</code></p>
+<p><code>INTERNAL_SYSCALL</code> 进一步在展开，会变成了<code>internal_syscall3</code></p>
 <p>这里举个例子，例如，未展开前为<code>INTERNAL_SYSCALL(socket, 3, AF_INET, SOCK_STREAM, 0)</code> 展开后会变成</p>
 <p><code>internal_syscall3(__NR_socket, AF_INET, SOCK_STREAM, 0)</code>，如果在x86架构中宏<code>__NR_socket</code>为41</p>
 <p>在glibc-2.40\sysdeps\unix\sysv\linux\x86_64\64\arch-syscall.h 中有定义</p>
 <figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">define</span> __NR_socket 41</span></span><br></pre></td></tr></table></figure>
 
-<p>总之，上述宏经过一系列展开后变成了如下函数，其中number为系统调用号，可以看到代码中有一个syscall指令</p>
+<p>总之，上述宏经过一系列展开后变成了如下函数，其中number为系统调用号，arg1, arg2, arg3 为传入的参数</p>
 <figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">#define internal_syscall3(number, arg1, arg2, arg3)			\</span><br><span class="line">(&#123;									\</span><br><span class="line">    unsigned long int resultvar;					\</span><br><span class="line">    TYPEFY (arg3, __arg3) = ARGIFY (arg3);			 	\</span><br><span class="line">    TYPEFY (arg2, __arg2) = ARGIFY (arg2);			 	\</span><br><span class="line">    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\</span><br><span class="line">    register TYPEFY (arg3, _a3) asm (&quot;rdx&quot;) = __arg3;			\</span><br><span class="line">    register TYPEFY (arg2, _a2) asm (&quot;rsi&quot;) = __arg2;			\</span><br><span class="line">    register TYPEFY (arg1, _a1) asm (&quot;rdi&quot;) = __arg1;			\</span><br><span class="line">    asm volatile (							\</span><br><span class="line">    &quot;syscall\n\t&quot;							\</span><br><span class="line">    : &quot;=a&quot; (resultvar)							\</span><br><span class="line">    : &quot;0&quot; (number), &quot;r&quot; (_a1), &quot;r&quot; (_a2), &quot;r&quot; (_a3)			\</span><br><span class="line">    : &quot;memory&quot;, REGISTERS_CLOBBERED_BY_SYSCALL);			\</span><br><span class="line">    (long int) resultvar;						\</span><br><span class="line">&#125;)</span><br></pre></td></tr></table></figure>
 
-<p>上述代码即为系统调用的核心实现（只针对带有三个参数的），看起来还是有点费劲，上述代码其实等价于下面这个代码：</p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">long syscall3(int number, long a1, long a2, long a3) &#123;</span><br><span class="line">    long result;</span><br><span class="line">    asm volatile (</span><br><span class="line">        &quot;syscall&quot;</span><br><span class="line">        : &quot;=a&quot; (result)</span><br><span class="line">        : &quot;0&quot; (number), &quot;D&quot;(a1), &quot;S&quot;(a2), &quot;d&quot;(a3)</span><br><span class="line">        : &quot;rcx&quot;, &quot;r11&quot;, &quot;memory&quot;</span><br><span class="line">    );</span><br><span class="line">    return result;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p>上述代码的作用是将系统调用号和 3 个参数分别放入规定的寄存器（RAX, RDI, RSI, RDX），然后执行 <code>syscall</code> 指令，并将返回值保存到 <code>resultvar</code>：</p>
+<p>“memory”, <code>REGISTERS_CLOBBERED_BY_SYSCALL</code> 的意思是告诉编译器不要优化这段代码</p>
+<p>下面附上x86-64 Linux 的 syscall 调用约定传参的寄存器</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>寄存器</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>syscall 编号</td>
+<td>RAX</td>
+</tr>
+<tr>
+<td>参数1</td>
+<td>RDI</td>
+</tr>
+<tr>
+<td>参数2</td>
+<td>RSI</td>
+</tr>
+<tr>
+<td>参数3</td>
+<td>RDX</td>
+</tr>
+<tr>
+<td>参数4</td>
+<td>R10</td>
+</tr>
+<tr>
+<td>参数5</td>
+<td>R8</td>
+</tr>
+<tr>
+<td>参数6</td>
+<td>R9</td>
+</tr>
+</tbody></table>
+<h3 id="2-内核代码分析"><a href="#2-内核代码分析" class="headerlink" title="2.内核代码分析"></a>2.内核代码分析</h3><p>执行上述syscall指令后CPU 会根据 MSR 寄存器（Model Specific Registers）跳转到系统调用函数，例如，x86架构则会进入到系统调用的统一入口函数<code>entry_SYSCALL_64</code></p>
+<p><code>entry_SYSCALL_64</code>函数的注册（也就把地址写入MSR寄存器）在<code>syscall_init</code>中完成代码如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">void syscall_init(void)</span><br><span class="line">&#123;</span><br><span class="line">	wrmsr(MSR_STAR, 0, (__USER32_CS &lt;&lt; 16) | __KERNEL_CS);</span><br><span class="line">	//把entry_SYSCALL_64 的地址写入MSR_LSTAR寄存器</span><br><span class="line">	wrmsrl(MSR_LSTAR, (unsigned long)entry_SYSCALL_64);</span><br><span class="line"></span><br><span class="line"> 	...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
+<p>上述<code>syscall_init</code> 函数在start_kernel的时候会被调用</p>
+<p>接下里看一下&#96;&#96;的逻辑，</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line">SYM_CODE_START(entry_SYSCALL_64)</span><br><span class="line">	UNWIND_HINT_EMPTY</span><br><span class="line">	//这个是切换GS寄存器，这个寄存器是访问per-cpu变量的基址task_struct结构就依赖这个寄存器间接获得</span><br><span class="line">	swapgs</span><br><span class="line">	/* tss.sp2 is scratch space. */</span><br><span class="line">	//将当前栈指针保存</span><br><span class="line">	movq	%rsp, PER_CPU_VAR(cpu_tss_rw + TSS_sp2)</span><br><span class="line">	//切换页表</span><br><span class="line">	SWITCH_TO_KERNEL_CR3 scratch_reg=%rsp</span><br><span class="line">	//切换当前栈指针到当前 CPU 的内核栈顶指针</span><br><span class="line">	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp</span><br><span class="line"></span><br><span class="line">SYM_INNER_LABEL(entry_SYSCALL_64_safe_stack, SYM_L_GLOBAL)</span><br><span class="line"></span><br><span class="line">	/* Construct struct pt_regs on stack */</span><br><span class="line">	//把用户态的一些信息入栈（貌似就是pt_regs）</span><br><span class="line">	pushq	$__USER_DS				/* pt_regs-&gt;ss */</span><br><span class="line">	pushq	PER_CPU_VAR(cpu_tss_rw + TSS_sp2)	/* pt_regs-&gt;sp */</span><br><span class="line">	pushq	%r11					/* pt_regs-&gt;flags */</span><br><span class="line">	pushq	$__USER_CS				/* pt_regs-&gt;cs */</span><br><span class="line">	pushq	%rcx					/* pt_regs-&gt;ip */</span><br><span class="line">SYM_INNER_LABEL(entry_SYSCALL_64_after_hwframe, SYM_L_GLOBAL)</span><br><span class="line">	//这里存了系统调用号</span><br><span class="line">	pushq	%rax					/* pt_regs-&gt;orig_ax */</span><br><span class="line">	//其他寄存器的信息继续保存到栈中</span><br><span class="line">	PUSH_AND_CLEAR_REGS rax=$-ENOSYS</span><br><span class="line"></span><br><span class="line">	/* IRQs are off. */</span><br><span class="line">	//把系统调用号放入 rdi → 作为函数的第 1 个参数</span><br><span class="line">	movq	%rax, %rdi</span><br><span class="line">	//把 pt_regs 地址放入 rsi → 作为第 2 个参数</span><br><span class="line">	movq	%rsp, %rsi</span><br><span class="line">	//调用do_syscall_64</span><br><span class="line">	call	do_syscall_64		/* returns with IRQs disabled */</span><br><span class="line"></span><br><span class="line">	...</span><br><span class="line">	</span><br><span class="line">SYM_CODE_END(entry_SYSCALL_64)</span><br></pre></td></tr></table></figure>
+
+<p>在用户执行 <code>syscall</code> 指令后，CPU 跳转到<code>entry_SYSCALL_64</code>，完成从用户态到内核态的切换、栈构造、参数准备，并调用 C 函数 <code>do_syscall_64()</code> 来处理系统调用。</p>
 
       
     </div>
