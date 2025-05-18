@@ -179,6 +179,265 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/18/ipsec/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="标题">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/05/18/ipsec/" class="post-title-link" itemprop="url">IPSec</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-05-18 22:00:00 / 修改时间：23:38:02" itemprop="dateCreated datePublished" datetime="2025-05-18T22:00:00+08:00">2025-05-18</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE/" itemprop="url" rel="index"><span itemprop="name">网络协议</span></a>
+                </span>
+            </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="IPSec"><a href="#IPSec" class="headerlink" title="IPSec"></a>IPSec</h2><h2 id="1-IPSec-简介"><a href="#1-IPSec-简介" class="headerlink" title="1.IPSec 简介"></a>1.IPSec 简介</h2><h3 id="1-1起源"><a href="#1-1起源" class="headerlink" title="1.1起源"></a>1.1起源</h3><p>随着Internet的发展，越来越多的企业直接通过Internet进行互联，但由于IP协议未考虑安全性，而且Internet上有大量的不可靠用户和网络设备，所以用户业务数据要穿越这些未知网络，根本无法保证数据的安全性，数据易被伪造、篡改或窃取。因此，迫切需要一种兼容IP协议的通用的网络安全方案。为了解决上述问题，IPSec（Internet Protocol Security）应运而生。IPSec是对IP的安全性补充，其工作在IP层，为IP网络通信提供透明的安全服务。</p>
+<h3 id="1-2定义"><a href="#1-2定义" class="headerlink" title="1.2定义"></a>1.2定义</h3><p>IPSec是IETF（Internet Engineering Task Force）制定的一组开放的网络安全协议。<strong>它并不是一个单独的协议</strong>，而是一系列为IP网络提供安全性的协议和服务的集合，包括认证头AH（Authentication Header）和封装安全载荷ESP（Encapsulating SecurityPayload）两个安全协议、密钥交换和用于验证及加密的一些算法等。通过这些协议，在两个设备之间建立一条IPSec隧道。数据通过IPSec隧道进行转发，实现保护数据的安全性。</p>
+<h3 id="1-3受益"><a href="#1-3受益" class="headerlink" title="1.3受益"></a>1.3受益</h3><p>IPSec通过加密与验证等方式，从以下几个方面保障了用户业务数据在Internet中的安<br>全传输：</p>
+<ul>
+<li>数据来源验证：接收方验证发送方身份是否合法。</li>
+<li>数据加密：发送方对数据进行加密，以密文的形式在Internet上传送，接收方对接<br>收的加密数据进行解密后处理或直接转发。</li>
+<li>数据完整性：接收方对接收的数据进行验证，以判定报文是否被篡改。</li>
+<li>抗重放：接收方拒绝旧的或重复的数据包，防止恶意用户通过重复发送捕获到的<br>数据包所进行的攻击。</li>
+</ul>
+<h2 id="2-IPSec原理描述"><a href="#2-IPSec原理描述" class="headerlink" title="2.IPSec原理描述"></a>2.IPSec原理描述</h2><h3 id="2-1IPSec-协议框架"><a href="#2-1IPSec-协议框架" class="headerlink" title="2.1IPSec 协议框架"></a>2.1IPSec 协议框架</h3><h4 id="2-1-1安全联盟"><a href="#2-1-1安全联盟" class="headerlink" title="2.1.1安全联盟"></a>2.1.1安全联盟</h4><p>安全联盟SA（Security Association）是通信对等体间对某些要素的协定，它描述了对等体间如何利用安全服务（例如加密）进行安全的通信。这些要素包括对等体间使用何种安全协议、要保护的数据流特征、对等体间传输的数据的封装模式、协议采用的加密和验证算法，以及用于数据安全转换、传输的密钥和SA的生存周期等。IPSec安全传输数据的前提是在IPSec对等体（即运行IPSec协议的两个端点）之间成功建立安全联盟。<strong>IPSec安全联盟简称IPSec SA，由一个三元组来唯一标识，这个三元组包括安全参数索引SPI（Security Parameter Index）、目的IP地址和使用的安全协议号（AH或ESP）</strong>。其中，SPI是为唯一标识SA而生成的一个32位比特的数值，它被封装在AH和ESP头中。<strong>IPSec SA是单向的逻辑连接</strong>，通常成对建立（Inbound和Outbound）。因此两个IPSec对等体之间的双向通信，最少需要建立一对IPSec SA形成一个安全互通的IPSec隧道，分别对两个方向的数据流进行安全保护。<br>另外，IPSec SA的个数还与安全协议相关。如果只使用AH或ESP来保护两个对等体之间的流量，则对等体之间就有两个SA，每个方向上一个。如果对等体同时使用了AH和ESP，那么对等体之间就需要四个SA，每个方向上两个，分别对应AH和ESP。建立IPSec SA有两种方式：手工方式和IKE方式。二者的主要差异如表所示。</p>
+<table>
+<thead>
+<tr>
+<th>对比项</th>
+<th>手工方式建立IPSec SA</th>
+<th>IKE方式自动建立IPSec SA</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>加密&#x2F;验证密钥管理</strong></td>
+<td>手工配置、手动刷新，易出错</td>
+<td>通过DH算法动态生成并自动刷新</td>
+</tr>
+<tr>
+<td><strong>密钥管理成本</strong></td>
+<td>高（需人工维护所有节点密钥）</td>
+<td>低（自动协商和轮换）</td>
+</tr>
+<tr>
+<td><strong>SPI（安全参数索引）</strong></td>
+<td>手工配置</td>
+<td>随机生成</td>
+</tr>
+<tr>
+<td><strong>生存周期</strong></td>
+<td>无限制，SA永久存在（除非手动删除）</td>
+<td>由生存周期参数控制，SA自动过期和重建</td>
+</tr>
+<tr>
+<td><strong>安全性</strong></td>
+<td>低（静态密钥易被破解，无前向保密）</td>
+<td>高（动态密钥、支持PFS、抗重放攻击）</td>
+</tr>
+<tr>
+<td><strong>适用场景</strong></td>
+<td>小型网络、临时测试环境</td>
+<td>中小型至大型网络、生产环境</td>
+</tr>
+</tbody></table>
+<h4 id="2-1-2安全协议"><a href="#2-1-2安全协议" class="headerlink" title="2.1.2安全协议"></a>2.1.2安全协议</h4><p>IPSec使用认证头AH（Authentication Header）和封装安全载荷ESP EncapsulatingSecurity Payload）两种IP传输层协议来提供认证或加密等安全服务。</p>
+<ul>
+<li><p>AH协议：<br>AH仅支持认证功能，不支持加密功能。AH在每一个数据包的标准IP报头后面添加一个AH报文头。AH对数据包和认证密钥进行Hash计算，接收方收到带有计算结果的数据包后，执行同样的Hash计算并与原计算结果比较，传输过程中对数据的任何更改将使计算结果无效，这样就提供了数据来源认证和数据完整性校验。AH协议的完整性验证范围为整个IP报文。</p>
+</li>
+<li><p>ESP协议：<br>ESP支持认证和加密功能。ESP在每一个数据包的标准IP报头后面添加一个ESP报文头，并在数据包后面追加一个ESP尾（ESP Trailer和ESP Auth data）。与AH不同的是，ESP将数据中的有效载荷进行加密后再封装到数据包中，以保证数据的机密性，但ESP没有对IP头的内容进行保护，除非IP头被封装在ESP内部（采用隧道模式）。</p>
+</li>
+</ul>
+<p>AH协议与ESP协议的比较如下所示：</p>
+<table>
+<thead>
+<tr>
+<th>安全特性</th>
+<th>AH (认证头)</th>
+<th>ESP (封装安全载荷)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>协议号</strong></td>
+<td>51</td>
+<td>50</td>
+</tr>
+<tr>
+<td><strong>数据完整性校验</strong></td>
+<td>支持（验证整个IP报文）</td>
+<td>支持（传输模式：不验证IP头；隧道模式：验证整个IP报文）</td>
+</tr>
+<tr>
+<td><strong>数据源验证</strong></td>
+<td>支持</td>
+<td>支持</td>
+</tr>
+<tr>
+<td><strong>数据加密</strong></td>
+<td>不支持</td>
+<td>支持</td>
+</tr>
+<tr>
+<td><strong>防报文重放攻击</strong></td>
+<td>支持</td>
+<td>支持</td>
+</tr>
+<tr>
+<td><strong>NAT-T (NAT穿越)</strong></td>
+<td>不支持</td>
+<td>支持</td>
+</tr>
+</tbody></table>
+<h3 id="报文头结构"><a href="#报文头结构" class="headerlink" title="报文头结构"></a>报文头结构</h3><p><strong>AH报文头结构</strong></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="line">| 下一个头部 (8 bits) | 载荷长度 (8 bits) |  保留 (16 bits)        |</span><br><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="line">|                   安全参数索引 (SPI, 32 bits)                   |</span><br><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="line">|                   序列号 (Sequence Number, 32 bits)            |</span><br><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="line">|                                                               |</span><br><span class="line">|                认证数据 (可变长度，32 bits的整数倍)              |</span><br><span class="line">|                                                               |</span><br><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br></pre></td></tr></table></figure>
+
+<p> <strong>AH 报文头字段含义</strong></p>
+<table>
+<thead>
+<tr>
+<th>字段名</th>
+<th>长度</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>下一头部</strong></td>
+<td>8 bits</td>
+<td>标识 AH 报文头后面的负载类型：<br> - <strong>传输模式</strong>：被保护的上层协议（TCP&#x2F;UDP）或 ESP 协议编号<br> - <strong>隧道模式</strong>：IP 协议或 ESP 协议编号<br>（当 AH 与 ESP 同时使用时，下一头部为 ESP 报文头）</td>
+</tr>
+<tr>
+<td><strong>负载长度</strong></td>
+<td>8 bits</td>
+<td>以 32 比特为单位的 AH 报文头长度减 2（缺省值：4）</td>
+</tr>
+<tr>
+<td><strong>保留字段</strong></td>
+<td>16 bits</td>
+<td>保留将来使用，缺省为 0</td>
+</tr>
+<tr>
+<td><strong>SPI</strong></td>
+<td>32 bits</td>
+<td>IPSec 安全参数索引，唯一标识安全联盟（SA）</td>
+</tr>
+<tr>
+<td><strong>序列号</strong></td>
+<td>32 bits</td>
+<td>从 1 开始的单向递增计数器，防止重放攻击</td>
+</tr>
+<tr>
+<td><strong>认证数据</strong></td>
+<td>变长字段（32 比特整数倍，通常 96 bits）</td>
+<td>包含完整性校验值（ICV），用于接收方校验数据完整性。<br><strong>认证算法</strong>：<br>- ✅ 推荐：SHA2、SM3<br>- ⚠️ 不安全：MD5、SHA1（存在安全隐患）</td>
+</tr>
+</tbody></table>
+<p><strong>ESP 报文结构</strong></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">+-----------------------------------------------+  &lt;-- ESP头部</span><br><span class="line">| 安全参数索引（SPI）                            |</span><br><span class="line">+-----------------------------------------------+</span><br><span class="line">| 序列号                                         |</span><br><span class="line">+-----------------------------------------------+  &lt;-- 加密部分开始</span><br><span class="line">|                                               |</span><br><span class="line">| 负载数据（Payload，变长）                      |</span><br><span class="line">|                                               |</span><br><span class="line">+-----------------------------------------------+</span><br><span class="line">| 填充字段（0～255字节 Padding）                 |</span><br><span class="line">+-----------------------------------------------+</span><br><span class="line">| 填充长度（1B）        | 下一头部（1B）          |</span><br><span class="line">+-----------------------------------------------+  &lt;-- ESP尾部（加密部分结束）</span><br><span class="line">|                                               |</span><br><span class="line">| 认证数据（ICV，完整性校验值，变长）            |</span><br><span class="line">|                                               |</span><br><span class="line">+-----------------------------------------------+  &lt;-- ESP认证部分</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p> <strong>ESP 报文头字段含义</strong></p>
+<table>
+<thead>
+<tr>
+<th>字段名</th>
+<th>长度</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>SPI</strong></td>
+<td>32 bits</td>
+<td>IPSec 安全参数索引，唯一标识安全联盟（SA）</td>
+</tr>
+<tr>
+<td><strong>序列号</strong></td>
+<td>32 bits</td>
+<td>从 1 开始的单向递增计数器，防止重放攻击</td>
+</tr>
+<tr>
+<td><strong>负载数据</strong></td>
+<td>变长</td>
+<td>原始 IP 报文中的可变长度数据内容<br>（保护内容类型由下一头部字段标识）</td>
+</tr>
+<tr>
+<td><strong>填充字段</strong></td>
+<td>0-255 字节</td>
+<td>用于补齐加密算法要求的块长度</td>
+</tr>
+<tr>
+<td><strong>填充长度</strong></td>
+<td>8 bits</td>
+<td>表示填充字段的字节数（0 表示无填充）</td>
+</tr>
+<tr>
+<td><strong>下一头部</strong></td>
+<td>8 bits</td>
+<td>标识下一个负载类型：<br>- 传输模式：上层协议编号（如 TCP&#x3D;6&#x2F;UDP&#x3D;17）<br>- 隧道模式：IP 协议（IPv4&#x3D;4&#x2F;IPv6&#x3D;41）</td>
+</tr>
+<tr>
+<td><strong>认证数据</strong></td>
+<td>变长</td>
+<td>完整性校验值（ICV），需 32 位对齐</td>
+</tr>
+</tbody></table>
+<p>2.1.3封装模式</p>
+<p>封装模式是指将AH或ESP相关的字段插入到原始IP报文中，以实现对报文的认证和加密，封装模式有传输模式和隧道模式两种。</p>
+<p><strong>传输模式</strong></p>
+<p>在传输模式中，AH头或ESP头被插入到IP头与传输层协议头之间，保护TCP&#x2F;UDP&#x2F;ICMP负载。由于传输模式未添加额外的IP头，所以原始报文中的IP地址在加密后报文的IP头中可见。以TCP报文为例，原始报文经过传输模式封装后，报文如下所示。</p>
+<p><img src="/images/ipsec1.png" alt="传输模式"></p>
+
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/13/1-socket%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -210,7 +469,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-05-16 00:10:34" itemprop="dateModified" datetime="2025-05-16T00:10:34+08:00">2025-05-16</time>
+                <time title="修改时间：2025-05-18 23:18:30" itemprop="dateModified" datetime="2025-05-18T23:18:30+08:00">2025-05-18</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -218,7 +477,7 @@
               </span>
               <span class="post-meta-item-text">分类于</span>
                 <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88/" itemprop="url" rel="index"><span itemprop="name">网络协议栈</span></a>
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
                 </span>
             </span>
 
@@ -417,20 +676,20 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">1</span>
+          <span class="site-state-item-count">2</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
       <div class="site-state-item site-state-categories">
             <a href="/categories/">
           
-        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-count">2</span>
         <span class="site-state-item-name">分类</span></a>
       </div>
       <div class="site-state-item site-state-tags">
             <a href="/tags/">
           
-        <span class="site-state-item-count">1</span>
+        <span class="site-state-item-count">2</span>
         <span class="site-state-item-name">标签</span></a>
       </div>
   </nav>
