@@ -20,20 +20,28 @@
     var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
   </script>
 
-  <meta name="description" content="IPSec1.IPSec 简介1.1起源随着Internet的发展，越来越多的企业直接通过Internet进行互联，但由于IP协议未考虑安全性，而且Internet上有大量的不可靠用户和网络设备，所以用户业务数据要穿越这些未知网络，根本无法保证数据的安全性，数据易被伪造、篡改或窃取。因此，迫切需要一种兼容IP协议的通用的网络安全方案。为了解决上述问题，IPSec（Internet Protocol">
+  <meta name="description" content="IPSec1.IPSec 简介起源随着Internet的发展，越来越多的企业直接通过Internet进行互联，但由于IP协议未考虑安全性，而且Internet上有大量的不可靠用户和网络设备，所以用户业务数据要穿越这些未知网络，根本无法保证数据的安全性，数据易被伪造、篡改或窃取。因此，迫切需要一种兼容IP协议的通用的网络安全方案。为了解决上述问题，IPSec（Internet Protocol Se">
 <meta property="og:type" content="article">
 <meta property="og:title" content="IPSec">
 <meta property="og:url" content="http://example.com/2025/05/18/ipsec/index.html">
 <meta property="og:site_name" content="标题">
-<meta property="og:description" content="IPSec1.IPSec 简介1.1起源随着Internet的发展，越来越多的企业直接通过Internet进行互联，但由于IP协议未考虑安全性，而且Internet上有大量的不可靠用户和网络设备，所以用户业务数据要穿越这些未知网络，根本无法保证数据的安全性，数据易被伪造、篡改或窃取。因此，迫切需要一种兼容IP协议的通用的网络安全方案。为了解决上述问题，IPSec（Internet Protocol">
+<meta property="og:description" content="IPSec1.IPSec 简介起源随着Internet的发展，越来越多的企业直接通过Internet进行互联，但由于IP协议未考虑安全性，而且Internet上有大量的不可靠用户和网络设备，所以用户业务数据要穿越这些未知网络，根本无法保证数据的安全性，数据易被伪造、篡改或窃取。因此，迫切需要一种兼容IP协议的通用的网络安全方案。为了解决上述问题，IPSec（Internet Protocol Se">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:image" content="http://example.com/images/ipsec1.png">
+<meta property="og:image" content="http://example.com/images%5Cipsec%5C%E4%BC%A0%E8%BE%93%E6%A8%A1%E5%BC%8F.png">
+<meta property="og:image" content="c:\Users\zm\Desktop\ipsec\%E9%9A%A7%E9%81%93%E6%A8%A1%E5%BC%8F.png">
+<meta property="og:image" content="http://example.com/images%5Cipsec%5C%E5%8A%A0%E5%AF%86.png">
+<meta property="og:image" content="http://example.com/images%5Cipsec%5C%E9%AA%8C%E8%AF%81.png">
+<meta property="og:image" content="http://example.com/images%5Cipsec%5Cike%E4%B8%8Eipsec.png">
+<meta property="og:image" content="http://example.com/images%5Cipsec%5C%E9%98%B6%E6%AE%B51.png">
+<meta property="og:image" content="c:\Users\zm\Desktop\ipsec\ikev1%E5%8D%8F%E5%95%862.png">
+<meta property="og:image" content="http://example.com/images%5Cipsec%5Cikev21.png">
+<meta property="og:image" content="http://example.com/images%5Cipsec%5Cikev22.png">
 <meta property="article:published_time" content="2025-05-18T14:00:00.000Z">
-<meta property="article:modified_time" content="2025-05-18T15:38:02.575Z">
+<meta property="article:modified_time" content="2025-05-19T14:48:04.079Z">
 <meta property="article:author" content="zhangm">
 <meta property="article:tag" content="IPSec">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="http://example.com/images/ipsec1.png">
+<meta name="twitter:image" content="http://example.com/images%5Cipsec%5C%E4%BC%A0%E8%BE%93%E6%A8%A1%E5%BC%8F.png">
 
 <link rel="canonical" href="http://example.com/2025/05/18/ipsec/">
 
@@ -206,10 +214,16 @@
                 <i class="far fa-calendar"></i>
               </span>
               <span class="post-meta-item-text">发表于</span>
-              
 
-              <time title="创建时间：2025-05-18 22:00:00 / 修改时间：23:38:02" itemprop="dateCreated datePublished" datetime="2025-05-18T22:00:00+08:00">2025-05-18</time>
+              <time title="创建时间：2025-05-18 22:00:00" itemprop="dateCreated datePublished" datetime="2025-05-18T22:00:00+08:00">2025-05-18</time>
             </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-05-19 22:48:04" itemprop="dateModified" datetime="2025-05-19T22:48:04+08:00">2025-05-19</time>
+              </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
                 <i class="far fa-folder"></i>
@@ -238,9 +252,9 @@
     <div class="post-body" itemprop="articleBody">
 
       
-        <h2 id="IPSec"><a href="#IPSec" class="headerlink" title="IPSec"></a>IPSec</h2><h2 id="1-IPSec-简介"><a href="#1-IPSec-简介" class="headerlink" title="1.IPSec 简介"></a>1.IPSec 简介</h2><h3 id="1-1起源"><a href="#1-1起源" class="headerlink" title="1.1起源"></a>1.1起源</h3><p>随着Internet的发展，越来越多的企业直接通过Internet进行互联，但由于IP协议未考虑安全性，而且Internet上有大量的不可靠用户和网络设备，所以用户业务数据要穿越这些未知网络，根本无法保证数据的安全性，数据易被伪造、篡改或窃取。因此，迫切需要一种兼容IP协议的通用的网络安全方案。为了解决上述问题，IPSec（Internet Protocol Security）应运而生。IPSec是对IP的安全性补充，其工作在IP层，为IP网络通信提供透明的安全服务。</p>
-<h3 id="1-2定义"><a href="#1-2定义" class="headerlink" title="1.2定义"></a>1.2定义</h3><p>IPSec是IETF（Internet Engineering Task Force）制定的一组开放的网络安全协议。<strong>它并不是一个单独的协议</strong>，而是一系列为IP网络提供安全性的协议和服务的集合，包括认证头AH（Authentication Header）和封装安全载荷ESP（Encapsulating SecurityPayload）两个安全协议、密钥交换和用于验证及加密的一些算法等。通过这些协议，在两个设备之间建立一条IPSec隧道。数据通过IPSec隧道进行转发，实现保护数据的安全性。</p>
-<h3 id="1-3受益"><a href="#1-3受益" class="headerlink" title="1.3受益"></a>1.3受益</h3><p>IPSec通过加密与验证等方式，从以下几个方面保障了用户业务数据在Internet中的安<br>全传输：</p>
+        <h2 id="IPSec"><a href="#IPSec" class="headerlink" title="IPSec"></a>IPSec</h2><h2 id="1-IPSec-简介"><a href="#1-IPSec-简介" class="headerlink" title="1.IPSec 简介"></a>1.IPSec 简介</h2><h3 id="起源"><a href="#起源" class="headerlink" title="起源"></a>起源</h3><p>随着Internet的发展，越来越多的企业直接通过Internet进行互联，但由于IP协议未考虑安全性，而且Internet上有大量的不可靠用户和网络设备，所以用户业务数据要穿越这些未知网络，根本无法保证数据的安全性，数据易被伪造、篡改或窃取。因此，迫切需要一种兼容IP协议的通用的网络安全方案。为了解决上述问题，IPSec（Internet Protocol Security）应运而生。IPSec是对IP的安全性补充，其工作在IP层，为IP网络通信提供透明的安全服务。</p>
+<h3 id="定义"><a href="#定义" class="headerlink" title="定义"></a>定义</h3><p>IPSec是IETF（Internet Engineering Task Force）制定的一组开放的网络安全协议。<strong>它并不是一个单独的协议</strong>，而是一系列为IP网络提供安全性的协议和服务的集合，包括认证头AH（Authentication Header）和封装安全载荷ESP（Encapsulating SecurityPayload）两个安全协议、密钥交换和用于验证及加密的一些算法等。通过这些协议，在两个设备之间建立一条IPSec隧道。数据通过IPSec隧道进行转发，实现保护数据的安全性。</p>
+<h3 id="受益"><a href="#受益" class="headerlink" title="受益"></a>受益</h3><p>IPSec通过加密与验证等方式，从以下几个方面保障了用户业务数据在Internet中的安<br>全传输：</p>
 <ul>
 <li>数据来源验证：接收方验证发送方身份是否合法。</li>
 <li>数据加密：发送方对数据进行加密，以密文的形式在Internet上传送，接收方对接<br>收的加密数据进行解密后处理或直接转发。</li>
@@ -334,8 +348,8 @@
 <td>支持</td>
 </tr>
 </tbody></table>
-<h3 id="报文头结构"><a href="#报文头结构" class="headerlink" title="报文头结构"></a>报文头结构</h3><p><strong>AH报文头结构</strong></p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="line">| 下一个头部 (8 bits) | 载荷长度 (8 bits) |  保留 (16 bits)        |</span><br><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="line">|                   安全参数索引 (SPI, 32 bits)                   |</span><br><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="line">|                   序列号 (Sequence Number, 32 bits)            |</span><br><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="line">|                                                               |</span><br><span class="line">|                认证数据 (可变长度，32 bits的整数倍)              |</span><br><span class="line">|                                                               |</span><br><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br></pre></td></tr></table></figure>
+<p><strong>AH报文头结构</strong></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="line">| 下一个头部 (8 bits) | 载荷长度 (8 bits) |  保留 (16 bits)         |</span><br><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="line">|                   安全参数索引 (SPI, 32 bits)                   |</span><br><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="line">|                   序列号 (Sequence Number, 32 bits)            |</span><br><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="line">|                                                               |</span><br><span class="line">|                认证数据 (可变长度，32 bits的整数倍)               |</span><br><span class="line">|                                                               |</span><br><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br></pre></td></tr></table></figure>
 
 <p> <strong>AH 报文头字段含义</strong></p>
 <table>
@@ -378,7 +392,7 @@
 </tr>
 </tbody></table>
 <p><strong>ESP 报文结构</strong></p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">+-----------------------------------------------+  &lt;-- ESP头部</span><br><span class="line">| 安全参数索引（SPI）                            |</span><br><span class="line">+-----------------------------------------------+</span><br><span class="line">| 序列号                                         |</span><br><span class="line">+-----------------------------------------------+  &lt;-- 加密部分开始</span><br><span class="line">|                                               |</span><br><span class="line">| 负载数据（Payload，变长）                      |</span><br><span class="line">|                                               |</span><br><span class="line">+-----------------------------------------------+</span><br><span class="line">| 填充字段（0～255字节 Padding）                 |</span><br><span class="line">+-----------------------------------------------+</span><br><span class="line">| 填充长度（1B）        | 下一头部（1B）          |</span><br><span class="line">+-----------------------------------------------+  &lt;-- ESP尾部（加密部分结束）</span><br><span class="line">|                                               |</span><br><span class="line">| 认证数据（ICV，完整性校验值，变长）            |</span><br><span class="line">|                                               |</span><br><span class="line">+-----------------------------------------------+  &lt;-- ESP认证部分</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">+-----------------------------------------------+ &lt;-- ESP头部</span><br><span class="line">| 安全参数索引（SPI）                              |</span><br><span class="line">+-----------------------------------------------+</span><br><span class="line">| 序列号                                         |</span><br><span class="line">+-----------------------------------------------+ &lt;-- 加密部分开始</span><br><span class="line">|                                               |</span><br><span class="line">| 负载数据（Payload，变长）                        |</span><br><span class="line">|                                               |</span><br><span class="line">+-----------------------------------------------+</span><br><span class="line">| 填充字段（0～255字节 Padding）                   |</span><br><span class="line">+-----------------------------------------------+</span><br><span class="line">| 填充长度（1B） | 下一头部（1B）                   |</span><br><span class="line">+-----------------------------------------------+ &lt;-- ESP尾部（加密部分结束）</span><br><span class="line">|                                               |</span><br><span class="line">| 认证数据（ICV，完整性校验值，变长                  |</span><br><span class="line">|                                               |</span><br><span class="line">+-----------------------------------------------+ &lt;-- ESP认证部分</span><br><span class="line"></span><br></pre></td></tr></table></figure>
 
 <p> <strong>ESP 报文头字段含义</strong></p>
 <table>
@@ -425,11 +439,88 @@
 <td>完整性校验值（ICV），需 32 位对齐</td>
 </tr>
 </tbody></table>
-<p>2.1.3封装模式</p>
-<p>封装模式是指将AH或ESP相关的字段插入到原始IP报文中，以实现对报文的认证和加密，封装模式有传输模式和隧道模式两种。</p>
+<h4 id="2-1-3封装模式"><a href="#2-1-3封装模式" class="headerlink" title="2.1.3封装模式"></a>2.1.3封装模式</h4><p>封装模式是指将AH或ESP相关的字段插入到原始IP报文中，以实现对报文的认证和加密，封装模式有传输模式和隧道模式两种。</p>
 <p><strong>传输模式</strong></p>
-<p>在传输模式中，AH头或ESP头被插入到IP头与传输层协议头之间，保护TCP&#x2F;UDP&#x2F;ICMP负载。由于传输模式未添加额外的IP头，所以原始报文中的IP地址在加密后报文的IP头中可见。以TCP报文为例，原始报文经过传输模式封装后，报文如下所示。</p>
-<p><img src="/images/ipsec1.png" alt="传输模式"></p>
+<p>在传输模式中，AH头或ESP头被插入到IP头与传输层协议头之间，保护TCP&#x2F;UDP&#x2F;ICMP负载。由于传输模式未添加额外的IP头，所以原始报文中的IP地址在加密后报文的IP头中可见。以TCP报文为例，原始报文经过传输模式封装后，报文格式如下所示。</p>
+<p><img src="/images%5Cipsec%5C%E4%BC%A0%E8%BE%93%E6%A8%A1%E5%BC%8F.png" alt="传输模式"></p>
+<p><strong>隧道模式</strong></p>
+<p>在隧道模式下，AH头或ESP头被插到原始IP头之前，另外生成一个新的报文头放到AH<br>头或ESP头之前，保护IP头和负载。以TCP报文为例，原始报文经隧道模式封装后的报<br>文结构如下图所示。</p>
+<p><img src="C:\Users\zm\Desktop\ipsec\隧道模式.png" alt="隧道模式"></p>
+<p>隧道模式下，与AH协议相比，ESP协议的完整性验证范围不包括新IP头，无法保证新IP头的安全。</p>
+<p><strong>传输模式和隧道模式比较</strong></p>
+<p>传输模式和隧道模式的区别在于：</p>
+<ul>
+<li>从安全性来讲，隧道模式优于传输模式。它可以完全地对原始IP数据包进行验证<br>和加密。隧道模式下可以隐藏内部IP地址，协议类型和端口。</li>
+<li>从性能来讲，隧道模式因为有一个额外的IP头，所以它将比传输模式占用更多带<br>宽。</li>
+<li>从场景来讲，传输模式主要应用于两台主机或一台主机和一台VPN网关之间通<br>信；隧道模式主要应用于两台VPN网关之间或一台主机与一台VPN网关之间的通<br>信。<br><strong>当安全协议同时采用AH和ESP时，AH和ESP协议必须采用相同的封装模式。</strong></li>
+</ul>
+<h4 id="2-1-4-加密和验证"><a href="#2-1-4-加密和验证" class="headerlink" title="2.1.4 加密和验证"></a>2.1.4 加密和验证</h4><p>IPSec提供了两种安全机制：加密和验证。加密机制保证数据的机密性，防止数据在传输过程中被窃听；验证机制能保证数据真实可靠，防止数据在传输过程中被仿冒和篡改。</p>
+<p><strong>加密</strong></p>
+<p>IPSec采用对称加密算法对数据进行加密和解密。如下图所示，数据发送方和接收方使用相同的密钥进行加密、解密。<br><img src="/images%5Cipsec%5C%E5%8A%A0%E5%AF%86.png" alt="加密"></p>
+<p>用于加密和解密的对称密钥可以手工配置，也可以通过IKE协议自动协商生成。常用的对称加密算法包括：数据加密标准DES（Data Encryption Standard）、3DES（Triple Data Encryption Standard）、先进加密标准AES（Advanced EncryptionStandard）国密算法（SM1和SM4）。其中，DES和3DES算法安全性低，存在安全风险，不推荐使用。</p>
+<p><strong>验证</strong></p>
+<p>IPSec的加密功能，无法验证解密后的信息是否是原始发送的信息或完整。IPSec采用HMAC（Keyed-Hash Message Authentication Code）功能，比较完整性校验值ICV进行数据包完整性和真实性验证。通常情况下，加密和验证通常配合使用。如图所示，在IPSec发送方，加密后的报文通过验证算法和对称密钥生成完整性校验值ICV，IP报文和完整性校验值ICV同时发给对端；在IPSec接收方，使用相同的验证算法和对称密钥对加密报文进行处理，同样得到完整性校验值ICV，然后比较完整性校验值ICV进行数据完整性和真实性验证，验证不通过的报文直接丢弃，验证通过的报文再进行解密。</p>
+<p><img src="/images%5Cipsec%5C%E9%AA%8C%E8%AF%81.png" alt="验证"></p>
+<p>同加密一样，用于验证的对称密钥也可以手工配置，或者通过IKE协议自动协商生成。常用的验证算法包括：消息摘要MD5（Message Digest 5）、安全散列算法SHA1（Secure Hash Algorithm 1）、SHA2、国密算法SM3（Senior Middle 3）。其中，MD5、SHA1算法安全性低，存在安全风险，不推荐使用。</p>
+<h4 id="2-1-5-密钥交换"><a href="#2-1-5-密钥交换" class="headerlink" title="2.1.5  密钥交换"></a>2.1.5  密钥交换</h4><p>使用对称密钥进行加密、验证时，如何安全地共享密钥是一个很重要的问题。有两种方法解决这个问题：</p>
+<ul>
+<li>带外共享密钥<br>在发送、接收设备上手工配置静态的加密、验证密钥。双方通过带外共享的方式（例如通过电话或邮件方式）保证密钥一致性。这种方式的缺点是安全性低，可扩展性差，在点到多点组网中配置密钥的工作量成倍增加。另外，为提升网络安全性需要周期性修改密钥，这种方式下也很难实施。</li>
+<li>使用一个安全的密钥分发协议<br>通过IKE协议自动协商密钥。IKE采用DH算法在不安全的网络上安全地分发密钥。这种方式配置简单，可扩展性好，特别是在大型动态的网络环境下此优点更加突出。同时，通信双方通过交换密钥交换材料来计算共享的密钥，即使第三方截获了双方用于计算密钥的所有交换数据，也无法计算出真正的密钥，这样极大地提高了安全性。</li>
+</ul>
+<p><strong>IKE 协议</strong><br>因特网密钥交换IKE（Internet Key Exchange）协议建立在Internet安全联盟和密钥管理协议ISAKMP定义的框架上，是基于UDP（User Datagram Protocol）的应用层协议。它为IPSec提供了自动协商密钥、建立IPSec安全联盟的服务，能够简化IPSec的配置和维护工作。IKE与IPSec的关系如图所示，对等体之间建立一个IKE SA完成身份验证和密钥信息交换后，在IKE SA的保护下，根据配置的AH&#x2F;ESP安全协议等参数协商出一对IPSecSA。此后，对等体间的数据将在IPSec隧道中加密传输。IKE SA是一个双向的逻辑连接，两个对等体间只建立一个IKE SA。</p>
+<p><img src="/images%5Cipsec%5Cike%E4%B8%8Eipsec.png" alt="ike与ipsec"></p>
+<p><strong>IKE安全机制</strong></p>
+<p>IKE具有一套自保护机制，可以在网络上安全地认证身份、分发密钥、建立IPSec SA：</p>
+<ul>
+<li><p>身份认证<br>身份认证确认通信双方的身份（对等体的IP地址或名称），包括预共享密钥PSK（pre-shared key）认证、数字证书RSA（rsa-signature）认证和数字信封认证。在预共享密钥认证中，通信双方采用共享的密钥对报文进行Hash计算，判断双方的计算结果是否相同。如果相同，则认证通过；否则认证失败。当有1个对等体对应多个对等体时，需要为每个对等体配置预共享的密钥。该<br>方法在小型网络中容易建立，但安全性较低。在数字证书认证中，通信双方使用CA证书进行数字证书合法性验证，双方各有自己的公钥（网络上传输）和私钥（自己持有）。发送方对原始报文进行Hash计算，并用自己的私钥对报文计算结果进行加密，生成数字签名。接收方使用发送方的公钥对数字签名进行解密，并对报文进行Hash计算，判断计算结果与解密后的结果是否相同。如果相同，则认证通过；否则认证失败。使用数字证书安全性高，但需要CA来颁发数字证书，适合在大型网络中使用。<br>在数字信封认证中，发送方首先随机产生一个对称密钥，使用接收方的公钥对此对称密钥进行加密（被公钥加密的对称密钥称为数字信封），发送方用对称密钥加密报文，同时用自己的私钥生成数字签名。接收方用自己的私钥解密数字信封得到对称密钥，再用对称密钥解密报文，同时根据发送方的公钥对数字签名进行解密，验证发送方的数字签名是否正确。如果正确，则认<br>证通过；否则认证失败。数字信封认证用于设备需要符合国家密码管理局要求时使用，此认证方法只能在IKEv1的主模式协商过程中支持。<br>IKE支持的认证算法有：MD5、SHA1、SHA2-256、SHA2-384、SHA2-512、SM3。</p>
+</li>
+<li><p>身份保护<br>身份数据在密钥产生之后加密传送，实现了对身份数据的保护。IKE支持的加密算法有：DES、3DES、AES-128、AES-192、AES-256、SM1和SM4。</p>
+</li>
+<li><p>DH<br>DH是一种公共密钥交换方法，它用于产生密钥材料，并通过ISAKMP消息在发送和接收设备之间进行密钥材料交换。然后，两端设备各自计算出完全相同的对称密钥。该对称密钥用于计算加密和验证的密钥。在任何时候，通信双方都不交换真正的密钥。DH密钥交换是IKE的精髓所在。</p>
+</li>
+<li><p>PFS<br>完善的前向安全性PFS（Perfect Forward Secrecy）通过执行一次额外的DH交换，确保即使IKE SA中使用的密钥被泄露，IPSec SA中使用的密钥也不会受到损害。</p>
+</li>
+</ul>
+<h3 id="2-2IPSec-基本原理"><a href="#2-2IPSec-基本原理" class="headerlink" title="2.2IPSec 基本原理"></a>2.2IPSec 基本原理</h3><p>IPSec通过在IPSec对等体间建立双向安全联盟形成一个安全互通的IPSec隧道，并通过定义IPSec保护的数据流将要保护的数据引入该IPSec隧道，然后对流经IPSec隧道的数据通过安全协议进行加密和验证，进而实现在Internet上安全传输指定的数据。IPSec安全联盟可以手工建立，也可以通过IKEv1或IKEv2协议自动协商建立。本文重点介绍如何定义IPSec保护的数据流、IKE自动协商建立安全联盟的过程。</p>
+<h4 id="2-2-1-定义-IPSec-保护的数据流"><a href="#2-2-1-定义-IPSec-保护的数据流" class="headerlink" title="2.2.1 定义 IPSec 保护的数据流"></a>2.2.1 定义 IPSec 保护的数据流</h4><p>IPSec是基于定义的感兴趣流触发对特定数据的保护，至于什么样的数据是需要IPSec保护的，可以通过以下两种方式定义。其中IPSec感兴趣流即需要IPSec保护的数据流。</p>
+<ul>
+<li>ACL方式<br>手工方式和IKE自动协商方式建立的IPSec隧道是由ACL来指定要保护的数据流范围，筛选出需要进入IPSec隧道的报文，ACL规则允许（permit）的报文将被保护，未匹配任何permit规则的报文将不被保护。这种方式可以利用ACL的丰富配置功能，根据IP地址、端口、协议类型等对报文进行过滤进而灵活制定IPSec的保护方法。</li>
+<li>路由方式<br>通过IPSec虚拟隧道接口建立IPSec隧道，将所有路由到IPSec虚拟隧道接口的报文都进行IPSec保护，根据该路由的目的地址确定哪些数据流需要IPSec保护。其中IPSec虚拟隧道接口是一种三层逻辑接口。路由方式具有以下优点：<ul>
+<li>通过路由将需要IPSec保护的数据流引到虚拟隧道接口，不需使用ACL定义待</li>
+<li>加&#x2F;解密的流量特征，简化了IPSec配置的复杂性。</li>
+<li>支持动态路由协议。</li>
+<li>通过GRE over IPSec支持对组播流量的保护。</li>
+</ul>
+</li>
+</ul>
+<h4 id="2-2-2-IKEv1-协商安全联盟的过程"><a href="#2-2-2-IKEv1-协商安全联盟的过程" class="headerlink" title="2.2.2 IKEv1 协商安全联盟的过程"></a>2.2.2 IKEv1 协商安全联盟的过程</h4><p><strong>IKEv1 协商阶段1</strong></p>
+<p>IKEv1协商阶段1的目的是建立IKE SA。IKE SA建立后对等体间的所有ISAKMP（一个框架 IKE是一种实现）消息都将通过加密和验证，这条安全通道可以保证IKEv1第二阶段的协商能够安全进行。IKEv1协商阶段1支持两种协商模式：<strong>主模式（Main Mode）和野蛮模式（AggressiveMode）</strong>。<br>主模式包含三次双向交换，用到了六条ISAKMP信息，协商过程如下图所示。这三次交换分别是：</p>
+<ol>
+<li>消息①和②用于提议交换<br>发起方发送一个或多个IKE安全提议，响应方查找最先匹配的IKE安全提议，并将这个IKE安全提议回应给发起方。匹配的原则为协商双方具有相同的加密算法、认证算法、认证方法和DH组标识。</li>
+<li>消息③和④用于密钥信息交换</li>
+<li>双方交换DH(一种密钥交换算法，不暴露私钥的情况下，计算出一个共享密钥)公共值和nonce(一个随机值)值，用于IKE SA的认证和加密密钥在这个阶段产生。消息⑤和⑥用于身份和认证信息交换（双方使用生成的密钥发送信息），双方进行身份认证和对整个主模式交换内容的认证。</li>
+</ol>
+<p>野蛮模式只用到三条信息，前两条消息①和②用于协商IKE安全提议，交换DH公共值、必需的辅助信息以及身份信息并且消息②中还包括响应方发送身份信息供发起方认证，消息③用于响应方认证发起方。IKEv1协商阶段1的协商过程如下图所示。</p>
+<p><img src="/images%5Cipsec%5C%E9%98%B6%E6%AE%B51.png" alt="ike阶段1"></p>
+<p>与主模式相比，野蛮模式减少了交换信息的数目，提高了协商的速度，但是没有对身份信息进行加密保护。</p>
+<p><strong>IKEv1 协商阶段 2</strong></p>
+<p>IKEv1协商阶段2的目的就是建立用来安全传输数据的IPSec SA，并为数据传输衍生出密钥。这一阶段采用快速模式（Quick Mode）。该模式使用IKEv1协商阶段1中生成的密钥对ISAKMP消息的完整性和身份进行验证，并对ISAKMP消息进行加密，故保证了交换的安全性。IKEv1协商阶段2的协商过程如下图所示。</p>
+<p><img src="C:\Users\zm\Desktop\ipsec\ikev1协商2.png" alt="ikev1协商2"></p>
+<p>IKEv1协商阶段2通过三条ISAKMP消息完成双方IPSec SA的建立：</p>
+<ol>
+<li>协商发起方发送本端的安全参数和身份认证信息。安全参数包括被保护的数据流和IPSec安全提议等需要协商的参数。身份认证信息包括第一阶段计算出的密钥和第二阶段产生的密钥材料等，可以再次认证对等体。</li>
+<li>协商响应方发送确认的安全参数和身份认证信息并生成新的密钥。<br>IPSec SA数据传输需要的加密、验证密钥由第一阶段产生的密钥、SPI、协议等参<br>数衍生得出，以保证每个IPSec SA都有自己独一无二的密钥。<br>如果启用PFS，则需要再次应用DH算法计算出一个共享密钥，然后参与上述计<br>算，因此在参数协商时要为PFS协商DH密钥组。</li>
+<li>发送方发送确认信息，确认与响应方可以通信，协商结束。</li>
+</ol>
+<h3 id="2-2-3-IKEv2-协商安全联盟的过程"><a href="#2-2-3-IKEv2-协商安全联盟的过程" class="headerlink" title="2.2.3 IKEv2 协商安全联盟的过程"></a>2.2.3 IKEv2 协商安全联盟的过程</h3><p>采用IKEv2协商安全联盟比IKEv1协商过程要简化的多。要建立一对IPSec SA，IKEv1需要经历两个阶段：“主模式＋快速模式”或者“野蛮模式＋快速模式”，前者至少需要交换9条消息，后者也至少需要6条消息。而IKEv2正常情况使用2次交换共4条消息就可以完成一对IPSec SA的建立，如果要求建立的IPSec SA大于一对时，每一对IPSec SA只需额外增加1次创建子SA交换，也就是2条消息就可以完成。IKEv2定义了三种交换：初始交换（Initial Exchanges）、创建子SA交换（Create_Child_SA Exchange）以及通知交换（Informational Exchange）。</p>
+<p><strong>初始交换</strong></p>
+<p>正常情况下，IKEv2通过初始交换就可以完成第一对IPSec SA的协商建立。IKEv2初始交换对应IKEv1的第一阶段，初始交换包含两次交换四条消息，如下图所示。<br><img src="/images%5Cipsec%5Cikev21.png" alt="ikev2协商2"></p>
+<p>消息①和②属于第一次交换（称为IKE_SA_INIT交换），以明文方式完成IKE SA的参数协商，包括协商加密和验证算法，交换临时随机数和DH交换。IKE_SA_INIT交换后生成一个共享密钥材料，通过这个共享密钥材料可以衍生出IPSec SA的所有密钥。<br>消息③和④属于第二次交换（称为IKE_AUTH交换），以加密方式完成身份认证、对前两条信息的认证和IPSec SA的参数协商。IKEv2支持RSA签名认证、预共享密钥认证以及扩展认证方法EAP（Extensible Authentication Protocol）。发起者通过在消息3中省去认证载荷来表明需要使用EAP认证。</p>
+<p><strong>创建子 SA 交换</strong></p>
+<p>当一个IKE SA需要创建多对IPSec SA时，需要使用创建子SA交换来协商多于一对的IPSec SA。另外，创建子SA交换还可以用于IKE SA的重协商。<br>创建子SA交换包含一个交换两条消息，对应IKEv1协商阶段2，交换的发起者可以是初始交换的协商发起方，也可以是初始交换的协商响应方。创建子SA交换必须在初始交<br>换完成后进行，交换消息由初始交换协商的密钥进行保护。类似于IKEv1，如果启用PFS，创建子SA交换需要额外进行一次DH交换，生成新的密钥材料。生成密钥材料后，子SA的所有密钥都从这个密钥材料衍生出来。</p>
+<p><strong>通知交换</strong></p>
+<p>运行IKE协商的两端有时会传递一些控制信息，例如错误信息或者通告信息，这些信息在IKEv2中是通过通知交换完成的，如下图所示。通知交换必须在IKE SA保护下进行，也就是说通知交换只能发生在初始交换之后。控制信息可能是IKE SA的，那么通知交换必须由该IKE SA来保护进行；也可能是某子SA的，那么该通知交换必须由生成该子SA的IKE SA来保护进行。</p>
+<p><img src="/images%5Cipsec%5Cikev22.png" alt="ikev2协商2"></p>
 
     </div>
 
@@ -510,7 +601,7 @@
 
       <!--noindex-->
       <div class="post-toc-wrap sidebar-panel">
-          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#IPSec"><span class="nav-number">1.</span> <span class="nav-text">IPSec</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-IPSec-%E7%AE%80%E4%BB%8B"><span class="nav-number">2.</span> <span class="nav-text">1.IPSec 简介</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-1%E8%B5%B7%E6%BA%90"><span class="nav-number">2.1.</span> <span class="nav-text">1.1起源</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-2%E5%AE%9A%E4%B9%89"><span class="nav-number">2.2.</span> <span class="nav-text">1.2定义</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#1-3%E5%8F%97%E7%9B%8A"><span class="nav-number">2.3.</span> <span class="nav-text">1.3受益</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-IPSec%E5%8E%9F%E7%90%86%E6%8F%8F%E8%BF%B0"><span class="nav-number">3.</span> <span class="nav-text">2.IPSec原理描述</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1IPSec-%E5%8D%8F%E8%AE%AE%E6%A1%86%E6%9E%B6"><span class="nav-number">3.1.</span> <span class="nav-text">2.1IPSec 协议框架</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#2-1-1%E5%AE%89%E5%85%A8%E8%81%94%E7%9B%9F"><span class="nav-number">3.1.1.</span> <span class="nav-text">2.1.1安全联盟</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-1-2%E5%AE%89%E5%85%A8%E5%8D%8F%E8%AE%AE"><span class="nav-number">3.1.2.</span> <span class="nav-text">2.1.2安全协议</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%8A%A5%E6%96%87%E5%A4%B4%E7%BB%93%E6%9E%84"><span class="nav-number">3.2.</span> <span class="nav-text">报文头结构</span></a></li></ol></li></ol></div>
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#IPSec"><span class="nav-number">1.</span> <span class="nav-text">IPSec</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-IPSec-%E7%AE%80%E4%BB%8B"><span class="nav-number">2.</span> <span class="nav-text">1.IPSec 简介</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%B5%B7%E6%BA%90"><span class="nav-number">2.1.</span> <span class="nav-text">起源</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AE%9A%E4%B9%89"><span class="nav-number">2.2.</span> <span class="nav-text">定义</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%8F%97%E7%9B%8A"><span class="nav-number">2.3.</span> <span class="nav-text">受益</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-IPSec%E5%8E%9F%E7%90%86%E6%8F%8F%E8%BF%B0"><span class="nav-number">3.</span> <span class="nav-text">2.IPSec原理描述</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1IPSec-%E5%8D%8F%E8%AE%AE%E6%A1%86%E6%9E%B6"><span class="nav-number">3.1.</span> <span class="nav-text">2.1IPSec 协议框架</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#2-1-1%E5%AE%89%E5%85%A8%E8%81%94%E7%9B%9F"><span class="nav-number">3.1.1.</span> <span class="nav-text">2.1.1安全联盟</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-1-2%E5%AE%89%E5%85%A8%E5%8D%8F%E8%AE%AE"><span class="nav-number">3.1.2.</span> <span class="nav-text">2.1.2安全协议</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-1-3%E5%B0%81%E8%A3%85%E6%A8%A1%E5%BC%8F"><span class="nav-number">3.1.3.</span> <span class="nav-text">2.1.3封装模式</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-1-4-%E5%8A%A0%E5%AF%86%E5%92%8C%E9%AA%8C%E8%AF%81"><span class="nav-number">3.1.4.</span> <span class="nav-text">2.1.4 加密和验证</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-1-5-%E5%AF%86%E9%92%A5%E4%BA%A4%E6%8D%A2"><span class="nav-number">3.1.5.</span> <span class="nav-text">2.1.5  密钥交换</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2IPSec-%E5%9F%BA%E6%9C%AC%E5%8E%9F%E7%90%86"><span class="nav-number">3.2.</span> <span class="nav-text">2.2IPSec 基本原理</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#2-2-1-%E5%AE%9A%E4%B9%89-IPSec-%E4%BF%9D%E6%8A%A4%E7%9A%84%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="nav-number">3.2.1.</span> <span class="nav-text">2.2.1 定义 IPSec 保护的数据流</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#2-2-2-IKEv1-%E5%8D%8F%E5%95%86%E5%AE%89%E5%85%A8%E8%81%94%E7%9B%9F%E7%9A%84%E8%BF%87%E7%A8%8B"><span class="nav-number">3.2.2.</span> <span class="nav-text">2.2.2 IKEv1 协商安全联盟的过程</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2-3-IKEv2-%E5%8D%8F%E5%95%86%E5%AE%89%E5%85%A8%E8%81%94%E7%9B%9F%E7%9A%84%E8%BF%87%E7%A8%8B"><span class="nav-number">3.3.</span> <span class="nav-text">2.2.3 IKEv2 协商安全联盟的过程</span></a></li></ol></li></ol></div>
       </div>
       <!--/noindex-->
 
