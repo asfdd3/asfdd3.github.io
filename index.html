@@ -277,7 +277,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-05-20 22:32:45" itemprop="dateModified" datetime="2025-05-20T22:32:45+08:00">2025-05-20</time>
+                <time title="修改时间：2025-05-20 22:40:25" itemprop="dateModified" datetime="2025-05-20T22:40:25+08:00">2025-05-20</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -493,7 +493,7 @@
 <p><img src="/images/ipsec/%E4%BC%A0%E8%BE%93%E6%A8%A1%E5%BC%8F.png" alt="传输模式"></p>
 <p><strong>隧道模式</strong></p>
 <p>在隧道模式下，AH头或ESP头被插到原始IP头之前，另外生成一个新的报文头放到AH<br>头或ESP头之前，保护IP头和负载。以TCP报文为例，原始报文经隧道模式封装后的报<br>文结构如下图所示。</p>
-<p><img src="/images%5Cipsec%5C%E9%9A%A7%E9%81%93%E6%A8%A1%E5%BC%8F.png" alt="隧道模式"></p>
+<p><img src="/images/ipsec/%E9%9A%A7%E9%81%93%E6%A8%A1%E5%BC%8F.png" alt="隧道模式"></p>
 <p>隧道模式下，与AH协议相比，ESP协议的完整性验证范围不包括新IP头，无法保证新IP头的安全。</p>
 <p><strong>传输模式和隧道模式比较</strong></p>
 <p>传输模式和隧道模式的区别在于：</p>
@@ -504,11 +504,11 @@
 </ul>
 <h4 id="2-1-4-加密和验证"><a href="#2-1-4-加密和验证" class="headerlink" title="2.1.4 加密和验证"></a>2.1.4 加密和验证</h4><p>IPSec提供了两种安全机制：加密和验证。加密机制保证数据的机密性，防止数据在传输过程中被窃听；验证机制能保证数据真实可靠，防止数据在传输过程中被仿冒和篡改。</p>
 <p><strong>加密</strong></p>
-<p>IPSec采用对称加密算法对数据进行加密和解密。如下图所示，数据发送方和接收方使用相同的密钥进行加密、解密。<br><img src="/images%5Cipsec%5C%E5%8A%A0%E5%AF%86.png" alt="加密"></p>
+<p>IPSec采用对称加密算法对数据进行加密和解密。如下图所示，数据发送方和接收方使用相同的密钥进行加密、解密。<br><img src="/images/ipsec/%E5%8A%A0%E5%AF%86.png" alt="加密"></p>
 <p>用于加密和解密的对称密钥可以手工配置，也可以通过IKE协议自动协商生成。常用的对称加密算法包括：数据加密标准DES（Data Encryption Standard）、3DES（Triple Data Encryption Standard）、先进加密标准AES（Advanced EncryptionStandard）国密算法（SM1和SM4）。其中，DES和3DES算法安全性低，存在安全风险，不推荐使用。</p>
 <p><strong>验证</strong></p>
 <p>IPSec的加密功能，无法验证解密后的信息是否是原始发送的信息或完整。IPSec采用HMAC（Keyed-Hash Message Authentication Code）功能，比较完整性校验值ICV进行数据包完整性和真实性验证。通常情况下，加密和验证通常配合使用。如图所示，在IPSec发送方，加密后的报文通过验证算法和对称密钥生成完整性校验值ICV，IP报文和完整性校验值ICV同时发给对端；在IPSec接收方，使用相同的验证算法和对称密钥对加密报文进行处理，同样得到完整性校验值ICV，然后比较完整性校验值ICV进行数据完整性和真实性验证，验证不通过的报文直接丢弃，验证通过的报文再进行解密。</p>
-<p><img src="/images%5Cipsec%5C%E9%AA%8C%E8%AF%81.png" alt="验证"></p>
+<p><img src="/images/ipsec/%E9%AA%8C%E8%AF%81.png" alt="验证"></p>
 <p>同加密一样，用于验证的对称密钥也可以手工配置，或者通过IKE协议自动协商生成。常用的验证算法包括：消息摘要MD5（Message Digest 5）、安全散列算法SHA1（Secure Hash Algorithm 1）、SHA2、国密算法SM3（Senior Middle 3）。其中，MD5、SHA1算法安全性低，存在安全风险，不推荐使用。</p>
 <h4 id="2-1-5-密钥交换"><a href="#2-1-5-密钥交换" class="headerlink" title="2.1.5  密钥交换"></a>2.1.5  密钥交换</h4><p>使用对称密钥进行加密、验证时，如何安全地共享密钥是一个很重要的问题。有两种方法解决这个问题：</p>
 <ul>
@@ -516,7 +516,7 @@
 <li>使用一个安全的密钥分发协议<br>通过IKE协议自动协商密钥。IKE采用DH算法在不安全的网络上安全地分发密钥。这种方式配置简单，可扩展性好，特别是在大型动态的网络环境下此优点更加突出。同时，通信双方通过交换密钥交换材料来计算共享的密钥，即使第三方截获了双方用于计算密钥的所有交换数据，也无法计算出真正的密钥，这样极大地提高了安全性。</li>
 </ul>
 <p><strong>IKE 协议</strong><br>因特网密钥交换IKE（Internet Key Exchange）协议建立在Internet安全联盟和密钥管理协议ISAKMP定义的框架上，是基于UDP（User Datagram Protocol）的应用层协议。它为IPSec提供了自动协商密钥、建立IPSec安全联盟的服务，能够简化IPSec的配置和维护工作。IKE与IPSec的关系如图所示，对等体之间建立一个IKE SA完成身份验证和密钥信息交换后，在IKE SA的保护下，根据配置的AH&#x2F;ESP安全协议等参数协商出一对IPSecSA。此后，对等体间的数据将在IPSec隧道中加密传输。IKE SA是一个双向的逻辑连接，两个对等体间只建立一个IKE SA。</p>
-<p><img src="/images%5Cipsec%5Cike%E4%B8%8Eipsec.png" alt="ike与ipsec"></p>
+<p><img src="/images/ipsec/ike%E4%B8%8Eipsec.png" alt="ike与ipsec"></p>
 <p><strong>IKE安全机制</strong></p>
 <p>IKE具有一套自保护机制，可以在网络上安全地认证身份、分发密钥、建立IPSec SA：</p>
 <ul>
@@ -549,11 +549,11 @@
 <li>双方交换DH(一种密钥交换算法，不暴露私钥的情况下，计算出一个共享密钥)公共值和nonce(一个随机值)值，用于IKE SA的认证和加密密钥在这个阶段产生。消息⑤和⑥用于身份和认证信息交换（双方使用生成的密钥发送信息），双方进行身份认证和对整个主模式交换内容的认证。</li>
 </ol>
 <p>野蛮模式只用到三条信息，前两条消息①和②用于协商IKE安全提议，交换DH公共值、必需的辅助信息以及身份信息并且消息②中还包括响应方发送身份信息供发起方认证，消息③用于响应方认证发起方。IKEv1协商阶段1的协商过程如下图所示。</p>
-<p><img src="/images%5Cipsec%5C%E9%98%B6%E6%AE%B51.png" alt="ike阶段1"></p>
+<p><img src="/images/ipsec/%E9%98%B6%E6%AE%B51.png" alt="ike阶段1"></p>
 <p>与主模式相比，野蛮模式减少了交换信息的数目，提高了协商的速度，但是没有对身份信息进行加密保护。</p>
 <p><strong>IKEv1 协商阶段 2</strong></p>
 <p>IKEv1协商阶段2的目的就是建立用来安全传输数据的IPSec SA，并为数据传输衍生出密钥。这一阶段采用快速模式（Quick Mode）。该模式使用IKEv1协商阶段1中生成的密钥对ISAKMP消息的完整性和身份进行验证，并对ISAKMP消息进行加密，故保证了交换的安全性。IKEv1协商阶段2的协商过程如下图所示。</p>
-<p><img src="C:\Users\zm\Desktop\ipsec\ikev1协商2.png" alt="ikev1协商2"></p>
+<p><img src="/images/ipsec/ikev1%E5%8D%8F%E5%95%862.png" alt="ikev1协商2"></p>
 <p>IKEv1协商阶段2通过三条ISAKMP消息完成双方IPSec SA的建立：</p>
 <ol>
 <li>协商发起方发送本端的安全参数和身份认证信息。安全参数包括被保护的数据流和IPSec安全提议等需要协商的参数。身份认证信息包括第一阶段计算出的密钥和第二阶段产生的密钥材料等，可以再次认证对等体。</li>
@@ -562,13 +562,13 @@
 </ol>
 <h3 id="2-2-3-IKEv2-协商安全联盟的过程"><a href="#2-2-3-IKEv2-协商安全联盟的过程" class="headerlink" title="2.2.3 IKEv2 协商安全联盟的过程"></a>2.2.3 IKEv2 协商安全联盟的过程</h3><p>采用IKEv2协商安全联盟比IKEv1协商过程要简化的多。要建立一对IPSec SA，IKEv1需要经历两个阶段：“主模式＋快速模式”或者“野蛮模式＋快速模式”，前者至少需要交换9条消息，后者也至少需要6条消息。而IKEv2正常情况使用2次交换共4条消息就可以完成一对IPSec SA的建立，如果要求建立的IPSec SA大于一对时，每一对IPSec SA只需额外增加1次创建子SA交换，也就是2条消息就可以完成。IKEv2定义了三种交换：初始交换（Initial Exchanges）、创建子SA交换（Create_Child_SA Exchange）以及通知交换（Informational Exchange）。</p>
 <p><strong>初始交换</strong></p>
-<p>正常情况下，IKEv2通过初始交换就可以完成第一对IPSec SA的协商建立。IKEv2初始交换对应IKEv1的第一阶段，初始交换包含两次交换四条消息，如下图所示。<br><img src="/images%5Cipsec%5Cikev21.png" alt="ikev2协商2"></p>
+<p>正常情况下，IKEv2通过初始交换就可以完成第一对IPSec SA的协商建立。IKEv2初始交换对应IKEv1的第一阶段，初始交换包含两次交换四条消息，如下图所示。<br><img src="/images/ipsec/ikev21.png" alt="ikev2协商2"></p>
 <p>消息①和②属于第一次交换（称为IKE_SA_INIT交换），以明文方式完成IKE SA的参数协商，包括协商加密和验证算法，交换临时随机数和DH交换。IKE_SA_INIT交换后生成一个共享密钥材料，通过这个共享密钥材料可以衍生出IPSec SA的所有密钥。<br>消息③和④属于第二次交换（称为IKE_AUTH交换），以加密方式完成身份认证、对前两条信息的认证和IPSec SA的参数协商。IKEv2支持RSA签名认证、预共享密钥认证以及扩展认证方法EAP（Extensible Authentication Protocol）。发起者通过在消息3中省去认证载荷来表明需要使用EAP认证。</p>
 <p><strong>创建子 SA 交换</strong></p>
 <p>当一个IKE SA需要创建多对IPSec SA时，需要使用创建子SA交换来协商多于一对的IPSec SA。另外，创建子SA交换还可以用于IKE SA的重协商。<br>创建子SA交换包含一个交换两条消息，对应IKEv1协商阶段2，交换的发起者可以是初始交换的协商发起方，也可以是初始交换的协商响应方。创建子SA交换必须在初始交<br>换完成后进行，交换消息由初始交换协商的密钥进行保护。类似于IKEv1，如果启用PFS，创建子SA交换需要额外进行一次DH交换，生成新的密钥材料。生成密钥材料后，子SA的所有密钥都从这个密钥材料衍生出来。</p>
 <p><strong>通知交换</strong></p>
 <p>运行IKE协商的两端有时会传递一些控制信息，例如错误信息或者通告信息，这些信息在IKEv2中是通过通知交换完成的，如下图所示。通知交换必须在IKE SA保护下进行，也就是说通知交换只能发生在初始交换之后。控制信息可能是IKE SA的，那么通知交换必须由该IKE SA来保护进行；也可能是某子SA的，那么该通知交换必须由生成该子SA的IKE SA来保护进行。</p>
-<p><img src="/images%5Cipsec%5Cikev22.png" alt="ikev2协商2"></p>
+<p><img src="/images/ipsec/ikev22.png" alt="ikev2协商2"></p>
 
       
     </div>
