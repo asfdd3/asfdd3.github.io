@@ -17,21 +17,26 @@
 
 <script id="hexo-configurations">
     var NexT = window.NexT || {};
-    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
   </script>
 
-  <meta name="description" content="12345678910111213       用户空间    ┌──────────────┐    │ 应用程序调用 │    └──────┬───────┘           ▼    ┌──────────────┐    │     VFS      │ ← 抽象层    └────┬───┬─────┘         ▼   ▼┌────────┐ ┌────────────┐│">
+  <meta name="description" content="VFS(虚拟文件系统)1.什么是VFSLinux 需要支持多种不同的文件系统（因为不同的文件系统有不同的特点），同时还要为用户提供一组统一的接口，因此要实现这个目的，就要将对各种不同文件系统和管理纳入到一个统一的框架中，也就是同一组系统调用，对各种不同的文件系统进行操作，这就是存在VFS的目的。 这样，就可以对用户程序隐去各种不同文件系统的细节，为用户程序提供一个统一的、抽象的、虚拟的文件系统，这">
 <meta property="og:type" content="article">
 <meta property="og:title" content="VFS虚拟文件系统">
 <meta property="og:url" content="http://example.com/2025/05/19/VFS%E8%99%9A%E6%8B%9F%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/index.html">
 <meta property="og:site_name" content="标题">
-<meta property="og:description" content="12345678910111213       用户空间    ┌──────────────┐    │ 应用程序调用 │    └──────┬───────┘           ▼    ┌──────────────┐    │     VFS      │ ← 抽象层    └────┬───┬─────┘         ▼   ▼┌────────┐ ┌────────────┐│">
+<meta property="og:description" content="VFS(虚拟文件系统)1.什么是VFSLinux 需要支持多种不同的文件系统（因为不同的文件系统有不同的特点），同时还要为用户提供一组统一的接口，因此要实现这个目的，就要将对各种不同文件系统和管理纳入到一个统一的框架中，也就是同一组系统调用，对各种不同的文件系统进行操作，这就是存在VFS的目的。 这样，就可以对用户程序隐去各种不同文件系统的细节，为用户程序提供一个统一的、抽象的、虚拟的文件系统，这">
 <meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/images/vfs/1.svg">
+<meta property="og:image" content="http://example.com/images/vfs/vfs%E6%A1%86%E6%9E%B6.png">
+<meta property="og:image" content="http://example.com/images/vfs/%E4%BA%A4%E4%BA%92%E5%9B%BE.webp">
+<meta property="og:image" content="http://example.com/images/vfs/%E6%8C%82%E8%BD%BD.webp">
 <meta property="article:published_time" content="2025-05-19T14:00:00.000Z">
-<meta property="article:modified_time" content="2025-05-19T15:52:44.793Z">
+<meta property="article:modified_time" content="2025-05-21T12:47:59.236Z">
 <meta property="article:author" content="zhangm">
 <meta property="article:tag" content="VFS">
 <meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/images/vfs/1.svg">
 
 <link rel="canonical" href="http://example.com/2025/05/19/VFS%E8%99%9A%E6%8B%9F%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/">
 
@@ -204,10 +209,16 @@
                 <i class="far fa-calendar"></i>
               </span>
               <span class="post-meta-item-text">发表于</span>
-              
 
-              <time title="创建时间：2025-05-19 22:00:00 / 修改时间：23:52:44" itemprop="dateCreated datePublished" datetime="2025-05-19T22:00:00+08:00">2025-05-19</time>
+              <time title="创建时间：2025-05-19 22:00:00" itemprop="dateCreated datePublished" datetime="2025-05-19T22:00:00+08:00">2025-05-19</time>
             </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-05-21 20:47:59" itemprop="dateModified" datetime="2025-05-21T20:47:59+08:00">2025-05-21</time>
+              </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
                 <i class="far fa-folder"></i>
@@ -236,7 +247,77 @@
     <div class="post-body" itemprop="articleBody">
 
       
-        <figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">       用户空间</span><br><span class="line">    ┌──────────────┐</span><br><span class="line">    │ 应用程序调用 │</span><br><span class="line">    └──────┬───────┘</span><br><span class="line">           ▼</span><br><span class="line">    ┌──────────────┐</span><br><span class="line">    │     VFS      │ ← 抽象层</span><br><span class="line">    └────┬───┬─────┘</span><br><span class="line">         ▼   ▼</span><br><span class="line">┌────────┐ ┌────────────┐</span><br><span class="line">│ ext4   │ │  procfs    │  ← 具体文件系统实现</span><br><span class="line">└────────┘ └────────────┘</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+        <h2 id="VFS-虚拟文件系统"><a href="#VFS-虚拟文件系统" class="headerlink" title="VFS(虚拟文件系统)"></a>VFS(虚拟文件系统)</h2><h3 id="1-什么是VFS"><a href="#1-什么是VFS" class="headerlink" title="1.什么是VFS"></a>1.什么是VFS</h3><p>Linux 需要支持多种不同的文件系统（因为不同的文件系统有不同的特点），同时还要为用户提供一组统一的接口，因此要实现这个目的，就要将对各种不同文件系统和管理纳入到一个统一的框架中，也就是同一组系统调用，对各种不同的文件系统进行操作，这就是存在VFS的目的。</p>
+<p>这样，就可以对用户程序隐去各种不同文件系统的细节，<strong>为用户程序提供一个统一的、抽象的、虚拟的文件系统，这就是所谓“虚拟文件系统” - VFS（Virtual Filesystem Switch）</strong>。这个抽象层由一组标准的、抽象的文件操作构成，以系统调用的形式提供于用户程序，如<code>read（）、write（）、lseek（）</code>等等。这样，用户程序就可以 把所有的文件都看作一致的、抽象的“VFS文件”，通过这些系统调用对文件进行操作，而无需关心具体的文件属于什么文件系统以及具体文件系统的设计和实现,也就是说<strong>VFS是一个内核软件层，使应用程序与具体的文件系统解耦</strong>。</p>
+<p>举一个例子：在编写应用程序时，会经常使用到<code>write（）</code>系统调用，也就是向一个文件中写入数据。函数的原型为 ssize_t write(int fd, const void *buf, size_t count); 用户程序调用write（f, &amp;buf, len）的含义为向文件描述符为f的文件中，写入len个字节数据，。下图为write（）将数据写入到设备上的宏观流程。我们看到首先通过虚拟文件系统VFS，然后根据不同文件系统的write（）方法将数据写入物理设备上，宏观的调用流程如下图所示：</p>
+<p><img src="/images/vfs/1.svg" alt="vfs系统调用"></p>
+<h3 id="2-VFS-整体架构"><a href="#2-VFS-整体架构" class="headerlink" title="2.VFS 整体架构"></a>2.VFS 整体架构</h3><p>虚拟文件系统作为内核中的一个抽象层，起到一个中间层的作用，对上(应用程序)提供统一接口，应用程序只需使用标准的文件操作（如<code> open、read、write1</code>），无需关心底层是哪种文件系统（<code>EXT4、NTFS、FAT</code>等），对下为各种具体的文件系统（如 ext4、XFS 等）提供了统一的接口（其实就是实现不同文件系统的ops集合），VFS在内核中的整体架构如下所示。</p>
+<hr>
+<p><img src="/images/vfs/vfs%E6%A1%86%E6%9E%B6.png" alt="vfs在内核中的位置"></p>
+<hr>
+<p>上述图片为VFS整体架构图，图片中各个组件作用大概如下：</p>
+<ul>
+<li>APP：用户程序通过系统调用读写文件</li>
+<li>Page Cache：缓存文件的数据内容，例如次读取文件时从磁盘加载到页缓存，后续直接读缓存，避免磁盘I&#x2F;O。</li>
+<li>Directory cache：缓存文件路径到Dentry的映射，减少频繁解析路径的开销。</li>
+<li>Inode缓存：缓存文件的元数据（权限、大小、数据块位置等）</li>
+<li>Buffer Cache：缓存磁盘块的原始数据（已逐步被Page Cache取代，但在某些场景仍用于块设备操作）</li>
+<li>磁盘文件系统（ext2&#x2F;ext3&#x2F;ext4）：<ul>
+<li>ext2：早期非日志式文件系统，简单但易崩溃损坏。</li>
+<li>ext3：增加日志功能，提升崩溃恢复能力。</li>
+<li>ext4：支持更大文件&#x2F;分区、延迟分配等高级特性。</li>
+</ul>
+</li>
+<li>伪文件系统：<ul>
+<li>proc：虚拟文件系统，动态暴露内核状态（如 &#x2F;proc&#x2F;cpuinfo）</li>
+<li>sysfs：提供设备&#x2F;驱动信息的统一接口（如 &#x2F;sys&#x2F;class）</li>
+</ul>
+</li>
+</ul>
+<h3 id="3-VFS关键数据结构"><a href="#3-VFS关键数据结构" class="headerlink" title="3.VFS关键数据结构"></a>3.VFS关键数据结构</h3><p>VFS中包含着向物理文件系统转换的一系列数据结构，Linux中VFS层依靠四个主要的数据结构来述其结构信息，分别为<strong>超级块、索引结点、目录项和文件对象</strong>。这四个数据结构作用如下：</p>
+<h4 id="3-1-Superblock（超级块）"><a href="#3-1-Superblock（超级块）" class="headerlink" title="3.1 Superblock（超级块）"></a>3.1 Superblock（超级块）</h4><ul>
+<li><p>功能：超级块(块指的是存储和管理数据的基本单位)对象由各自的文件系统实现，用来存储文件系统的信息，如块大小、块数量等。这个对象对应为文件系统超级块或者文件系统控制块，<strong>它存储在磁盘特定的扇区上</strong>。不是基于磁盘的文件系统临时生成超级块，<strong>并保存在内存中</strong>，注意：所有超级块对象都以双向循环链表的形式链接在一起被管理。</p>
+</li>
+<li><p>用途： </p>
+<ul>
+<li>超级块与物理文件系统一一对应。</li>
+<li>在挂载时初始化，帮助管理文件系统。</li>
+</ul>
+</li>
+</ul>
+<p><strong>管理超级块的结构体如下所示</strong>：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">super_block</span> &#123;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">list_head</span>    <span class="title">s_list</span>;</span>               <span class="comment">// 指向链表的指针</span></span><br><span class="line">    <span class="type">dev_t</span>               s_dev;                <span class="comment">// 设备标识符</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">long</span>       s_blocksize;          <span class="comment">// 以字节为单位的块大小</span></span><br><span class="line">    <span class="type">loff_t</span>              s_maxbytes;           <span class="comment">// 文件大小上限</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">file_system_type</span>    *<span class="title">s_type</span>;</span>       <span class="comment">// 文件系统类型</span></span><br><span class="line">    <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">super_operations</span>    *<span class="title">s_op</span>;</span>   <span class="comment">// SuperBlock 操作函数，write_inode、put_inode 等</span></span><br><span class="line">    <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">dquot_operations</span>    *<span class="title">dq_op</span>;</span>  <span class="comment">// 磁盘限额函数</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">dentry</span>        *<span class="title">s_root</span>;</span>             <span class="comment">// 根目录</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="3-2-Inode-索引节点"><a href="#3-2-Inode-索引节点" class="headerlink" title="3.2 Inode(索引节点)"></a>3.2 Inode(索引节点)</h4><ul>
+<li>功能：<strong>每个文件都有一个唯一的<code>inode</code></strong>，存储了文件的元数据，如文件大小、权限、访问时间等。它是文件系统中文件的抽象表示，不包含文件名。</li>
+<li>特点：<strong>inode存储在磁盘中（伪文件系统除外），在需要的时候会被加载到内存中</strong>，具体情况如下：<br><code>inode</code> 是文件系统的元数据结构，直接存储在磁盘上，用于长期保存文件的元信息（如权限、大小、块位置等）例如在Ext4文件系统中，<code>inode</code>集中存放在磁盘的固定区域。<br>当访问某个文件时，会根据具体的磁盘上的inode(也就是磁盘中的inode, 比如ext4_inode_info)，来填充VFS的创建的inode(用私有指针指一下)。</li>
+</ul>
+<p><strong>VFS管理的inode结构如下所示</strong>：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">inode</span> &#123;</span></span><br><span class="line">    <span class="type">umode_t</span>                 i_mode;          <span class="comment">// 文件权限及类型</span></span><br><span class="line">    <span class="type">kuid_t</span>                  i_uid;           <span class="comment">// user id</span></span><br><span class="line">    <span class="type">kgid_t</span>                  i_gid;           <span class="comment">// group id</span></span><br><span class="line"></span><br><span class="line">    <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">inode_operations</span>    *<span class="title">i_op</span>;</span>  <span class="comment">// inode 操作函数，如 create，mkdir，lookup，rename 等</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">super_block</span>      *<span class="title">i_sb</span>;</span>           <span class="comment">// 所属的 SuperBlock</span></span><br><span class="line"></span><br><span class="line">    <span class="type">loff_t</span>                  i_size;          <span class="comment">// 文件大小</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">timespec</span>         <span class="title">i_atime</span>;</span>         <span class="comment">// 文件最后访问时间</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">timespec</span>         <span class="title">i_mtime</span>;</span>         <span class="comment">// 文件最后修改时间</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">timespec</span>         <span class="title">i_ctime</span>;</span>         <span class="comment">// 文件元数据最后修改时间（包括文件名称）</span></span><br><span class="line">    <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">file_operations</span>    *<span class="title">i_fop</span>;</span>  <span class="comment">// 文件操作函数，open、write 等</span></span><br><span class="line">    <span class="type">void</span>                    *i_private;      <span class="comment">// 文件系统的私有数据</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="3-3-Dentry-目录项"><a href="#3-3-Dentry-目录项" class="headerlink" title="3.3 Dentry(目录项)"></a>3.3 Dentry(目录项)</h4><p><strong>Dentry的核心作用是在内存中建立文件名（路径）与 inode 之间的高效映射</strong>。每个 Dentry 代表路径中一个特定部分。对于“&#x2F;bin&#x2F;ls”、“&#x2F;”、“bin”和“ls”都是目录项对象。前面是两个目录，最后一个是普通文件。在路径中， 包括普通文件在内，每一个部分都是目录项对象。目录项是描述文件的逻辑属性，<strong>只存在于内存中</strong>，举个例子，当调用open()函数打开一个文件时，内核会第一时间根据文件路径到 DEntry Cache 里面寻找相应的 DEntry，找到了就直接构造一个file对象并返回。如果该文件不在缓存中，那么 VFS 会根据找到的最近目录一级一级地向下加载，直到找到相应的文件。期间 VFS 会缓存所有被加载生成的dentry。注意:<strong>一个 INode 可能被多个 DEntry 所关联</strong>，即相当于为某一文件创建了多个文件路径.</p>
+<p><strong>VFS管理的Dentry结构如下所示</strong>：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">dentry</span> &#123;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">dentry</span> *<span class="title">d_parent</span>;</span>     <span class="comment">// 父目录</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">qstr</span> <span class="title">d_name</span>;</span>          <span class="comment">// 文件名称</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">inode</span> *<span class="title">d_inode</span>;</span>       <span class="comment">// 关联的 inode</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">list_head</span> <span class="title">d_child</span>;</span>    <span class="comment">// 父目录中的子目录和文件</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">list_head</span> <span class="title">d_subdirs</span>;</span>  <span class="comment">// 当前目录中的子目录和文件</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="3-4-file-文件对象"><a href="#3-4-file-文件对象" class="headerlink" title="3.4 file 文件对象"></a>3.4 file 文件对象</h4><p>虚拟文件系统最后一个主要对象是文件对象，文件对象表示进程已打开的文件，每个进程都持有一个fd[]数组，数组里面存放的是指向file结构体的指针，同一进程的不同fd可以指向同一个file对象，file是内核中的数据结构，表示一个被进程打开的文件，和进程相关联。当应用程序调用open()函数的时候，VFS 就会创建相应的file对象。注意： file会通过Dentry找到inode，file的ops集合（read，write等）其实就是inode的i_fops; 这样感觉就实现了进程和文件系统之间的解耦。</p>
+<p><strong>file结构如下所示</strong>：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">file</span> &#123;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">path</span>                   <span class="title">f_path</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">inode</span>                  *<span class="title">f_inode</span>;</span></span><br><span class="line">    <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">file_operations</span>  *<span class="title">f_op</span>;</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span>                  f_flags;</span><br><span class="line">    <span class="type">fmode_t</span>                       f_mode;</span><br><span class="line">    <span class="type">loff_t</span>                        f_pos;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">fown_struct</span>            <span class="title">f_owner</span>;</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><strong>下图为上述四个关键数据结构的关系图</strong>：</p>
+<p><img src="/images/vfs/%E4%BA%A4%E4%BA%92%E5%9B%BE.webp" alt="关系图"></p>
+<h3 id="4-挂载"><a href="#4-挂载" class="headerlink" title="4.挂载"></a>4.挂载</h3><h4 id="4-1-什么叫挂载"><a href="#4-1-什么叫挂载" class="headerlink" title="4.1 什么叫挂载"></a>4.1 什么叫挂载</h4><p>挂载（Mounting） 是将存储设备（如硬盘、U盘）或文件系统（如Ext4、NTFS）关联到Linux目录树中某个目录（称为挂载点）的过程。挂载后，访问该目录实际指向目标设备或文件系统的内容，而原目录下的文件会被临时隐藏。例如，将U盘挂载到&#x2F;mnt&#x2F;usb后，访问此目录即访问U盘数据，卸载后恢复原目录内容。内核通过虚拟文件系统（VFS）管理挂载表，动态路由路径解析，实现对多文件系统的统一访问。简言之，挂载是让外部存储“接入”目录树的机制，用户通过目录操作文件，无需关心物理设备细节。</p>
+<p><strong>挂载是在用户态发起mount命令</strong>，该命令执行的时候需要指定文件系统的类型（例如Ext2）和文件系统数据的位置（也就是dev）。通过这些关键信息，VFS就可以完成Ext2文件系统的初始化，并将其关联到当前已经存在的文件系统当中，也就是建立起下面所示的文件系统树。</p>
+<p><img src="/images/vfs/%E6%8C%82%E8%BD%BD.webp" alt="挂载"></p>
+<p>如上图所示，该系统根文件系统是Ext4文件系统，而在其&#x2F;mnt目录下面又分别挂载了Ext4文件系统和XFS文件系统。最后形成了一个由多个文件系统组成的文件系统树。</p>
+<h4 id="4-2-挂载点"><a href="#4-2-挂载点" class="headerlink" title="4.2 挂载点"></a>4.2 挂载点</h4><p> 挂载点（Mount Point）是 Linux系统中用于将外部存储设备或文件系统接入到目录树的一个空目录。通过挂载操作，该目录会成为访问目标文件系统的入口，原有内容会被临时隐藏，转而显示被挂载设备或文件系统的内容。</p>
+<p>一个挂载点用一个<code>vfsmount</code>来表示，属于VFS层的一部分，<strong>在用户执行mount系统调用的时候会被创建</strong>，它记录了文件系统实例与目录树的关联关系，是挂载机制的核心实现，作用如下：</p>
+<ul>
+<li>关联挂载点与超级块：记录被挂载的超级块，其实就是知道被挂载的是哪个文件系统</li>
+<li>支持路径解析：当用户访问路径时，VFS 通过 <code>vfsmount </code>确定目标文件系统的位置。例如，当访问&#x2F;mnt&#x2F;data&#x2F;file.txt时VFS 发现 &#x2F;mnt&#x2F;data 是挂载点（进而可以拿到超级块的信息）进而调用目标文件系统的方法继续查找要操作的文件。</li>
+</ul>
+<p><strong>vfsmount结构如下所示</strong>：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">vfsmount</span> &#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">dentry</span> *<span class="title">mnt_root</span>;</span>	<span class="comment">//挂载的目录</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">super_block</span> *<span class="title">mnt_sb</span>;</span>	<span class="comment">//指向超级块</span></span><br><span class="line">	<span class="type">int</span> mnt_flags;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">mnt_idmap</span> *<span class="title">mnt_idmap</span>;</span></span><br><span class="line">&#125; __randomize_layout;</span><br></pre></td></tr></table></figure>
+
     </div>
 
     
@@ -257,7 +338,10 @@
     <a href="/2025/05/18/ipsec/" rel="prev" title="IPSec">
       <i class="fa fa-chevron-left"></i> IPSec
     </a></div>
-      <div class="post-nav-item"></div>
+      <div class="post-nav-item">
+    <a href="/2025/05/21/%E5%86%85%E6%A0%B8socket%E5%88%9B%E5%BB%BA/" rel="next" title="内核socket套接字的创建">
+      内核socket套接字的创建 <i class="fa fa-chevron-right"></i>
+    </a></div>
     </div>
       </footer>
     
@@ -316,6 +400,7 @@
 
       <!--noindex-->
       <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#VFS-%E8%99%9A%E6%8B%9F%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F"><span class="nav-number">1.</span> <span class="nav-text">VFS(虚拟文件系统)</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-%E4%BB%80%E4%B9%88%E6%98%AFVFS"><span class="nav-number">1.1.</span> <span class="nav-text">1.什么是VFS</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-VFS-%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84"><span class="nav-number">1.2.</span> <span class="nav-text">2.VFS 整体架构</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-VFS%E5%85%B3%E9%94%AE%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84"><span class="nav-number">1.3.</span> <span class="nav-text">3.VFS关键数据结构</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#3-1-Superblock%EF%BC%88%E8%B6%85%E7%BA%A7%E5%9D%97%EF%BC%89"><span class="nav-number">1.3.1.</span> <span class="nav-text">3.1 Superblock（超级块）</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-2-Inode-%E7%B4%A2%E5%BC%95%E8%8A%82%E7%82%B9"><span class="nav-number">1.3.2.</span> <span class="nav-text">3.2 Inode(索引节点)</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-3-Dentry-%E7%9B%AE%E5%BD%95%E9%A1%B9"><span class="nav-number">1.3.3.</span> <span class="nav-text">3.3 Dentry(目录项)</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-4-file-%E6%96%87%E4%BB%B6%E5%AF%B9%E8%B1%A1"><span class="nav-number">1.3.4.</span> <span class="nav-text">3.4 file 文件对象</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-%E6%8C%82%E8%BD%BD"><span class="nav-number">1.4.</span> <span class="nav-text">4.挂载</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#4-1-%E4%BB%80%E4%B9%88%E5%8F%AB%E6%8C%82%E8%BD%BD"><span class="nav-number">1.4.1.</span> <span class="nav-text">4.1 什么叫挂载</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#4-2-%E6%8C%82%E8%BD%BD%E7%82%B9"><span class="nav-number">1.4.2.</span> <span class="nav-text">4.2 挂载点</span></a></li></ol></li></ol></li></ol></div>
       </div>
       <!--/noindex-->
 
@@ -329,7 +414,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">3</span>
+          <span class="site-state-item-count">4</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
