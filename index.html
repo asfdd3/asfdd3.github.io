@@ -17,7 +17,7 @@
 
 <script id="hexo-configurations">
     var NexT = window.NexT || {};
-    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
   </script>
 
   <meta name="description" content="协议栈源码学习">
@@ -103,6 +103,7 @@
 
   <div class="site-nav-right">
     <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
     </div>
   </div>
 </div>
@@ -137,26 +138,38 @@
     <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
 
   </li>
-        <li class="menu-item menu-item-schedule">
-
-    <a href="/schedule/" rel="section"><i class="fa fa-calendar fa-fw"></i>日程表</a>
-
-  </li>
-        <li class="menu-item menu-item-sitemap">
-
-    <a href="/sitemap.xml" rel="section"><i class="fa fa-sitemap fa-fw"></i>站点地图</a>
-
-  </li>
-        <li class="menu-item menu-item-commonweal">
-
-    <a href="/404/" rel="section"><i class="fa fa-heartbeat fa-fw"></i>公益 404</a>
-
-  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
   </ul>
 </nav>
 
 
 
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
 
 </div>
     </header>
@@ -166,6 +179,8 @@
     <i class="fa fa-arrow-up"></i>
     <span>0%</span>
   </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
 
 
     <main class="main">
@@ -204,7 +219,7 @@
               <span class="post-meta-item-text">发表于</span>
               
 
-              <time title="创建时间：2025-05-21 21:00:00 / 修改时间：20:43:19" itemprop="dateCreated datePublished" datetime="2025-05-21T21:00:00+08:00">2025-05-21</time>
+              <time title="创建时间：2025-05-21 21:00:00 / 修改时间：22:23:33" itemprop="dateCreated datePublished" datetime="2025-05-21T21:00:00+08:00">2025-05-21</time>
             </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -236,30 +251,15 @@
 
 <p>该函数主要做了两个事情，创建socekt和映射描述符fd。</p>
 <p>上面创建socket函数<code>__sys_socket_create</code>定义如下：</p>
-<h3 id="2-sys-socket-create（）"><a href="#2-sys-socket-create（）" class="headerlink" title="2.__sys_socket_create（）"></a>2.__sys_socket_create（）</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="class"><span class="keyword">struct</span> <span class="title">socket</span> *__<span class="title">sys_socket_create</span>(<span class="title">int</span> <span class="title">family</span>, <span class="title">int</span> <span class="title">type</span>, <span class="title">int</span> <span class="title">protocol</span>)</span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line"> <span class="class"><span class="keyword">struct</span> <span class="title">socket</span> *<span class="title">sock</span>;</span></span><br><span class="line"> <span class="type">int</span> retval;</span><br><span class="line"></span><br><span class="line"> <span class="comment">/* Check the SOCK_* constants for consistency.  */</span></span><br><span class="line"> BUILD_BUG_ON(SOCK_CLOEXEC != O_CLOEXEC);</span><br><span class="line"> BUILD_BUG_ON((SOCK_MAX | SOCK_TYPE_MASK) != SOCK_TYPE_MASK);</span><br><span class="line"> BUILD_BUG_ON(SOCK_CLOEXEC &amp; SOCK_TYPE_MASK);</span><br><span class="line"> BUILD_BUG_ON(SOCK_NONBLOCK &amp; SOCK_TYPE_MASK);</span><br><span class="line"> <span class="comment">//用户参数合法性检查，是否有非法标志位</span></span><br><span class="line"> <span class="keyword">if</span> ((type &amp; ~SOCK_TYPE_MASK) &amp; ~(SOCK_CLOEXEC | SOCK_NONBLOCK))</span><br><span class="line">  <span class="keyword">return</span> ERR_PTR(-EINVAL);</span><br><span class="line"> type &amp;= SOCK_TYPE_MASK;</span><br><span class="line"> <span class="comment">//创建套接字</span></span><br><span class="line"> retval = sock_create(family, type, protocol, &amp;sock);</span><br><span class="line"> <span class="keyword">if</span> (retval &lt; <span class="number">0</span>)</span><br><span class="line">  <span class="keyword">return</span> ERR_PTR(retval);</span><br><span class="line"></span><br><span class="line"> <span class="keyword">return</span> sock;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>上述<code>sock_create</code>为实际创建socket的函数，它包裹了<code>__sock_create()</code>如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">sock_create</span><span class="params">(<span class="type">int</span> family, <span class="type">int</span> type, <span class="type">int</span> protocol, <span class="keyword">struct</span> socket **res)</span></span><br><span class="line">&#123;</span><br><span class="line"> <span class="keyword">return</span> __sock_create(current-&gt;nsproxy-&gt;net_ns, family, type, protocol, res, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>可以看到<code>__sock_create</code>多带了一个参数<code>current-&gt;nsproxy-&gt;net_ns</code>  这个<code>current</code>是一个宏，用于获取当前进程的<code>task_struct</code>指针</p>
-<p><code>current</code>宏定义如下:</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> __always_inline <span class="keyword">struct</span> task_struct *<span class="title function_">get_current</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line"> <span class="comment">//这个pcpu_hot中有一个字段就是current_task也就是task_struct</span></span><br><span class="line"> <span class="comment">//this_cpu_read_stable()就是读取per_cpu变量的一个宏</span></span><br><span class="line"> <span class="keyword">return</span> this_cpu_read_stable(pcpu_hot.current_task);<span class="comment">//从per-cpu变量中获取当前的task_sturct结构</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>上述<code>current</code>宏其实等同于指向一个<code>task_struct</code>的指针，而<code>__sock_create(current-&gt;nsproxy-&gt;net_ns, family, type, protocol, res, 0);</code>中参数<code>current-&gt;nsproxy-&gt;net_ns</code>就是指向一个具体的网络命名空间，为什么要传入这个网络命令空间作为参数？举个例子，<strong>如果进程属于某个容器的网络命名空间，创建的套接字必须关联到该容器的网络栈，而非宿主机的默认命名空间</strong>， 比如在创建docker进程的时候，就会设置<code>sproxy-&gt;net_ns</code>所属的网络命令空间。最终的目的一定是为了流量隔离。</p>
-<p>接下来看一下真正创建socket的函数<code>__sock_create</code></p>
-<h3 id="3-sock-create"><a href="#3-sock-create" class="headerlink" title="3.__sock_create**()"></a>3.__sock_create**()</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __sock_create(<span class="keyword">struct</span> net *net, <span class="type">int</span> family, <span class="type">int</span> type, <span class="type">int</span> protocol,</span><br><span class="line">			 <span class="keyword">struct</span> socket **res, <span class="type">int</span> kern)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">socket</span> *<span class="title">sock</span>;</span></span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">net_proto_family</span> *<span class="title">pf</span>;</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">//合法性检查</span></span><br><span class="line">	<span class="keyword">if</span> (family &lt; <span class="number">0</span> || family &gt;= NPROTO)</span><br><span class="line">		<span class="keyword">return</span> -EAFNOSUPPORT;</span><br><span class="line">	<span class="keyword">if</span> (type &lt; <span class="number">0</span> || type &gt;= SOCK_MAX)</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line"></span><br><span class="line">	<span class="comment">//过时的 PF_INET + SOCK_PACKET 参数组合转换为现代支持的 PF_PACKET 协议族</span></span><br><span class="line">	<span class="keyword">if</span> (family == PF_INET &amp;&amp; type == SOCK_PACKET) &#123;</span><br><span class="line">		pr_info_once(<span class="string">&quot;%s uses obsolete (PF_INET,SOCK_PACKET)\n&quot;</span>,</span><br><span class="line">			     current-&gt;comm);</span><br><span class="line">		family = PF_PACKET;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//安全相关的钩子</span></span><br><span class="line">	err = security_socket_create(family, type, protocol, kern);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line"></span><br><span class="line">	<span class="comment">//分配并初始化一个套接字对应的 inode 和socket 结构</span></span><br><span class="line">	sock = sock_alloc();</span><br><span class="line">	<span class="keyword">if</span> (!sock) &#123;</span><br><span class="line">		net_warn_ratelimited(<span class="string">&quot;socket: no more sockets\n&quot;</span>);</span><br><span class="line">		<span class="keyword">return</span> -ENFILE;</span><br><span class="line">	<span class="comment">//这里的type也是用户创建socket的type</span></span><br><span class="line">	sock-&gt;type = type;</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	<span class="comment">//从sock_register数组中找到一个元素pf，这个pf中有一个create()回调函数，</span></span><br><span class="line">	<span class="comment">//这个回调函数就是family类型(比如AF_INET)需要的create函数。</span></span><br><span class="line">	pf = rcu_dereference(net_families[family]);</span><br><span class="line">	err = -EAFNOSUPPORT;</span><br><span class="line">	<span class="keyword">if</span> (!pf)</span><br><span class="line">		<span class="keyword">goto</span> out_release;</span><br><span class="line"></span><br><span class="line">	<span class="comment">//增加引用计数？有些family可能是以模块方式加载的？？？</span></span><br><span class="line">	<span class="keyword">if</span> (!try_module_get(pf-&gt;owner))</span><br><span class="line">		<span class="keyword">goto</span> out_release;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Now protected by module ref count */</span></span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">	<span class="comment">//如果用户指定的family类型是AF_INIT,那这个函数就是调用的inet_create()</span></span><br><span class="line">	err = pf-&gt;create(net, sock, protocol, kern);</span><br><span class="line">	<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> out_module_put;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!try_module_get(sock-&gt;ops-&gt;owner))</span><br><span class="line">		<span class="keyword">goto</span> out_module_busy;</span><br><span class="line"></span><br><span class="line">	<span class="comment">//减引用计数</span></span><br><span class="line">	module_put(pf-&gt;owner);</span><br><span class="line">	<span class="comment">//安全模块相关</span></span><br><span class="line">	err = security_socket_post_create(sock, family, type, protocol, kern);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> out_sock_release;</span><br><span class="line">	*res = sock;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">out_module_busy:</span><br><span class="line">	err = -EAFNOSUPPORT;</span><br><span class="line">out_module_put:</span><br><span class="line">	sock-&gt;ops = <span class="literal">NULL</span>;</span><br><span class="line">	module_put(pf-&gt;owner);</span><br><span class="line">out_sock_release:</span><br><span class="line">	sock_release(sock);</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line"></span><br><span class="line">out_release:</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">	<span class="keyword">goto</span> out_sock_release;</span><br><span class="line">&#125;</span><br><span class="line">EXPORT_SYMBOL(__sock_create);</span><br></pre></td></tr></table></figure>
-
-
-<p>上述代码中通过调用<code>sock_alloc()</code>分配了inode和socket结构体，并对inode结构体进行初始化，比如设置唯一的inode编号等，具体代码如下：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> socket *<span class="title function_">sock_alloc</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inode</span> *<span class="title">inode</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">socket</span> *<span class="title">sock</span>;</span></span><br><span class="line">	<span class="comment">//调用socket文件系统的超级块的ops申请一个inode，注意：socket结构体也是在这里分配的</span></span><br><span class="line">	inode = new_inode_pseudo(sock_mnt-&gt;mnt_sb);</span><br><span class="line">	<span class="keyword">if</span> (!inode)</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="comment">//通过container_of拿到socket结构体 </span></span><br><span class="line">	sock = SOCKET_I(inode);</span><br><span class="line"></span><br><span class="line">	inode-&gt;i_ino = get_next_ino();<span class="comment">//分配唯一的inode编号</span></span><br><span class="line">	inode-&gt;i_mode = S_IFSOCK | S_IRWXUGO; <span class="comment">//文件类型</span></span><br><span class="line">	inode-&gt;i_uid = current_fsuid();</span><br><span class="line">	inode-&gt;i_gid = current_fsgid();</span><br><span class="line">	inode-&gt;i_op = &amp;sockfs_inode_ops;<span class="comment">//绑定ops</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> sock;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p><strong>上述代码通过调用<code>new_inode_pseudo()</code>创建了inode和socket，socket的获取通过宏<code>SOCKET_I</code>（container_of）返回<code>socket</code>其中<code>sock_mnt</code>是一个vfsmount(可以理解为一个挂载点)结构<code>mnt_sb</code>为一个超级块，在<code>sock_init()</code>中被挂载，<code>sock_init()</code>在<code>start_kernel</code>中会最终被调用到。</strong></p>
-<p><code>pf = rcu_dereference(net_families[family]);</code> 这一行作用是根据用户传入的不同的协议族（比如AF_INET）来选择具体的回调函数，然后会调用<code>pf-&gt;create(net, sock, protocol, kern);</code> 这个<code>-&gt;create()</code> 就取决于<code>family</code>的类型。<strong>对于AF_INET类型的family，就是调用inet_create()</strong>，注册的过程由<code>sock_register()</code>实现，该函数就是将不同的family类型，注册到一个数组中(这个数组叫net_families)。对应的函数如下：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">sock_register</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> net_proto_family *ops)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (ops-&gt;family &gt;= NPROTO) &#123;</span><br><span class="line">		pr_crit(<span class="string">&quot;protocol %d &gt;= NPROTO(%d)\n&quot;</span>, ops-&gt;family, NPROTO);</span><br><span class="line">		<span class="keyword">return</span> -ENOBUFS;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	spin_lock(&amp;net_family_lock);</span><br><span class="line">	<span class="keyword">if</span> (rcu_dereference_protected(net_families[ops-&gt;family],</span><br><span class="line">				      lockdep_is_held(&amp;net_family_lock)))</span><br><span class="line">		err = -EEXIST;</span><br><span class="line">	<span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="comment">//这里注册了不同family类型到net_families数组中！</span></span><br><span class="line">		rcu_assign_pointer(net_families[ops-&gt;family], ops);</span><br><span class="line">		err = <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	spin_unlock(&amp;net_family_lock);</span><br><span class="line"></span><br><span class="line">	pr_info(<span class="string">&quot;NET: Registered %s protocol family\n&quot;</span>, pf_family_names[ops-&gt;family]);</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>对于AF_INET(ipv4)协议族，上述注册的函数为<code>inet_create()</code>，在<code>inet_init()</code>中被调用，同样<code>inet_init()</code>也是最终被<code>start_kernel()</code>调用到。</p>
-<p>也就是说<code>err = pf-&gt;create(net, sock, protocol, kern);</code>会根据协议族的类型调用不同的create函数，同时传入用户制定的类型(TYPE)和协议做为参数，下面默认使用ipv4协议族进行举例，待分析函数就是<code>inet_create()</code>函数实现如下所示：</p>
-
+<h3 id="2-sys-socket-create（）"><a href="#2-sys-socket-create（）" class="headerlink" title="2.__sys_socket_create（）"></a>2.__sys_socket_create（）</h3>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/05/21/%E5%86%85%E6%A0%B8socket%E5%88%9B%E5%BB%BA/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
       
     </div>
 
@@ -339,70 +339,14 @@
 <h3 id="2-VFS-整体架构"><a href="#2-VFS-整体架构" class="headerlink" title="2.VFS 整体架构"></a>2.VFS 整体架构</h3><p>虚拟文件系统作为内核中的一个抽象层，起到一个中间层的作用，对上(应用程序)提供统一接口，应用程序只需使用标准的文件操作（如<code> open、read、write1</code>），无需关心底层是哪种文件系统（<code>EXT4、NTFS、FAT</code>等），对下为各种具体的文件系统（如 ext4、XFS 等）提供了统一的接口（其实就是实现不同文件系统的ops集合），VFS在内核中的整体架构如下所示。</p>
 <hr>
 <p><img src="/images/vfs/vfs%E6%A1%86%E6%9E%B6.png" alt="vfs在内核中的位置"></p>
-<hr>
-<p>上述图片为VFS整体架构图，图片中各个组件作用大概如下：</p>
-<ul>
-<li>APP：用户程序通过系统调用读写文件</li>
-<li>Page Cache：缓存文件的数据内容，例如次读取文件时从磁盘加载到页缓存，后续直接读缓存，避免磁盘I&#x2F;O。</li>
-<li>Directory cache：缓存文件路径到Dentry的映射，减少频繁解析路径的开销。</li>
-<li>Inode缓存：缓存文件的元数据（权限、大小、数据块位置等）</li>
-<li>Buffer Cache：缓存磁盘块的原始数据（已逐步被Page Cache取代，但在某些场景仍用于块设备操作）</li>
-<li>磁盘文件系统（ext2&#x2F;ext3&#x2F;ext4）：<ul>
-<li>ext2：早期非日志式文件系统，简单但易崩溃损坏。</li>
-<li>ext3：增加日志功能，提升崩溃恢复能力。</li>
-<li>ext4：支持更大文件&#x2F;分区、延迟分配等高级特性。</li>
-</ul>
-</li>
-<li>伪文件系统：<ul>
-<li>proc：虚拟文件系统，动态暴露内核状态（如 &#x2F;proc&#x2F;cpuinfo）</li>
-<li>sysfs：提供设备&#x2F;驱动信息的统一接口（如 &#x2F;sys&#x2F;class）</li>
-</ul>
-</li>
-</ul>
-<h3 id="3-VFS关键数据结构"><a href="#3-VFS关键数据结构" class="headerlink" title="3.VFS关键数据结构"></a>3.VFS关键数据结构</h3><p>VFS中包含着向物理文件系统转换的一系列数据结构，Linux中VFS层依靠四个主要的数据结构来述其结构信息，分别为<strong>超级块、索引结点、目录项和文件对象</strong>。这四个数据结构作用如下：</p>
-<h4 id="3-1-Superblock（超级块）"><a href="#3-1-Superblock（超级块）" class="headerlink" title="3.1 Superblock（超级块）"></a>3.1 Superblock（超级块）</h4><ul>
-<li><p>功能：超级块(块指的是存储和管理数据的基本单位)对象由各自的文件系统实现，用来存储文件系统的信息，如块大小、块数量等。这个对象对应为文件系统超级块或者文件系统控制块，<strong>它存储在磁盘特定的扇区上</strong>。不是基于磁盘的文件系统临时生成超级块，<strong>并保存在内存中</strong>，注意：所有超级块对象都以双向循环链表的形式链接在一起被管理。</p>
-</li>
-<li><p>用途： </p>
-<ul>
-<li>超级块与物理文件系统一一对应。</li>
-<li>在挂载时初始化，帮助管理文件系统。</li>
-</ul>
-</li>
-</ul>
-<p><strong>管理超级块的结构体如下所示</strong>：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">super_block</span> &#123;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">list_head</span>    <span class="title">s_list</span>;</span>               <span class="comment">// 指向链表的指针</span></span><br><span class="line">    <span class="type">dev_t</span>               s_dev;                <span class="comment">// 设备标识符</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">long</span>       s_blocksize;          <span class="comment">// 以字节为单位的块大小</span></span><br><span class="line">    <span class="type">loff_t</span>              s_maxbytes;           <span class="comment">// 文件大小上限</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">file_system_type</span>    *<span class="title">s_type</span>;</span>       <span class="comment">// 文件系统类型</span></span><br><span class="line">    <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">super_operations</span>    *<span class="title">s_op</span>;</span>   <span class="comment">// SuperBlock 操作函数，write_inode、put_inode 等</span></span><br><span class="line">    <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">dquot_operations</span>    *<span class="title">dq_op</span>;</span>  <span class="comment">// 磁盘限额函数</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">dentry</span>        *<span class="title">s_root</span>;</span>             <span class="comment">// 根目录</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<h4 id="3-2-Inode-索引节点"><a href="#3-2-Inode-索引节点" class="headerlink" title="3.2 Inode(索引节点)"></a>3.2 Inode(索引节点)</h4><ul>
-<li>功能：<strong>每个文件都有一个唯一的<code>inode</code></strong>，存储了文件的元数据，如文件大小、权限、访问时间等。它是文件系统中文件的抽象表示，不包含文件名。</li>
-<li>特点：<strong>inode存储在磁盘中（伪文件系统除外），在需要的时候会被加载到内存中</strong>，具体情况如下：<br><code>inode</code> 是文件系统的元数据结构，直接存储在磁盘上，用于长期保存文件的元信息（如权限、大小、块位置等）例如在Ext4文件系统中，<code>inode</code>集中存放在磁盘的固定区域。<br>当访问某个文件时，会根据具体的磁盘上的inode(也就是磁盘中的inode, 比如ext4_inode_info)，来填充VFS的创建的inode(用私有指针指一下)。</li>
-</ul>
-<p><strong>VFS管理的inode结构如下所示</strong>：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">inode</span> &#123;</span></span><br><span class="line">    <span class="type">umode_t</span>                 i_mode;          <span class="comment">// 文件权限及类型</span></span><br><span class="line">    <span class="type">kuid_t</span>                  i_uid;           <span class="comment">// user id</span></span><br><span class="line">    <span class="type">kgid_t</span>                  i_gid;           <span class="comment">// group id</span></span><br><span class="line"></span><br><span class="line">    <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">inode_operations</span>    *<span class="title">i_op</span>;</span>  <span class="comment">// inode 操作函数，如 create，mkdir，lookup，rename 等</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">super_block</span>      *<span class="title">i_sb</span>;</span>           <span class="comment">// 所属的 SuperBlock</span></span><br><span class="line"></span><br><span class="line">    <span class="type">loff_t</span>                  i_size;          <span class="comment">// 文件大小</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">timespec</span>         <span class="title">i_atime</span>;</span>         <span class="comment">// 文件最后访问时间</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">timespec</span>         <span class="title">i_mtime</span>;</span>         <span class="comment">// 文件最后修改时间</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">timespec</span>         <span class="title">i_ctime</span>;</span>         <span class="comment">// 文件元数据最后修改时间（包括文件名称）</span></span><br><span class="line">    <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">file_operations</span>    *<span class="title">i_fop</span>;</span>  <span class="comment">// 文件操作函数，open、write 等</span></span><br><span class="line">    <span class="type">void</span>                    *i_private;      <span class="comment">// 文件系统的私有数据</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<h4 id="3-3-Dentry-目录项"><a href="#3-3-Dentry-目录项" class="headerlink" title="3.3 Dentry(目录项)"></a>3.3 Dentry(目录项)</h4><p><strong>Dentry的核心作用是在内存中建立文件名（路径）与 inode 之间的高效映射</strong>。每个 Dentry 代表路径中一个特定部分。对于“&#x2F;bin&#x2F;ls”、“&#x2F;”、“bin”和“ls”都是目录项对象。前面是两个目录，最后一个是普通文件。在路径中， 包括普通文件在内，每一个部分都是目录项对象。目录项是描述文件的逻辑属性，<strong>只存在于内存中</strong>，举个例子，当调用open()函数打开一个文件时，内核会第一时间根据文件路径到 DEntry Cache 里面寻找相应的 DEntry，找到了就直接构造一个file对象并返回。如果该文件不在缓存中，那么 VFS 会根据找到的最近目录一级一级地向下加载，直到找到相应的文件。期间 VFS 会缓存所有被加载生成的dentry。注意:<strong>一个 INode 可能被多个 DEntry 所关联</strong>，即相当于为某一文件创建了多个文件路径.</p>
-<p><strong>VFS管理的Dentry结构如下所示</strong>：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">dentry</span> &#123;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">dentry</span> *<span class="title">d_parent</span>;</span>     <span class="comment">// 父目录</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">qstr</span> <span class="title">d_name</span>;</span>          <span class="comment">// 文件名称</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">inode</span> *<span class="title">d_inode</span>;</span>       <span class="comment">// 关联的 inode</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">list_head</span> <span class="title">d_child</span>;</span>    <span class="comment">// 父目录中的子目录和文件</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">list_head</span> <span class="title">d_subdirs</span>;</span>  <span class="comment">// 当前目录中的子目录和文件</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<h4 id="3-4-file-文件对象"><a href="#3-4-file-文件对象" class="headerlink" title="3.4 file 文件对象"></a>3.4 file 文件对象</h4><p>虚拟文件系统最后一个主要对象是文件对象，文件对象表示进程已打开的文件，每个进程都持有一个fd[]数组，数组里面存放的是指向file结构体的指针，同一进程的不同fd可以指向同一个file对象，file是内核中的数据结构，表示一个被进程打开的文件，和进程相关联。当应用程序调用open()函数的时候，VFS 就会创建相应的file对象。注意： file会通过Dentry找到inode，file的ops集合（read，write等）其实就是inode的i_fops; 这样感觉就实现了进程和文件系统之间的解耦。</p>
-<p><strong>file结构如下所示</strong>：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">file</span> &#123;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">path</span>                   <span class="title">f_path</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">inode</span>                  *<span class="title">f_inode</span>;</span></span><br><span class="line">    <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">file_operations</span>  *<span class="title">f_op</span>;</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span>                  f_flags;</span><br><span class="line">    <span class="type">fmode_t</span>                       f_mode;</span><br><span class="line">    <span class="type">loff_t</span>                        f_pos;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">fown_struct</span>            <span class="title">f_owner</span>;</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<p><strong>下图为上述四个关键数据结构的关系图</strong>：</p>
-<p><img src="/images/vfs/%E4%BA%A4%E4%BA%92%E5%9B%BE.webp" alt="关系图"></p>
-<h3 id="4-挂载"><a href="#4-挂载" class="headerlink" title="4.挂载"></a>4.挂载</h3><h4 id="4-1-什么叫挂载"><a href="#4-1-什么叫挂载" class="headerlink" title="4.1 什么叫挂载"></a>4.1 什么叫挂载</h4><p>挂载（Mounting） 是将存储设备（如硬盘、U盘）或文件系统（如Ext4、NTFS）关联到Linux目录树中某个目录（称为挂载点）的过程。挂载后，访问该目录实际指向目标设备或文件系统的内容，而原目录下的文件会被临时隐藏。例如，将U盘挂载到&#x2F;mnt&#x2F;usb后，访问此目录即访问U盘数据，卸载后恢复原目录内容。内核通过虚拟文件系统（VFS）管理挂载表，动态路由路径解析，实现对多文件系统的统一访问。简言之，挂载是让外部存储“接入”目录树的机制，用户通过目录操作文件，无需关心物理设备细节。</p>
-<p><strong>挂载是在用户态发起mount命令</strong>，该命令执行的时候需要指定文件系统的类型（例如Ext2）和文件系统数据的位置（也就是dev）。通过这些关键信息，VFS就可以完成Ext2文件系统的初始化，并将其关联到当前已经存在的文件系统当中，也就是建立起下面所示的文件系统树。</p>
-<p><img src="/images/vfs/%E6%8C%82%E8%BD%BD.webp" alt="挂载"></p>
-<p>如上图所示，该系统根文件系统是Ext4文件系统，而在其&#x2F;mnt目录下面又分别挂载了Ext4文件系统和XFS文件系统。最后形成了一个由多个文件系统组成的文件系统树。</p>
-<h4 id="4-2-挂载点"><a href="#4-2-挂载点" class="headerlink" title="4.2 挂载点"></a>4.2 挂载点</h4><p> 挂载点（Mount Point）是 Linux系统中用于将外部存储设备或文件系统接入到目录树的一个空目录。通过挂载操作，该目录会成为访问目标文件系统的入口，原有内容会被临时隐藏，转而显示被挂载设备或文件系统的内容。</p>
-<p>一个挂载点用一个<code>vfsmount</code>来表示，属于VFS层的一部分，<strong>在用户执行mount系统调用的时候会被创建</strong>，它记录了文件系统实例与目录树的关联关系，是挂载机制的核心实现，作用如下：</p>
-<ul>
-<li>关联挂载点与超级块：记录被挂载的超级块，其实就是知道被挂载的是哪个文件系统</li>
-<li>支持路径解析：当用户访问路径时，VFS 通过 <code>vfsmount </code>确定目标文件系统的位置。例如，当访问&#x2F;mnt&#x2F;data&#x2F;file.txt时VFS 发现 &#x2F;mnt&#x2F;data 是挂载点（进而可以拿到超级块的信息）进而调用目标文件系统的方法继续查找要操作的文件。</li>
-</ul>
-<p><strong>vfsmount结构如下所示</strong>：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">vfsmount</span> &#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">dentry</span> *<span class="title">mnt_root</span>;</span>	<span class="comment">//挂载的目录</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">super_block</span> *<span class="title">mnt_sb</span>;</span>	<span class="comment">//指向超级块</span></span><br><span class="line">	<span class="type">int</span> mnt_flags;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">mnt_idmap</span> *<span class="title">mnt_idmap</span>;</span></span><br><span class="line">&#125; __randomize_layout;</span><br></pre></td></tr></table></figure>
-
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/05/19/VFS%E8%99%9A%E6%8B%9F%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
       
     </div>
 
@@ -484,267 +428,15 @@
 <li>数据完整性：接收方对接收的数据进行验证，以判定报文是否被篡改。</li>
 <li>抗重放：接收方拒绝旧的或重复的数据包，防止恶意用户通过重复发送捕获到的<br>数据包所进行的攻击。</li>
 </ul>
-<h2 id="2-IPSec原理描述"><a href="#2-IPSec原理描述" class="headerlink" title="2.IPSec原理描述"></a>2.IPSec原理描述</h2><h3 id="2-1IPSec-协议框架"><a href="#2-1IPSec-协议框架" class="headerlink" title="2.1IPSec 协议框架"></a>2.1IPSec 协议框架</h3><h4 id="2-1-1安全联盟"><a href="#2-1-1安全联盟" class="headerlink" title="2.1.1安全联盟"></a>2.1.1安全联盟</h4><p>安全联盟SA（Security Association）是通信对等体间对某些要素的协定，它描述了对等体间如何利用安全服务（例如加密）进行安全的通信。这些要素包括对等体间使用何种安全协议、要保护的数据流特征、对等体间传输的数据的封装模式、协议采用的加密和验证算法，以及用于数据安全转换、传输的密钥和SA的生存周期等。IPSec安全传输数据的前提是在IPSec对等体（即运行IPSec协议的两个端点）之间成功建立安全联盟。<strong>IPSec安全联盟简称IPSec SA，由一个三元组来唯一标识，这个三元组包括安全参数索引SPI（Security Parameter Index）、目的IP地址和使用的安全协议号（AH或ESP）</strong>。其中，SPI是为唯一标识SA而生成的一个32位比特的数值，它被封装在AH和ESP头中。<strong>IPSec SA是单向的逻辑连接</strong>，通常成对建立（Inbound和Outbound）。因此两个IPSec对等体之间的双向通信，最少需要建立一对IPSec SA形成一个安全互通的IPSec隧道，分别对两个方向的数据流进行安全保护。<br>另外，IPSec SA的个数还与安全协议相关。如果只使用AH或ESP来保护两个对等体之间的流量，则对等体之间就有两个SA，每个方向上一个。如果对等体同时使用了AH和ESP，那么对等体之间就需要四个SA，每个方向上两个，分别对应AH和ESP。建立IPSec SA有两种方式：手工方式和IKE方式。二者的主要差异如表所示。</p>
-<table>
-<thead>
-<tr>
-<th>对比项</th>
-<th>手工方式建立IPSec SA</th>
-<th>IKE方式自动建立IPSec SA</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><strong>加密&#x2F;验证密钥管理</strong></td>
-<td>手工配置、手动刷新，易出错</td>
-<td>通过DH算法动态生成并自动刷新</td>
-</tr>
-<tr>
-<td><strong>密钥管理成本</strong></td>
-<td>高（需人工维护所有节点密钥）</td>
-<td>低（自动协商和轮换）</td>
-</tr>
-<tr>
-<td><strong>SPI（安全参数索引）</strong></td>
-<td>手工配置</td>
-<td>随机生成</td>
-</tr>
-<tr>
-<td><strong>生存周期</strong></td>
-<td>无限制，SA永久存在（除非手动删除）</td>
-<td>由生存周期参数控制，SA自动过期和重建</td>
-</tr>
-<tr>
-<td><strong>安全性</strong></td>
-<td>低（静态密钥易被破解，无前向保密）</td>
-<td>高（动态密钥、支持PFS、抗重放攻击）</td>
-</tr>
-<tr>
-<td><strong>适用场景</strong></td>
-<td>小型网络、临时测试环境</td>
-<td>中小型至大型网络、生产环境</td>
-</tr>
-</tbody></table>
-<h4 id="2-1-2安全协议"><a href="#2-1-2安全协议" class="headerlink" title="2.1.2安全协议"></a>2.1.2安全协议</h4><p>IPSec使用认证头AH（Authentication Header）和封装安全载荷ESP EncapsulatingSecurity Payload）两种IP传输层协议来提供认证或加密等安全服务。</p>
-<ul>
-<li><p>AH协议：<br>AH仅支持认证功能，不支持加密功能。AH在每一个数据包的标准IP报头后面添加一个AH报文头。AH对数据包和认证密钥进行Hash计算，接收方收到带有计算结果的数据包后，执行同样的Hash计算并与原计算结果比较，传输过程中对数据的任何更改将使计算结果无效，这样就提供了数据来源认证和数据完整性校验。AH协议的完整性验证范围为整个IP报文。</p>
-</li>
-<li><p>ESP协议：<br>ESP支持认证和加密功能。ESP在每一个数据包的标准IP报头后面添加一个ESP报文头，并在数据包后面追加一个ESP尾（ESP Trailer和ESP Auth data）。与AH不同的是，ESP将数据中的有效载荷进行加密后再封装到数据包中，以保证数据的机密性，但ESP没有对IP头的内容进行保护，除非IP头被封装在ESP内部（采用隧道模式）。</p>
-</li>
-</ul>
-<p>AH协议与ESP协议的比较如下所示：</p>
-<table>
-<thead>
-<tr>
-<th>安全特性</th>
-<th>AH (认证头)</th>
-<th>ESP (封装安全载荷)</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><strong>协议号</strong></td>
-<td>51</td>
-<td>50</td>
-</tr>
-<tr>
-<td><strong>数据完整性校验</strong></td>
-<td>支持（验证整个IP报文）</td>
-<td>支持（传输模式：不验证IP头；隧道模式：验证整个IP报文）</td>
-</tr>
-<tr>
-<td><strong>数据源验证</strong></td>
-<td>支持</td>
-<td>支持</td>
-</tr>
-<tr>
-<td><strong>数据加密</strong></td>
-<td>不支持</td>
-<td>支持</td>
-</tr>
-<tr>
-<td><strong>防报文重放攻击</strong></td>
-<td>支持</td>
-<td>支持</td>
-</tr>
-<tr>
-<td><strong>NAT-T (NAT穿越)</strong></td>
-<td>不支持</td>
-<td>支持</td>
-</tr>
-</tbody></table>
-<p><strong>AH报文头结构</strong></p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="line">| 下一个头部 (8 bits) | 载荷长度 (8 bits) |  保留 (16 bits)         |</span><br><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="line">|                   安全参数索引 (SPI, 32 bits)                   |</span><br><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="line">|                   序列号 (Sequence Number, 32 bits)            |</span><br><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="line">|                                                               |</span><br><span class="line">|                认证数据 (可变长度，32 bits的整数倍)               |</span><br><span class="line">|                                                               |</span><br><span class="line">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br></pre></td></tr></table></figure>
-
-<p> <strong>AH 报文头字段含义</strong></p>
-<table>
-<thead>
-<tr>
-<th>字段名</th>
-<th>长度</th>
-<th>含义</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><strong>下一头部</strong></td>
-<td>8 bits</td>
-<td>标识 AH 报文头后面的负载类型：<br> - <strong>传输模式</strong>：被保护的上层协议（TCP&#x2F;UDP）或 ESP 协议编号<br> - <strong>隧道模式</strong>：IP 协议或 ESP 协议编号<br>（当 AH 与 ESP 同时使用时，下一头部为 ESP 报文头）</td>
-</tr>
-<tr>
-<td><strong>负载长度</strong></td>
-<td>8 bits</td>
-<td>以 32 比特为单位的 AH 报文头长度减 2（缺省值：4）</td>
-</tr>
-<tr>
-<td><strong>保留字段</strong></td>
-<td>16 bits</td>
-<td>保留将来使用，缺省为 0</td>
-</tr>
-<tr>
-<td><strong>SPI</strong></td>
-<td>32 bits</td>
-<td>IPSec 安全参数索引，唯一标识安全联盟（SA）</td>
-</tr>
-<tr>
-<td><strong>序列号</strong></td>
-<td>32 bits</td>
-<td>从 1 开始的单向递增计数器，防止重放攻击</td>
-</tr>
-<tr>
-<td><strong>认证数据</strong></td>
-<td>变长字段（32 比特整数倍，通常 96 bits）</td>
-<td>包含完整性校验值（ICV），用于接收方校验数据完整性。<br><strong>认证算法</strong>：<br>- ✅ 推荐：SHA2、SM3<br>- ⚠️ 不安全：MD5、SHA1（存在安全隐患）</td>
-</tr>
-</tbody></table>
-<p><strong>ESP 报文结构</strong></p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">+-----------------------------------------------+ &lt;-- ESP头部</span><br><span class="line">| 安全参数索引（SPI）                              |</span><br><span class="line">+-----------------------------------------------+</span><br><span class="line">| 序列号                                         |</span><br><span class="line">+-----------------------------------------------+ &lt;-- 加密部分开始</span><br><span class="line">|                                               |</span><br><span class="line">| 负载数据（Payload，变长）                        |</span><br><span class="line">|                                               |</span><br><span class="line">+-----------------------------------------------+</span><br><span class="line">| 填充字段（0～255字节 Padding）                   |</span><br><span class="line">+-----------------------------------------------+</span><br><span class="line">| 填充长度（1B） | 下一头部（1B）                   |</span><br><span class="line">+-----------------------------------------------+ &lt;-- ESP尾部（加密部分结束）</span><br><span class="line">|                                               |</span><br><span class="line">| 认证数据（ICV，完整性校验值，变长                  |</span><br><span class="line">|                                               |</span><br><span class="line">+-----------------------------------------------+ &lt;-- ESP认证部分</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<p> <strong>ESP 报文头字段含义</strong></p>
-<table>
-<thead>
-<tr>
-<th>字段名</th>
-<th>长度</th>
-<th>含义</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><strong>SPI</strong></td>
-<td>32 bits</td>
-<td>IPSec 安全参数索引，唯一标识安全联盟（SA）</td>
-</tr>
-<tr>
-<td><strong>序列号</strong></td>
-<td>32 bits</td>
-<td>从 1 开始的单向递增计数器，防止重放攻击</td>
-</tr>
-<tr>
-<td><strong>负载数据</strong></td>
-<td>变长</td>
-<td>原始 IP 报文中的可变长度数据内容<br>（保护内容类型由下一头部字段标识）</td>
-</tr>
-<tr>
-<td><strong>填充字段</strong></td>
-<td>0-255 字节</td>
-<td>用于补齐加密算法要求的块长度</td>
-</tr>
-<tr>
-<td><strong>填充长度</strong></td>
-<td>8 bits</td>
-<td>表示填充字段的字节数（0 表示无填充）</td>
-</tr>
-<tr>
-<td><strong>下一头部</strong></td>
-<td>8 bits</td>
-<td>标识下一个负载类型：<br>- 传输模式：上层协议编号（如 TCP&#x3D;6&#x2F;UDP&#x3D;17）<br>- 隧道模式：IP 协议（IPv4&#x3D;4&#x2F;IPv6&#x3D;41）</td>
-</tr>
-<tr>
-<td><strong>认证数据</strong></td>
-<td>变长</td>
-<td>完整性校验值（ICV），需 32 位对齐</td>
-</tr>
-</tbody></table>
-<h4 id="2-1-3封装模式"><a href="#2-1-3封装模式" class="headerlink" title="2.1.3封装模式"></a>2.1.3封装模式</h4><p>封装模式是指将AH或ESP相关的字段插入到原始IP报文中，以实现对报文的认证和加密，封装模式有传输模式和隧道模式两种。</p>
-<p><strong>传输模式</strong></p>
-<p>在传输模式中，AH头或ESP头被插入到IP头与传输层协议头之间，保护TCP&#x2F;UDP&#x2F;ICMP负载。由于传输模式未添加额外的IP头，所以原始报文中的IP地址在加密后报文的IP头中可见。以TCP报文为例，原始报文经过传输模式封装后，报文格式如下所示。</p>
-<p><img src="/images/ipsec/%E4%BC%A0%E8%BE%93%E6%A8%A1%E5%BC%8F.png" alt="传输模式"></p>
-<p><strong>隧道模式</strong></p>
-<p>在隧道模式下，AH头或ESP头被插到原始IP头之前，另外生成一个新的报文头放到AH<br>头或ESP头之前，保护IP头和负载。以TCP报文为例，原始报文经隧道模式封装后的报<br>文结构如下图所示。</p>
-<p><img src="/images/ipsec/%E9%9A%A7%E9%81%93%E6%A8%A1%E5%BC%8F.png" alt="隧道模式"></p>
-<p>隧道模式下，与AH协议相比，ESP协议的完整性验证范围不包括新IP头，无法保证新IP头的安全。</p>
-<p><strong>传输模式和隧道模式比较</strong></p>
-<p>传输模式和隧道模式的区别在于：</p>
-<ul>
-<li>从安全性来讲，隧道模式优于传输模式。它可以完全地对原始IP数据包进行验证<br>和加密。隧道模式下可以隐藏内部IP地址，协议类型和端口。</li>
-<li>从性能来讲，隧道模式因为有一个额外的IP头，所以它将比传输模式占用更多带<br>宽。</li>
-<li>从场景来讲，传输模式主要应用于两台主机或一台主机和一台VPN网关之间通<br>信；隧道模式主要应用于两台VPN网关之间或一台主机与一台VPN网关之间的通<br>信。<br><strong>当安全协议同时采用AH和ESP时，AH和ESP协议必须采用相同的封装模式。</strong></li>
-</ul>
-<h4 id="2-1-4-加密和验证"><a href="#2-1-4-加密和验证" class="headerlink" title="2.1.4 加密和验证"></a>2.1.4 加密和验证</h4><p>IPSec提供了两种安全机制：加密和验证。加密机制保证数据的机密性，防止数据在传输过程中被窃听；验证机制能保证数据真实可靠，防止数据在传输过程中被仿冒和篡改。</p>
-<p><strong>加密</strong></p>
-<p>IPSec采用对称加密算法对数据进行加密和解密。如下图所示，数据发送方和接收方使用相同的密钥进行加密、解密。<br><img src="/images/ipsec/%E5%8A%A0%E5%AF%86.png" alt="加密"></p>
-<p>用于加密和解密的对称密钥可以手工配置，也可以通过IKE协议自动协商生成。常用的对称加密算法包括：数据加密标准DES（Data Encryption Standard）、3DES（Triple Data Encryption Standard）、先进加密标准AES（Advanced EncryptionStandard）国密算法（SM1和SM4）。其中，DES和3DES算法安全性低，存在安全风险，不推荐使用。</p>
-<p><strong>验证</strong></p>
-<p>IPSec的加密功能，无法验证解密后的信息是否是原始发送的信息或完整。IPSec采用HMAC（Keyed-Hash Message Authentication Code）功能，比较完整性校验值ICV进行数据包完整性和真实性验证。通常情况下，加密和验证通常配合使用。如图所示，在IPSec发送方，加密后的报文通过验证算法和对称密钥生成完整性校验值ICV，IP报文和完整性校验值ICV同时发给对端；在IPSec接收方，使用相同的验证算法和对称密钥对加密报文进行处理，同样得到完整性校验值ICV，然后比较完整性校验值ICV进行数据完整性和真实性验证，验证不通过的报文直接丢弃，验证通过的报文再进行解密。</p>
-<p><img src="/images/ipsec/%E9%AA%8C%E8%AF%81.png" alt="验证"></p>
-<p>同加密一样，用于验证的对称密钥也可以手工配置，或者通过IKE协议自动协商生成。常用的验证算法包括：消息摘要MD5（Message Digest 5）、安全散列算法SHA1（Secure Hash Algorithm 1）、SHA2、国密算法SM3（Senior Middle 3）。其中，MD5、SHA1算法安全性低，存在安全风险，不推荐使用。</p>
-<h4 id="2-1-5-密钥交换"><a href="#2-1-5-密钥交换" class="headerlink" title="2.1.5  密钥交换"></a>2.1.5  密钥交换</h4><p>使用对称密钥进行加密、验证时，如何安全地共享密钥是一个很重要的问题。有两种方法解决这个问题：</p>
-<ul>
-<li>带外共享密钥<br>在发送、接收设备上手工配置静态的加密、验证密钥。双方通过带外共享的方式（例如通过电话或邮件方式）保证密钥一致性。这种方式的缺点是安全性低，可扩展性差，在点到多点组网中配置密钥的工作量成倍增加。另外，为提升网络安全性需要周期性修改密钥，这种方式下也很难实施。</li>
-<li>使用一个安全的密钥分发协议<br>通过IKE协议自动协商密钥。IKE采用DH算法在不安全的网络上安全地分发密钥。这种方式配置简单，可扩展性好，特别是在大型动态的网络环境下此优点更加突出。同时，通信双方通过交换密钥交换材料来计算共享的密钥，即使第三方截获了双方用于计算密钥的所有交换数据，也无法计算出真正的密钥，这样极大地提高了安全性。</li>
-</ul>
-<p><strong>IKE 协议</strong><br>因特网密钥交换IKE（Internet Key Exchange）协议建立在Internet安全联盟和密钥管理协议ISAKMP定义的框架上，是基于UDP（User Datagram Protocol）的应用层协议。它为IPSec提供了自动协商密钥、建立IPSec安全联盟的服务，能够简化IPSec的配置和维护工作。IKE与IPSec的关系如图所示，对等体之间建立一个IKE SA完成身份验证和密钥信息交换后，在IKE SA的保护下，根据配置的AH&#x2F;ESP安全协议等参数协商出一对IPSecSA。此后，对等体间的数据将在IPSec隧道中加密传输。IKE SA是一个双向的逻辑连接，两个对等体间只建立一个IKE SA。</p>
-<p><img src="/images/ipsec/ike%E4%B8%8Eipsec.png" alt="ike与ipsec"></p>
-<p><strong>IKE安全机制</strong></p>
-<p>IKE具有一套自保护机制，可以在网络上安全地认证身份、分发密钥、建立IPSec SA：</p>
-<ul>
-<li><p>身份认证<br>身份认证确认通信双方的身份（对等体的IP地址或名称），包括预共享密钥PSK（pre-shared key）认证、数字证书RSA（rsa-signature）认证和数字信封认证。在预共享密钥认证中，通信双方采用共享的密钥对报文进行Hash计算，判断双方的计算结果是否相同。如果相同，则认证通过；否则认证失败。当有1个对等体对应多个对等体时，需要为每个对等体配置预共享的密钥。该<br>方法在小型网络中容易建立，但安全性较低。在数字证书认证中，通信双方使用CA证书进行数字证书合法性验证，双方各有自己的公钥（网络上传输）和私钥（自己持有）。发送方对原始报文进行Hash计算，并用自己的私钥对报文计算结果进行加密，生成数字签名。接收方使用发送方的公钥对数字签名进行解密，并对报文进行Hash计算，判断计算结果与解密后的结果是否相同。如果相同，则认证通过；否则认证失败。使用数字证书安全性高，但需要CA来颁发数字证书，适合在大型网络中使用。<br>在数字信封认证中，发送方首先随机产生一个对称密钥，使用接收方的公钥对此对称密钥进行加密（被公钥加密的对称密钥称为数字信封），发送方用对称密钥加密报文，同时用自己的私钥生成数字签名。接收方用自己的私钥解密数字信封得到对称密钥，再用对称密钥解密报文，同时根据发送方的公钥对数字签名进行解密，验证发送方的数字签名是否正确。如果正确，则认<br>证通过；否则认证失败。数字信封认证用于设备需要符合国家密码管理局要求时使用，此认证方法只能在IKEv1的主模式协商过程中支持。<br>IKE支持的认证算法有：MD5、SHA1、SHA2-256、SHA2-384、SHA2-512、SM3。</p>
-</li>
-<li><p>身份保护<br>身份数据在密钥产生之后加密传送，实现了对身份数据的保护。IKE支持的加密算法有：DES、3DES、AES-128、AES-192、AES-256、SM1和SM4。</p>
-</li>
-<li><p>DH<br>DH是一种公共密钥交换方法，它用于产生密钥材料，并通过ISAKMP消息在发送和接收设备之间进行密钥材料交换。然后，两端设备各自计算出完全相同的对称密钥。该对称密钥用于计算加密和验证的密钥。在任何时候，通信双方都不交换真正的密钥。DH密钥交换是IKE的精髓所在。</p>
-</li>
-<li><p>PFS<br>完善的前向安全性PFS（Perfect Forward Secrecy）通过执行一次额外的DH交换，确保即使IKE SA中使用的密钥被泄露，IPSec SA中使用的密钥也不会受到损害。</p>
-</li>
-</ul>
-<h3 id="2-2IPSec-基本原理"><a href="#2-2IPSec-基本原理" class="headerlink" title="2.2IPSec 基本原理"></a>2.2IPSec 基本原理</h3><p>IPSec通过在IPSec对等体间建立双向安全联盟形成一个安全互通的IPSec隧道，并通过定义IPSec保护的数据流将要保护的数据引入该IPSec隧道，然后对流经IPSec隧道的数据通过安全协议进行加密和验证，进而实现在Internet上安全传输指定的数据。IPSec安全联盟可以手工建立，也可以通过IKEv1或IKEv2协议自动协商建立。本文重点介绍如何定义IPSec保护的数据流、IKE自动协商建立安全联盟的过程。</p>
-<h4 id="2-2-1-定义-IPSec-保护的数据流"><a href="#2-2-1-定义-IPSec-保护的数据流" class="headerlink" title="2.2.1 定义 IPSec 保护的数据流"></a>2.2.1 定义 IPSec 保护的数据流</h4><p>IPSec是基于定义的感兴趣流触发对特定数据的保护，至于什么样的数据是需要IPSec保护的，可以通过以下两种方式定义。其中IPSec感兴趣流即需要IPSec保护的数据流。</p>
-<ul>
-<li>ACL方式<br>手工方式和IKE自动协商方式建立的IPSec隧道是由ACL来指定要保护的数据流范围，筛选出需要进入IPSec隧道的报文，ACL规则允许（permit）的报文将被保护，未匹配任何permit规则的报文将不被保护。这种方式可以利用ACL的丰富配置功能，根据IP地址、端口、协议类型等对报文进行过滤进而灵活制定IPSec的保护方法。</li>
-<li>路由方式<br>通过IPSec虚拟隧道接口建立IPSec隧道，将所有路由到IPSec虚拟隧道接口的报文都进行IPSec保护，根据该路由的目的地址确定哪些数据流需要IPSec保护。其中IPSec虚拟隧道接口是一种三层逻辑接口。路由方式具有以下优点：<ul>
-<li>通过路由将需要IPSec保护的数据流引到虚拟隧道接口，不需使用ACL定义待</li>
-<li>加&#x2F;解密的流量特征，简化了IPSec配置的复杂性。</li>
-<li>支持动态路由协议。</li>
-<li>通过GRE over IPSec支持对组播流量的保护。</li>
-</ul>
-</li>
-</ul>
-<h4 id="2-2-2-IKEv1-协商安全联盟的过程"><a href="#2-2-2-IKEv1-协商安全联盟的过程" class="headerlink" title="2.2.2 IKEv1 协商安全联盟的过程"></a>2.2.2 IKEv1 协商安全联盟的过程</h4><p><strong>IKEv1 协商阶段1</strong></p>
-<p>IKEv1协商阶段1的目的是建立IKE SA。IKE SA建立后对等体间的所有ISAKMP（一个框架 IKE是一种实现）消息都将通过加密和验证，这条安全通道可以保证IKEv1第二阶段的协商能够安全进行。IKEv1协商阶段1支持两种协商模式：<strong>主模式（Main Mode）和野蛮模式（AggressiveMode）</strong>。<br>主模式包含三次双向交换，用到了六条ISAKMP信息，协商过程如下图所示。这三次交换分别是：</p>
-<ol>
-<li>消息①和②用于提议交换<br>发起方发送一个或多个IKE安全提议，响应方查找最先匹配的IKE安全提议，并将这个IKE安全提议回应给发起方。匹配的原则为协商双方具有相同的加密算法、认证算法、认证方法和DH组标识。</li>
-<li>消息③和④用于密钥信息交换</li>
-<li>双方交换DH(一种密钥交换算法，不暴露私钥的情况下，计算出一个共享密钥)公共值和nonce(一个随机值)值，用于IKE SA的认证和加密密钥在这个阶段产生。消息⑤和⑥用于身份和认证信息交换（双方使用生成的密钥发送信息），双方进行身份认证和对整个主模式交换内容的认证。</li>
-</ol>
-<p>野蛮模式只用到三条信息，前两条消息①和②用于协商IKE安全提议，交换DH公共值、必需的辅助信息以及身份信息并且消息②中还包括响应方发送身份信息供发起方认证，消息③用于响应方认证发起方。IKEv1协商阶段1的协商过程如下图所示。</p>
-<p><img src="/images/ipsec/%E9%98%B6%E6%AE%B51.png" alt="ike阶段1"></p>
-<p>与主模式相比，野蛮模式减少了交换信息的数目，提高了协商的速度，但是没有对身份信息进行加密保护。</p>
-<p><strong>IKEv1 协商阶段 2</strong></p>
-<p>IKEv1协商阶段2的目的就是建立用来安全传输数据的IPSec SA，并为数据传输衍生出密钥。这一阶段采用快速模式（Quick Mode）。该模式使用IKEv1协商阶段1中生成的密钥对ISAKMP消息的完整性和身份进行验证，并对ISAKMP消息进行加密，故保证了交换的安全性。IKEv1协商阶段2的协商过程如下图所示。</p>
-<p><img src="/images/ipsec/ikev1%E5%8D%8F%E5%95%862.png" alt="ikev1协商2"></p>
-<p>IKEv1协商阶段2通过三条ISAKMP消息完成双方IPSec SA的建立：</p>
-<ol>
-<li>协商发起方发送本端的安全参数和身份认证信息。安全参数包括被保护的数据流和IPSec安全提议等需要协商的参数。身份认证信息包括第一阶段计算出的密钥和第二阶段产生的密钥材料等，可以再次认证对等体。</li>
-<li>协商响应方发送确认的安全参数和身份认证信息并生成新的密钥。<br>IPSec SA数据传输需要的加密、验证密钥由第一阶段产生的密钥、SPI、协议等参<br>数衍生得出，以保证每个IPSec SA都有自己独一无二的密钥。<br>如果启用PFS，则需要再次应用DH算法计算出一个共享密钥，然后参与上述计<br>算，因此在参数协商时要为PFS协商DH密钥组。</li>
-<li>发送方发送确认信息，确认与响应方可以通信，协商结束。</li>
-</ol>
-<h3 id="2-2-3-IKEv2-协商安全联盟的过程"><a href="#2-2-3-IKEv2-协商安全联盟的过程" class="headerlink" title="2.2.3 IKEv2 协商安全联盟的过程"></a>2.2.3 IKEv2 协商安全联盟的过程</h3><p>采用IKEv2协商安全联盟比IKEv1协商过程要简化的多。要建立一对IPSec SA，IKEv1需要经历两个阶段：“主模式＋快速模式”或者“野蛮模式＋快速模式”，前者至少需要交换9条消息，后者也至少需要6条消息。而IKEv2正常情况使用2次交换共4条消息就可以完成一对IPSec SA的建立，如果要求建立的IPSec SA大于一对时，每一对IPSec SA只需额外增加1次创建子SA交换，也就是2条消息就可以完成。IKEv2定义了三种交换：初始交换（Initial Exchanges）、创建子SA交换（Create_Child_SA Exchange）以及通知交换（Informational Exchange）。</p>
-<p><strong>初始交换</strong></p>
-<p>正常情况下，IKEv2通过初始交换就可以完成第一对IPSec SA的协商建立。IKEv2初始交换对应IKEv1的第一阶段，初始交换包含两次交换四条消息，如下图所示。<br><img src="/images/ipsec/ikev21.png" alt="ikev2协商2"></p>
-<p>消息①和②属于第一次交换（称为IKE_SA_INIT交换），以明文方式完成IKE SA的参数协商，包括协商加密和验证算法，交换临时随机数和DH交换。IKE_SA_INIT交换后生成一个共享密钥材料，通过这个共享密钥材料可以衍生出IPSec SA的所有密钥。<br>消息③和④属于第二次交换（称为IKE_AUTH交换），以加密方式完成身份认证、对前两条信息的认证和IPSec SA的参数协商。IKEv2支持RSA签名认证、预共享密钥认证以及扩展认证方法EAP（Extensible Authentication Protocol）。发起者通过在消息3中省去认证载荷来表明需要使用EAP认证。</p>
-<p><strong>创建子 SA 交换</strong></p>
-<p>当一个IKE SA需要创建多对IPSec SA时，需要使用创建子SA交换来协商多于一对的IPSec SA。另外，创建子SA交换还可以用于IKE SA的重协商。<br>创建子SA交换包含一个交换两条消息，对应IKEv1协商阶段2，交换的发起者可以是初始交换的协商发起方，也可以是初始交换的协商响应方。创建子SA交换必须在初始交<br>换完成后进行，交换消息由初始交换协商的密钥进行保护。类似于IKEv1，如果启用PFS，创建子SA交换需要额外进行一次DH交换，生成新的密钥材料。生成密钥材料后，子SA的所有密钥都从这个密钥材料衍生出来。</p>
-<p><strong>通知交换</strong></p>
-<p>运行IKE协商的两端有时会传递一些控制信息，例如错误信息或者通告信息，这些信息在IKEv2中是通过通知交换完成的，如下图所示。通知交换必须在IKE SA保护下进行，也就是说通知交换只能发生在初始交换之后。控制信息可能是IKE SA的，那么通知交换必须由该IKE SA来保护进行；也可能是某子SA的，那么该通知交换必须由生成该子SA的IKE SA来保护进行。</p>
-<p><img src="/images/ipsec/ikev22.png" alt="ikev2协商2"></p>
-
+<h2 id="2-IPSec原理描述"><a href="#2-IPSec原理描述" class="headerlink" title="2.IPSec原理描述"></a>2.IPSec原理描述</h2>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/05/18/ipsec/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
       
     </div>
 
@@ -842,85 +534,14 @@
 </tbody></table>
 <h2 id="二、函数调用流程"><a href="#二、函数调用流程" class="headerlink" title="二、函数调用流程"></a>二、函数调用流程</h2><p>用户态程序调用 socket()<br>        ↓<br>glibc 中封装的socket接口<br>        ↓<br>内部通过 syscall 指令<br>        ↓<br>进入内核，执行 sys_socket()</p>
 <h2 id="三、代码分析"><a href="#三、代码分析" class="headerlink" title="三、代码分析"></a>三、代码分析</h2><h3 id="1-glibc层代码分析"><a href="#1-glibc层代码分析" class="headerlink" title="1. glibc层代码分析"></a>1. glibc层代码分析</h3><p>代码位置：glibc-2.40\sysdeps\unix\sysv\linux\socket.c</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __socket (<span class="type">int</span> fd, <span class="type">int</span> type, <span class="type">int</span> domain)</span><br><span class="line">&#123;</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> __ASSUME_SOCKET_SYSCALL <span class="comment">//是否支持单独的系统调用号，肯定支持</span></span></span><br><span class="line"></span><br><span class="line">  <span class="keyword">return</span> INLINE_SYSCALL_CALL (socket, fd, type, domain);</span><br><span class="line"><span class="meta">#<span class="keyword">else</span></span></span><br><span class="line">	<span class="comment">//32位的处理器会走这个分支</span></span><br><span class="line">  <span class="keyword">return</span> SOCKETCALL (socket, fd, type, domain);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">libc_hidden_def (__socket)</span><br><span class="line"><span class="comment">//暴露给外部程序的符号为socket() 其实是__socket()的别名</span></span><br><span class="line">weak_alias (__socket, socket)</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<p>用户应用程序调用socket()实际调用的的是上述glibc中的__socket，在__socket中 <code>INLINE_SYSCALL_CALL</code>宏经过一系列展开后变成宏<code>__INLINE_SYSCALL4</code> ，这个宏会进一步再展开，如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">define</span> __INLINE_SYSCALL4(name, a1, a2, a3, a4) \</span></span><br><span class="line"><span class="meta">  INLINE_SYSCALL (name, 4, a1, a2, a3, a4)</span></span><br></pre></td></tr></table></figure>
-
-<p>上述的<code>INLINE_SYSCALL</code> 展开，结果如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">define</span> INLINE_SYSCALL(name, nr, args...)				\</span></span><br><span class="line"><span class="meta">  (&#123;</span></span><br><span class="line">	<span class="comment">//sc_ret为系统调用的返回值</span></span><br><span class="line">    <span class="type">long</span> <span class="type">int</span> sc_ret = INTERNAL_SYSCALL (name, nr, args);</span><br><span class="line">	<span class="comment">//对返回值好像要简单检查一下</span></span><br><span class="line">    __glibc_unlikely (INTERNAL_SYSCALL_ERROR_P (sc_ret))		\</span><br><span class="line">    ? SYSCALL_ERROR_LABEL (INTERNAL_SYSCALL_ERRNO (sc_ret))		\</span><br><span class="line">    : sc_ret;								\</span><br><span class="line">  &#125;)</span><br></pre></td></tr></table></figure>
-
-<p><code>INTERNAL_SYSCALL</code> 进一步在展开，会变成了<code>internal_syscall3</code></p>
-<p>这里举个例子，例如，未展开前为<code>INTERNAL_SYSCALL(socket, 3, AF_INET, SOCK_STREAM, 0)</code> 展开后会变成</p>
-<p><code>internal_syscall3(__NR_socket, AF_INET, SOCK_STREAM, 0)</code>，如果在x86架构中宏<code>__NR_socket</code>为41</p>
-<p>在glibc-2.40\sysdeps\unix\sysv\linux\x86_64\64\arch-syscall.h 中有定义</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">define</span> __NR_socket 41</span></span><br></pre></td></tr></table></figure>
-
-<p>总之，上述宏经过一系列展开后变成了如下函数，其中number为系统调用号，arg1, arg2, arg3 为传入的参数</p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">#define internal_syscall3(number, arg1, arg2, arg3)			\</span><br><span class="line">(&#123;									\</span><br><span class="line">    unsigned long int resultvar;					\</span><br><span class="line">    TYPEFY (arg3, __arg3) = ARGIFY (arg3);			 	\</span><br><span class="line">    TYPEFY (arg2, __arg2) = ARGIFY (arg2);			 	\</span><br><span class="line">    TYPEFY (arg1, __arg1) = ARGIFY (arg1);			 	\</span><br><span class="line">    register TYPEFY (arg3, _a3) asm (&quot;rdx&quot;) = __arg3;			\</span><br><span class="line">    register TYPEFY (arg2, _a2) asm (&quot;rsi&quot;) = __arg2;			\</span><br><span class="line">    register TYPEFY (arg1, _a1) asm (&quot;rdi&quot;) = __arg1;			\</span><br><span class="line">    asm volatile (							\</span><br><span class="line">    &quot;syscall\n\t&quot;							\</span><br><span class="line">    : &quot;=a&quot; (resultvar)							\</span><br><span class="line">    : &quot;0&quot; (number), &quot;r&quot; (_a1), &quot;r&quot; (_a2), &quot;r&quot; (_a3)			\</span><br><span class="line">    : &quot;memory&quot;, REGISTERS_CLOBBERED_BY_SYSCALL);			\</span><br><span class="line">    (long int) resultvar;						\</span><br><span class="line">&#125;)</span><br></pre></td></tr></table></figure>
-
-<p>上述代码的作用是将系统调用号和 3 个参数分别放入规定的寄存器（RAX, RDI, RSI, RDX），然后执行 <code>syscall</code> 指令，并将返回值保存到 <code>resultvar</code>：</p>
-<p>“memory”, <code>REGISTERS_CLOBBERED_BY_SYSCALL</code> 的意思是告诉编译器不要优化这段代码</p>
-<p>下面附上x86-64 Linux 的 syscall 调用约定传参的寄存器</p>
-<table>
-<thead>
-<tr>
-<th>参数</th>
-<th>寄存器</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>syscall 编号</td>
-<td>RAX</td>
-</tr>
-<tr>
-<td>参数1</td>
-<td>RDI</td>
-</tr>
-<tr>
-<td>参数2</td>
-<td>RSI</td>
-</tr>
-<tr>
-<td>参数3</td>
-<td>RDX</td>
-</tr>
-<tr>
-<td>参数4</td>
-<td>R10</td>
-</tr>
-<tr>
-<td>参数5</td>
-<td>R8</td>
-</tr>
-<tr>
-<td>参数6</td>
-<td>R9</td>
-</tr>
-</tbody></table>
-<h3 id="2-内核代码分析"><a href="#2-内核代码分析" class="headerlink" title="2.内核代码分析"></a>2.内核代码分析</h3><p>执行上述syscall指令后CPU 会根据 MSR 寄存器（Model Specific Registers）跳转到系统调用函数，例如，x86架构则会进入到系统调用的统一入口函数<code>entry_SYSCALL_64</code></p>
-<p><code>entry_SYSCALL_64</code>函数的注册（也就把地址写入MSR寄存器）在<code>syscall_init</code>中完成代码如下：</p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">void syscall_init(void)</span><br><span class="line">&#123;</span><br><span class="line">	wrmsr(MSR_STAR, 0, (__USER32_CS &lt;&lt; 16) | __KERNEL_CS);</span><br><span class="line">	//把entry_SYSCALL_64 的地址写入MSR_LSTAR寄存器</span><br><span class="line">	wrmsrl(MSR_LSTAR, (unsigned long)entry_SYSCALL_64);</span><br><span class="line"></span><br><span class="line"> 	...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p><strong>上述<code>syscall_init</code> 函数在<code>start_kernel（）</code>中被调用</strong></p>
-<p>接下里看一下<code>entry_SYSCALL_64</code>的逻辑，</p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line">SYM_CODE_START(entry_SYSCALL_64)</span><br><span class="line">	UNWIND_HINT_EMPTY</span><br><span class="line">	//这个是切换GS寄存器，这个寄存器是访问per-cpu变量的基址task_struct结构就依赖这个寄存器间接获得</span><br><span class="line">	swapgs</span><br><span class="line">	/* tss.sp2 is scratch space. */</span><br><span class="line">	//将当前栈指针保存</span><br><span class="line">	movq	%rsp, PER_CPU_VAR(cpu_tss_rw + TSS_sp2)</span><br><span class="line">	//切换页表</span><br><span class="line">	SWITCH_TO_KERNEL_CR3 scratch_reg=%rsp</span><br><span class="line">	//切换当前栈指针到当前 CPU 的内核栈顶指针</span><br><span class="line">	movq	PER_CPU_VAR(cpu_current_top_of_stack), %rsp</span><br><span class="line"></span><br><span class="line">SYM_INNER_LABEL(entry_SYSCALL_64_safe_stack, SYM_L_GLOBAL)</span><br><span class="line"></span><br><span class="line">	/* Construct struct pt_regs on stack */</span><br><span class="line">	//把用户态的一些信息入栈（貌似就是pt_regs）</span><br><span class="line">	pushq	$__USER_DS				/* pt_regs-&gt;ss */</span><br><span class="line">	pushq	PER_CPU_VAR(cpu_tss_rw + TSS_sp2)	/* pt_regs-&gt;sp */</span><br><span class="line">	pushq	%r11					/* pt_regs-&gt;flags */</span><br><span class="line">	pushq	$__USER_CS				/* pt_regs-&gt;cs */</span><br><span class="line">	pushq	%rcx					/* pt_regs-&gt;ip */</span><br><span class="line">SYM_INNER_LABEL(entry_SYSCALL_64_after_hwframe, SYM_L_GLOBAL)</span><br><span class="line">	//这里存了系统调用号</span><br><span class="line">	pushq	%rax					/* pt_regs-&gt;orig_ax */</span><br><span class="line">	//其他寄存器的信息继续保存到栈中</span><br><span class="line">	PUSH_AND_CLEAR_REGS rax=$-ENOSYS</span><br><span class="line"></span><br><span class="line">	/* IRQs are off. */</span><br><span class="line">	//把系统调用号放入 rdi → 作为函数的第 1 个参数</span><br><span class="line">	movq	%rax, %rdi</span><br><span class="line">	//把 pt_regs 地址放入 rsi → 作为第 2 个参数</span><br><span class="line">	movq	%rsp, %rsi</span><br><span class="line">	//调用do_syscall_64</span><br><span class="line">	call	do_syscall_64		/* returns with IRQs disabled */</span><br><span class="line"></span><br><span class="line">	...</span><br><span class="line">	</span><br><span class="line">SYM_CODE_END(entry_SYSCALL_64)</span><br></pre></td></tr></table></figure>
-
-<p>在用户执行 <code>syscall</code> 指令后，CPU 跳转到<code>entry_SYSCALL_64</code>，完成从用户态到内核态的切换、栈构造、参数准备，并调用 C 函数 <code>do_syscall_64()</code> 来处理系统调用。</p>
-<p>接下来看一下上述汇编代码中调用<code>do_syscall_64</code> 代码位于arch\x86\entry\common.c中</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_X86_64</span></span><br><span class="line">__visible noinstr <span class="type">void</span> <span class="title function_">do_syscall_64</span><span class="params">(<span class="type">unsigned</span> <span class="type">long</span> nr, <span class="keyword">struct</span> pt_regs *regs)</span></span><br><span class="line">&#123;</span><br><span class="line"></span><br><span class="line">	<span class="comment">//这里开启了中断（进入系统调用前要先关中断在哪里没找到，好像sycall后会自动关）追踪，安全相关</span></span><br><span class="line">	nr = syscall_enter_from_user_mode(regs, nr);</span><br><span class="line">	<span class="comment">//禁止插桩，</span></span><br><span class="line">	instrumentation_begin();</span><br><span class="line">	<span class="comment">//检查系统调用号是否在合法范围</span></span><br><span class="line">	<span class="keyword">if</span> (likely(nr &lt; NR_syscalls)) &#123;</span><br><span class="line">		nr = array_index_nospec(nr, NR_syscalls);</span><br><span class="line">		<span class="comment">//nr存的是系统调用好，从系统调用表中找到对应的处理函数，然后将</span></span><br><span class="line">		<span class="comment">//返回值存入到regs-&gt;ax寄存器</span></span><br><span class="line">		regs-&gt;ax = sys_call_table[nr](regs);</span><br><span class="line">        <span class="comment">//32位</span></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_X86_X32_ABI</span></span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (likely((nr &amp; __X32_SYSCALL_BIT) &amp;&amp;</span><br><span class="line">			  (nr &amp; ~__X32_SYSCALL_BIT) &lt; X32_NR_syscalls)) &#123;</span><br><span class="line">		nr = array_index_nospec(nr &amp; ~__X32_SYSCALL_BIT,</span><br><span class="line">					X32_NR_syscalls);</span><br><span class="line"></span><br><span class="line">		regs-&gt;ax = x32_sys_call_table[nr](regs);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	&#125;</span><br><span class="line">	instrumentation_end();</span><br><span class="line">	syscall_exit_to_user_mode(regs);</span><br><span class="line">&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br></pre></td></tr></table></figure>
-
-<p>上述代码中最关键的就是<code>regs-&gt;ax = sys_call_table[nr](regs)</code>找到对应的系统调用函数，并传入pt_regs，pt_regs保存了参数和用户的一些信息。</p>
-<p><code>sys_call_table[]</code>就是一个函数指针，每个元素指向具体的函数实现，定义如下所示:</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">asmlinkage <span class="type">const</span> <span class="type">sys_call_ptr_t</span> sys_call_table[__NR_syscall_max+<span class="number">1</span>] = &#123;</span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * Smells like a compiler bug -- it doesn&#x27;t work</span></span><br><span class="line"><span class="comment">	 * when the &amp; below is removed.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	[<span class="number">0</span> ... __NR_syscall_max] = &amp;__x64_sys_ni_syscall,</span><br><span class="line"><span class="comment">//下面这个头文件貌似是编译生成的，include进来后就替换了上面的默认值</span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;asm/syscalls_64.h&gt;</span></span></span><br><span class="line">&#125;;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<p>上述 <code>&lt;asm/syscalls_64.h&gt;</code>是在编译过程中生成的，具体的流程如下：</p>
-<p>syscall_64.tbl<br>   ↓（作为输入）<br>syscalltbl.sh 脚本<br>   ↓（生成）<br>syscalls_64.h<br>   ↓（#include）<br>用于填充 sys_call_table[]</p>
-<p>上述流程在\arch\x86\entry\syscalls中有体现。下面展示了部分<code>syscall_64.tbl</code>中的内容</p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">0	common	read			sys_read</span><br><span class="line">1	common	write			sys_write</span><br><span class="line">2	common	open			sys_open</span><br><span class="line">3	common	close			sys_close</span><br><span class="line">·········</span><br><span class="line">41	common	socket			sys_socket</span><br><span class="line">·········</span><br><span class="line">440	common	process_madvise		sys_process_madvise</span><br></pre></td></tr></table></figure>
-
-<p>系统调用号 <strong>41</strong> 对应的函数指针在 <code>sys_call_table[]</code>被<code>syscalltbl.sh</code> 处理后，最终指向 __x64_sys_socket 这个函数，而这个函数和<code>SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)</code> 宏展开后是一个函数！</p>
-
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/05/13/1-socket%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
       
     </div>
 
@@ -1098,12 +719,18 @@
 
 <script src="/js/next-boot.js"></script>
 
+<script src="/js/bookmark.js"></script>
+
 
 
 
   
 
 
+
+
+  
+<script src="/js/local-search.js"></script>
 
 
 
