@@ -20,18 +20,22 @@
     var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
   </script>
 
-  <meta name="description" content="协议栈源码学习">
-<meta property="og:type" content="website">
-<meta property="og:title" content="标题">
-<meta property="og:url" content="http://example.com/archives/2025/index.html">
+  <meta name="description" content="网卡核心硬件组成现代有线以太网卡中，MAC、PHY、DMA、PCIe 是网卡最核心的硬件模块，这些模块构成了数据通信的基础框架。以下是它们的详细分工和协作关系，具体的架构图如下所示： PHYPHY 层属于 OSI 物理层（Layer 1），主要负责 数字信号 ↔ 模拟信号 的转换，具体包括：  链路管理   自动协商​​：与对端设备协商速率（如10&#x2F;100&#x2F;1000 Mbps）">
+<meta property="og:type" content="article">
+<meta property="og:title" content="网卡硬件各组件">
+<meta property="og:url" content="http://example.com/2025/05/23/%E7%BD%91%E5%8D%A1%E7%A1%AC%E4%BB%B6%E6%A8%A1%E5%9D%97/index.html">
 <meta property="og:site_name" content="标题">
-<meta property="og:description" content="协议栈源码学习">
+<meta property="og:description" content="网卡核心硬件组成现代有线以太网卡中，MAC、PHY、DMA、PCIe 是网卡最核心的硬件模块，这些模块构成了数据通信的基础框架。以下是它们的详细分工和协作关系，具体的架构图如下所示： PHYPHY 层属于 OSI 物理层（Layer 1），主要负责 数字信号 ↔ 模拟信号 的转换，具体包括：  链路管理   自动协商​​：与对端设备协商速率（如10&#x2F;100&#x2F;1000 Mbps）">
 <meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/images%5C%E7%BD%91%E5%8D%A1%5C%E7%BD%91%E5%8D%A1%E7%BB%93%E6%9E%84.drawio.png">
+<meta property="article:published_time" content="2025-05-23T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-05-24T10:49:59.621Z">
 <meta property="article:author" content="zhangm">
-<meta property="article:tag" content="TCP&#x2F;IP">
+<meta property="article:tag" content="网卡">
 <meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/images%5C%E7%BD%91%E5%8D%A1%5C%E7%BD%91%E5%8D%A1%E7%BB%93%E6%9E%84.drawio.png">
 
-<link rel="canonical" href="http://example.com/archives/2025/">
+<link rel="canonical" href="http://example.com/2025/05/23/%E7%BD%91%E5%8D%A1%E7%A1%AC%E4%BB%B6%E6%A8%A1%E5%9D%97/">
 
 
 <script id="page-configurations">
@@ -39,12 +43,12 @@
   CONFIG.page = {
     sidebar: "",
     isHome : false,
-    isPost : false,
+    isPost : true,
     lang   : 'zh-CN'
   };
 </script>
 
-  <title>归档 | 标题</title>
+  <title>网卡硬件各组件 | 标题</title>
   
 
 
@@ -188,176 +192,166 @@
         <div class="content-wrap">
           
 
-          <div class="content archive">
+          <div class="content post posts-expand">
             
 
+    
   
   
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/23/%E7%BD%91%E5%8D%A1%E7%A1%AC%E4%BB%B6%E6%A8%A1%E5%9D%97/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="标题">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          网卡硬件各组件
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-05-23 22:00:00" itemprop="dateCreated datePublished" datetime="2025-05-23T22:00:00+08:00">2025-05-23</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-05-24 18:49:59" itemprop="dateModified" datetime="2025-05-24T18:49:59+08:00">2025-05-24</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%85%B6%E4%BB%96/" itemprop="url" rel="index"><span itemprop="name">其他</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
   
-  <div class="post-block">
-    <div class="posts-collapse">
-      <div class="collection-title">
-        <span class="collection-header">嗯..! 目前共计 7 篇日志。 继续努力。</span>
-      </div>
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/05/23/%E7%BD%91%E5%8D%A1%E7%A1%AC%E4%BB%B6%E6%A8%A1%E5%9D%97/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/23/%E7%BD%91%E5%8D%A1%E7%A1%AC%E4%BB%B6%E6%A8%A1%E5%9D%97/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
 
       
-    <div class="collection-year">
-      <span class="collection-header">2025</span>
-    </div>
-
-  <article itemscope itemtype="http://schema.org/Article">
-    <header class="post-header">
-
-      <div class="post-meta">
-        <time itemprop="dateCreated"
-              datetime="2025-05-24T22:00:00+08:00"
-              content="2025-05-24">
-          05-24
-        </time>
-      </div>
-
-      <div class="post-title">
-          <a class="post-title-link" href="/2025/05/24/sock%E7%9A%84%E5%88%9B%E5%BB%BA%E4%B8%8E%E5%88%9D%E5%A7%8B%E5%8C%96/" itemprop="url">
-            <span itemprop="name">sock的创建与初始化</span>
-          </a>
-      </div>
-
-    </header>
-  </article>
-
-  <article itemscope itemtype="http://schema.org/Article">
-    <header class="post-header">
-
-      <div class="post-meta">
-        <time itemprop="dateCreated"
-              datetime="2025-05-23T22:00:00+08:00"
-              content="2025-05-23">
-          05-23
-        </time>
-      </div>
-
-      <div class="post-title">
-          <a class="post-title-link" href="/2025/05/23/%E7%BD%91%E5%8D%A1%E7%A1%AC%E4%BB%B6%E6%A8%A1%E5%9D%97/" itemprop="url">
-            <span itemprop="name">网卡硬件各组件</span>
-          </a>
-      </div>
-
-    </header>
-  </article>
-
-  <article itemscope itemtype="http://schema.org/Article">
-    <header class="post-header">
-
-      <div class="post-meta">
-        <time itemprop="dateCreated"
-              datetime="2025-05-21T22:00:00+08:00"
-              content="2025-05-21">
-          05-21
-        </time>
-      </div>
-
-      <div class="post-title">
-          <a class="post-title-link" href="/2025/05/21/socket_sock_file_%E6%A6%82%E5%BF%B5/" itemprop="url">
-            <span itemprop="name">套接字层socket、sock、文件系统之间的关系</span>
-          </a>
-      </div>
-
-    </header>
-  </article>
-
-  <article itemscope itemtype="http://schema.org/Article">
-    <header class="post-header">
-
-      <div class="post-meta">
-        <time itemprop="dateCreated"
-              datetime="2025-05-21T21:00:00+08:00"
-              content="2025-05-21">
-          05-21
-        </time>
-      </div>
-
-      <div class="post-title">
-          <a class="post-title-link" href="/2025/05/21/%E5%86%85%E6%A0%B8socket%E5%88%9B%E5%BB%BA/" itemprop="url">
-            <span itemprop="name">内核socket套接字的创建</span>
-          </a>
-      </div>
-
-    </header>
-  </article>
-
-  <article itemscope itemtype="http://schema.org/Article">
-    <header class="post-header">
-
-      <div class="post-meta">
-        <time itemprop="dateCreated"
-              datetime="2025-05-19T22:00:00+08:00"
-              content="2025-05-19">
-          05-19
-        </time>
-      </div>
-
-      <div class="post-title">
-          <a class="post-title-link" href="/2025/05/19/VFS%E8%99%9A%E6%8B%9F%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/" itemprop="url">
-            <span itemprop="name">VFS虚拟文件系统</span>
-          </a>
-      </div>
-
-    </header>
-  </article>
-
-  <article itemscope itemtype="http://schema.org/Article">
-    <header class="post-header">
-
-      <div class="post-meta">
-        <time itemprop="dateCreated"
-              datetime="2025-05-18T22:00:00+08:00"
-              content="2025-05-18">
-          05-18
-        </time>
-      </div>
-
-      <div class="post-title">
-          <a class="post-title-link" href="/2025/05/18/ipsec/" itemprop="url">
-            <span itemprop="name">IPSec</span>
-          </a>
-      </div>
-
-    </header>
-  </article>
-
-  <article itemscope itemtype="http://schema.org/Article">
-    <header class="post-header">
-
-      <div class="post-meta">
-        <time itemprop="dateCreated"
-              datetime="2025-05-13T22:00:00+08:00"
-              content="2025-05-13">
-          05-13
-        </time>
-      </div>
-
-      <div class="post-title">
-          <a class="post-title-link" href="/2025/05/13/socket%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8/" itemprop="url">
-            <span itemprop="name">socket系统调用</span>
-          </a>
-      </div>
-
-    </header>
-  </article>
-
+        <h3 id="网卡核心硬件组成"><a href="#网卡核心硬件组成" class="headerlink" title="网卡核心硬件组成"></a>网卡核心硬件组成</h3><p>现代有线以太网卡中，MAC、PHY、DMA、PCIe 是网卡最核心的硬件模块，这些模块构成了数据通信的基础框架。以下是它们的详细分工和协作关系，具体的架构图如下所示：<br><img src="/images%5C%E7%BD%91%E5%8D%A1%5C%E7%BD%91%E5%8D%A1%E7%BB%93%E6%9E%84.drawio.png" alt="网卡结构"></p>
+<h4 id="PHY"><a href="#PHY" class="headerlink" title="PHY"></a><strong>PHY</strong></h4><p>PHY 层属于 OSI 物理层（Layer 1），主要负责 数字信号 ↔ 模拟信号 的转换，具体包括：</p>
+<ol>
+<li>链路管理</li>
+</ol>
+<ul>
+<li>自动协商​​：与对端设备协商速率（如10&#x2F;100&#x2F;1000 Mbps）和双工模式。</li>
+<li>链路检测​​：监测连接状态（如网线是否插入）。</li>
+</ul>
+<ol start="2">
+<li>信号转换​</li>
+</ol>
+<ul>
+<li>数模转换​​：将MAC层生成的数字信号转换为适合线缆（如双绞线、光纤）传输的模拟信号（如电信号或光信号）。</li>
+<li>模数转换​​：将接收到的模拟信号还原为数字信号供上层处理。</li>
+</ul>
+<ol start="3">
+<li>物理介质适配​</li>
+</ol>
+<p>支持不同介质标准（如以太网的RJ-45接口、光纤接口），适应电压、阻抗等物理特性,例如：100BASE-TX（双绞线）、1000BASE-SX（光纤）等。</p>
+<ol start="4">
+<li>编码与解码</li>
+</ol>
+<p>使用特定编码方案（如曼彻斯特编码、PAM4）以提高抗干扰能力，确保信号完整性。</p>
+<h4 id="MAC"><a href="#MAC" class="headerlink" title="MAC"></a><strong>MAC</strong></h4><ol>
+<li>发送数据时​​，计算 ​​CRC（循环冗余校验）​​，确保数据完整性。</li>
+<li>接收数据时​​：<ul>
+<li>从 PHY 层接收原始比特流，解析成以太网帧。</li>
+<li>检查​目标MAC地址​​（仅接收发给本机、广播或组播的帧）。</li>
+<li>校验 ​​FCS​​，丢弃损坏的帧。</li>
+</ul>
+</li>
+<li>流量控制：使用 ​​PAUSE 帧（IEEE 802.3x）​​ 通知对端设备暂停发送，防止缓冲区溢出。</li>
+</ol>
+<h4 id="DMA"><a href="#DMA" class="headerlink" title="DMA"></a><strong>DMA</strong></h4><p>数据直接传输，网卡通过DMA引擎直接读写主机内存</p>
+<h4 id="RSS"><a href="#RSS" class="headerlink" title="RSS"></a><strong>RSS</strong></h4><p>RSS 是一种由 网卡硬件实现 的多队列技术，主要用于 提升多核 CPU 的网络数据包处理性能。<br>网卡硬件将流量分散到多个接收队列（RX Queues），每个队列绑定不同CPU核心。</p>
+<h4 id="TSO"><a href="#TSO" class="headerlink" title="TSO"></a><strong>TSO</strong></h4><p>TSO 是一种由 网卡硬件实现 的优化技术，旨在 将TCP数据包的分片（Segmentation）任务从CPU转移到网卡，从而大幅降低CPU负载并提升网络吞吐量。</p>
+<h4 id="PCIe"><a href="#PCIe" class="headerlink" title="PCIe"></a><strong>PCIe</strong></h4><ul>
+<li>提供网卡与CPU&#x2F;内存的物理通道，决定最大带宽（如100G需PCIe 4.0 x8）。</li>
+<li>支持DMA、MSI-X中断，优化响应速度</li>
+</ul>
 
     </div>
-  </div>
-  
-  
-  
 
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E7%BD%91%E5%8D%A1/" rel="tag"># 网卡</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/05/21/socket_sock_file_%E6%A6%82%E5%BF%B5/" rel="prev" title="套接字层socket、sock、文件系统之间的关系">
+      <i class="fa fa-chevron-left"></i> 套接字层socket、sock、文件系统之间的关系
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2025/05/24/sock%E7%9A%84%E5%88%9B%E5%BB%BA%E4%B8%8E%E5%88%9D%E5%A7%8B%E5%8C%96/" rel="next" title="sock的创建与初始化">
+      sock的创建与初始化 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
   
 
 
 
           </div>
           
+    <div class="comments" id="valine-comments"></div>
 
 <script>
   window.addEventListener('tabs:register', () => {
@@ -404,6 +398,7 @@
 
       <!--noindex-->
       <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%BD%91%E5%8D%A1%E6%A0%B8%E5%BF%83%E7%A1%AC%E4%BB%B6%E7%BB%84%E6%88%90"><span class="nav-number">1.</span> <span class="nav-text">网卡核心硬件组成</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#PHY"><span class="nav-number">1.1.</span> <span class="nav-text">PHY</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#MAC"><span class="nav-number">1.2.</span> <span class="nav-text">MAC</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#DMA"><span class="nav-number">1.3.</span> <span class="nav-text">DMA</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#RSS"><span class="nav-number">1.4.</span> <span class="nav-text">RSS</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#TSO"><span class="nav-number">1.5.</span> <span class="nav-text">TSO</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#PCIe"><span class="nav-number">1.6.</span> <span class="nav-text">PCIe</span></a></li></ol></li></ol></div>
       </div>
       <!--/noindex-->
 
