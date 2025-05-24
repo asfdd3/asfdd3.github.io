@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="以IPv4协议族为例，当用户态执行socket系统调用后，会调用到inet_create(),在inet_create()中会创建与socket关联的sock结构体，具体代码如下： 12345678910111213141516171819static int inet_create(struct net *net, struct socket *sock, int protocol,">
+<meta property="og:type" content="article">
+<meta property="og:title" content="sock的创建与初始化">
+<meta property="og:url" content="http://example.com/2025/05/24/sock%E7%9A%84%E5%88%9B%E5%BB%BA%E4%B8%8E%E5%88%9D%E5%A7%8B%E5%8C%96/index.html">
+<meta property="og:site_name" content="标题">
+<meta property="og:description" content="以IPv4协议族为例，当用户态执行socket系统调用后，会调用到inet_create(),在inet_create()中会创建与socket关联的sock结构体，具体代码如下： 12345678910111213141516171819static int inet_create(struct net *net, struct socket *sock, int protocol,">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/images%5Csocket%5Csock%E5%85%B3%E7%B3%BB.jpeg">
+<meta property="article:published_time" content="2025-05-24T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-05-24T10:21:57.092Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="socket">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/images%5Csocket%5Csock%E5%85%B3%E7%B3%BB.jpeg">
+
+<link rel="canonical" href="http://example.com/2025/05/24/sock%E7%9A%84%E5%88%9B%E5%BB%BA%E4%B8%8E%E5%88%9D%E5%A7%8B%E5%8C%96/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>sock的创建与初始化 | 标题</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">标题</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">副标题</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/24/sock%E7%9A%84%E5%88%9B%E5%BB%BA%E4%B8%8E%E5%88%9D%E5%A7%8B%E5%8C%96/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="标题">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          sock的创建与初始化
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-05-24 22:00:00 / 修改时间：18:21:57" itemprop="dateCreated datePublished" datetime="2025-05-24T22:00:00+08:00">2025-05-24</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/05/24/sock%E7%9A%84%E5%88%9B%E5%BB%BA%E4%B8%8E%E5%88%9D%E5%A7%8B%E5%8C%96/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/24/sock%E7%9A%84%E5%88%9B%E5%BB%BA%E4%B8%8E%E5%88%9D%E5%A7%8B%E5%8C%96/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>以IPv4协议族为例，当用户态执行socket系统调用后，会调用到<code>inet_create()</code>,在<code>inet_create()</code>中会创建与socket关联的sock结构体，具体代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">inet_create</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> socket *sock, <span class="type">int</span> protocol,</span></span><br><span class="line"><span class="params">		       <span class="type">int</span> kern)</span></span><br><span class="line">&#123;</span><br><span class="line">    .....</span><br><span class="line">	<span class="comment">//注意： 这里申请一个sock结构，这个sock结构可以理解为传输层协议和socket之间的一个中间层</span></span><br><span class="line">	<span class="comment">//对上提供socket层的结构，</span></span><br><span class="line">	<span class="comment">//对下与具体的协议相关</span></span><br><span class="line">	<span class="comment">//kern 标识这个套接字是否是内核创建的</span></span><br><span class="line">	sk = sk_alloc(net, PF_INET, GFP_KERNEL, answer_prot, kern);</span><br><span class="line">	<span class="keyword">if</span> (!sk)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">    .....</span><br><span class="line">	<span class="comment">//这里初始化了上面申请的sock结构体的各个字段</span></span><br><span class="line">	sock_init_data(sock, sk);</span><br><span class="line"></span><br><span class="line">    .....</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h2 id="sk-alloc"><a href="#sk-alloc" class="headerlink" title="sk_alloc()"></a>sk_alloc()</h2><p>上述<code>sk_alloc()</code>其实就是使用slab分配其分配了prot-&gt;size大小的的内存，也就是说分配了一个比sock结构体size还要大的内存，举个例子，如果是TCP协议，则分配的大小为sizeof(tcp_sock),也就是说tcp_sock内嵌了sock结构体，类似继承的关系，关系如下图所示：</p>
+<p><img src="/images%5Csocket%5Csock%E5%85%B3%E7%B3%BB.jpeg" alt="sock之间的关系"></p>
+<p>接下来具体看一下<code>sk_alloc()</code>的实现：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> sock *<span class="title function_">sk_alloc</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="type">int</span> family, <span class="type">gfp_t</span> priority,</span></span><br><span class="line"><span class="params">		      <span class="keyword">struct</span> proto *prot, <span class="type">int</span> kern)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span>;</span></span><br><span class="line">	<span class="comment">//调用slab 分配一个sk结构体，注意这个结构体的大小取决与prot参数的size字段</span></span><br><span class="line">	<span class="comment">//__GFP_ZERO表示为内存申请后需要清零的标志位</span></span><br><span class="line">	sk = sk_prot_alloc(prot, priority | __GFP_ZERO, family);</span><br><span class="line">	<span class="keyword">if</span> (sk) &#123;</span><br><span class="line">		<span class="comment">//设置协议族</span></span><br><span class="line">		sk-&gt;sk_family = family;</span><br><span class="line">		<span class="comment">/*</span></span><br><span class="line"><span class="comment">		 * See comment in struct sock definition to understand</span></span><br><span class="line"><span class="comment">		 * why we need sk_prot_creator -acme</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//这里很关键，将具体协议的prot关联到了sock上</span></span><br><span class="line">		sk-&gt;sk_prot = sk-&gt;sk_prot_creator = prot;</span><br><span class="line">		<span class="comment">//记录是否是内核创建的</span></span><br><span class="line">		sk-&gt;sk_kern_sock = kern;</span><br><span class="line">		sock_lock_init(sk);</span><br><span class="line">		<span class="comment">//如果是用户进程创建的，就增加网络命名空间的引用计数</span></span><br><span class="line">		sk-&gt;sk_net_refcnt = kern ? <span class="number">0</span> : <span class="number">1</span>;</span><br><span class="line">		<span class="comment">//更新当前core上所有活跃套接字的引用计数。</span></span><br><span class="line">		<span class="keyword">if</span> (likely(sk-&gt;sk_net_refcnt)) &#123;</span><br><span class="line">			get_net_track(net, &amp;sk-&gt;ns_tracker, priority);</span><br><span class="line">			sock_inuse_add(net, <span class="number">1</span>);</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			__netns_tracker_alloc(net, &amp;sk-&gt;ns_tracker,</span><br><span class="line">					      <span class="literal">false</span>, priority);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//将sock与网络命名空间关联</span></span><br><span class="line">		sock_net_set(sk, net);</span><br><span class="line">		<span class="comment">//发送缓冲区引用计数加1</span></span><br><span class="line">		refcount_set(&amp;sk-&gt;sk_wmem_alloc, <span class="number">1</span>);</span><br><span class="line"></span><br><span class="line">		mem_cgroup_sk_alloc(sk);</span><br><span class="line">		cgroup_sk_alloc(&amp;sk-&gt;sk_cgrp_data);</span><br><span class="line">		sock_update_classid(&amp;sk-&gt;sk_cgrp_data);</span><br><span class="line">		sock_update_netprioidx(&amp;sk-&gt;sk_cgrp_data);</span><br><span class="line">		sk_tx_queue_clear(sk);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> sk;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码中调用<code>sk_prot_alloc()</code> 根据不同的prot(也就是不同的协议)申请sock，同时设置了__GFP_ZERO 标志，表示需要将申请的内存memset，<code>sk_prot_alloc()</code> 的具体实现如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">struct</span> sock *<span class="title function_">sk_prot_alloc</span><span class="params">(<span class="keyword">struct</span> proto *prot, <span class="type">gfp_t</span> priority,</span></span><br><span class="line"><span class="params">		<span class="type">int</span> family)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">kmem_cache</span> *<span class="title">slab</span>;</span></span><br><span class="line">	<span class="comment">//从slab分配器中拿一个结构体，这个slabchace是inet_init中初始化的</span></span><br><span class="line">	slab = prot-&gt;slab;</span><br><span class="line">	<span class="keyword">if</span> (slab != <span class="literal">NULL</span>) &#123;</span><br><span class="line">		sk = kmem_cache_alloc(slab, priority &amp; ~__GFP_ZERO);</span><br><span class="line">		<span class="keyword">if</span> (!sk)</span><br><span class="line">			<span class="keyword">return</span> sk;</span><br><span class="line">		<span class="comment">//是否需要memset，可以看到这里的大小是objsize</span></span><br><span class="line">		<span class="keyword">if</span> (want_init_on_alloc(priority))</span><br><span class="line">			sk_prot_clear_nulls(sk, prot-&gt;obj_size);</span><br><span class="line">	&#125; <span class="keyword">else</span></span><br><span class="line">	<span class="comment">//如果没使用slab就用kmalloc，kamlloc不也是slab吗？</span></span><br><span class="line">		sk = kmalloc(prot-&gt;obj_size, priority);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (sk != <span class="literal">NULL</span>) &#123;</span><br><span class="line">		<span class="comment">//安全相关</span></span><br><span class="line">		<span class="keyword">if</span> (security_sk_alloc(sk, family, priority))</span><br><span class="line">			<span class="keyword">goto</span> out_free;</span><br><span class="line">		<span class="comment">//增加引用计数</span></span><br><span class="line">		<span class="keyword">if</span> (!try_module_get(prot-&gt;owner))</span><br><span class="line">			<span class="keyword">goto</span> out_free_sec;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> sk;</span><br><span class="line"></span><br><span class="line">out_free_sec:</span><br><span class="line">	security_sk_free(sk);</span><br><span class="line">out_free:</span><br><span class="line">	<span class="keyword">if</span> (slab != <span class="literal">NULL</span>)</span><br><span class="line">		kmem_cache_free(slab, sk);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		kfree(sk);</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>从上述代码可知是通过<code>slab = prot-&gt;slab;</code>获取了一个slab对象，这个slab管理的结构体大小是<code>inet_init()</code>中调用<code>proto_register()</code>创建slab时候确定的，具体函数如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">proto_register</span><span class="params">(<span class="keyword">struct</span> proto *prot, <span class="type">int</span> alloc_slab)</span></span><br><span class="line">&#123;</span><br><span class="line">	......</span><br><span class="line">	<span class="keyword">if</span> (alloc_slab) &#123;</span><br><span class="line"></span><br><span class="line">		prot-&gt;slab = kmem_cache_create_usercopy(prot-&gt;name,</span><br><span class="line">					prot-&gt;obj_size, <span class="number">0</span>,</span><br><span class="line">					SLAB_HWCACHE_ALIGN | SLAB_ACCOUNT |</span><br><span class="line">					prot-&gt;slab_flags,</span><br><span class="line">					prot-&gt;useroffset, prot-&gt;usersize,</span><br><span class="line">					<span class="literal">NULL</span>);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	.......</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>可以看到在上面创建slab缓存时，指定的size大小为prot-&gt;obj_size，例如tcp协议的obj_size则为sizeof(tcp_sock)结构体的大小。<br>注意到上述创建slab缓存使用的接口是<code>kmem_cache_create_usercopy</code>，这个<code>usercopy</code>的意义是允许指定对象拷贝到用户空间的内存区域。<code>prot-&gt;useroffset</code>指的是对象中允许拷贝到用户空间的数据区域的偏移。<code>prot-&gt;usersize</code>指的是允许拷贝到用户空间的数据区域的大小。（tcp等协议这个字段好像都是空）</p>
+<h2 id="sock-init-data"><a href="#sock-init-data" class="headerlink" title="sock_init_data()"></a>sock_init_data()</h2><p>上述创建了sock结构体后紧接着就会调用<code>sock_init_data</code>完成初始化，<code>sock_init_data</code>中先从socket结构体中关联的inode中获取uid然后调用<code>sock_init_data_uid()</code>完成初始化，上述两个函数的代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">sock_init_data</span><span class="params">(<span class="keyword">struct</span> socket *sock, <span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//注意：这里的uid是在创建socket和inode的时候设置的</span></span><br><span class="line">	<span class="comment">//i_uid用于表示与该 inode 关联的文件或对象的所有者用户ID</span></span><br><span class="line">	<span class="type">kuid_t</span> uid = sock ?</span><br><span class="line">		SOCK_INODE(sock)-&gt;i_uid :</span><br><span class="line">		make_kuid(sock_net(sk)-&gt;user_ns, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">	sock_init_data_uid(sock, sk, uid);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">sock_init_data_uid</span><span class="params">(<span class="keyword">struct</span> socket *sock, <span class="keyword">struct</span> sock *sk, <span class="type">kuid_t</span> uid)</span></span><br><span class="line">&#123;</span><br><span class="line">	sk_init_common(sk);</span><br><span class="line">	sk-&gt;sk_send_head	=	<span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	timer_setup(&amp;sk-&gt;sk_timer, <span class="literal">NULL</span>, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">	sk-&gt;sk_allocation	=	GFP_KERNEL;</span><br><span class="line">	<span class="comment">//设置接收和发送默认缓冲区大小</span></span><br><span class="line">	sk-&gt;sk_rcvbuf		=	READ_ONCE(sysctl_rmem_default);</span><br><span class="line">	sk-&gt;sk_sndbuf		=	READ_ONCE(sysctl_wmem_default);</span><br><span class="line">	<span class="comment">//即使是udp也设置状态为TCP_CLOSE</span></span><br><span class="line">	sk-&gt;sk_state		=	TCP_CLOSE;</span><br><span class="line">	<span class="comment">//好像跟内存分配相关</span></span><br><span class="line">	sk-&gt;sk_use_task_frag	=	<span class="literal">true</span>;</span><br><span class="line">	<span class="comment">//这里关联了sock与socket</span></span><br><span class="line">	sk_set_socket(sk, sock);</span><br><span class="line"></span><br><span class="line">	sock_set_flag(sk, SOCK_ZAPPED);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (sock) &#123;</span><br><span class="line">		<span class="comment">//设置用户配置的type类型给sock</span></span><br><span class="line">		sk-&gt;sk_type	=	sock-&gt;type;</span><br><span class="line">		<span class="comment">//初始化套接字的等待队列</span></span><br><span class="line">		RCU_INIT_POINTER(sk-&gt;sk_wq, &amp;sock-&gt;wq);</span><br><span class="line">		sock-&gt;sk	=	sk;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		RCU_INIT_POINTER(sk-&gt;sk_wq, <span class="literal">NULL</span>);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//设置sock的uid</span></span><br><span class="line">	sk-&gt;sk_uid	=	uid;</span><br><span class="line">	</span><br><span class="line">	<span class="comment">//锁相关，没看太懂</span></span><br><span class="line">	rwlock_init(&amp;sk-&gt;sk_callback_lock);</span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_kern_sock)</span><br><span class="line">		lockdep_set_class_and_name(</span><br><span class="line">			&amp;sk-&gt;sk_callback_lock,</span><br><span class="line">			af_kern_callback_keys + sk-&gt;sk_family,</span><br><span class="line">			af_family_kern_clock_key_strings[sk-&gt;sk_family]);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		lockdep_set_class_and_name(</span><br><span class="line">			&amp;sk-&gt;sk_callback_lock,</span><br><span class="line">			af_callback_keys + sk-&gt;sk_family,</span><br><span class="line">			af_family_clock_key_strings[sk-&gt;sk_family]);</span><br><span class="line"></span><br><span class="line">	sk-&gt;sk_state_change	=	sock_def_wakeup; <span class="comment">//唤醒睡眠的进程，比如tcp状态发生改变的时候调用</span></span><br><span class="line">	sk-&gt;sk_data_ready	=	sock_def_readable; <span class="comment">//软中断收到数据包，唤醒睡眠的进程</span></span><br><span class="line">	sk-&gt;sk_write_space	=	sock_def_write_space;<span class="comment">//有写的空间，唤醒,好像几乎不会被调用</span></span><br><span class="line">	sk-&gt;sk_error_report	=	sock_def_error_report;</span><br><span class="line">	sk-&gt;sk_destruct		=	sock_def_destruct; <span class="comment">//销毁套接字的回调</span></span><br><span class="line"></span><br><span class="line">	sk-&gt;sk_frag.page	=	<span class="literal">NULL</span>;</span><br><span class="line">	sk-&gt;sk_frag.offset	=	<span class="number">0</span>;</span><br><span class="line">	sk-&gt;sk_peek_off		=	<span class="number">-1</span>;  <span class="comment">//peek的偏移量</span></span><br><span class="line"></span><br><span class="line">	sk-&gt;sk_peer_pid 	=	<span class="literal">NULL</span>; <span class="comment">//对端的进程id，同一个主机上才有吧？</span></span><br><span class="line">	sk-&gt;sk_peer_cred	=	<span class="literal">NULL</span>; <span class="comment">//也是对端的信息</span></span><br><span class="line">	spin_lock_init(&amp;sk-&gt;sk_peer_lock);</span><br><span class="line"></span><br><span class="line">	sk-&gt;sk_write_pending	=	<span class="number">0</span>;  <span class="comment">//写缓存区没有空间了</span></span><br><span class="line">	sk-&gt;sk_rcvlowat		=	<span class="number">1</span>;  <span class="comment">//唤醒相关的水位线？1表示一个字节也唤醒</span></span><br><span class="line">	sk-&gt;sk_rcvtimeo		=	MAX_SCHEDULE_TIMEOUT; <span class="comment">//设置接收的超时时间 全F</span></span><br><span class="line">	sk-&gt;sk_sndtimeo		=	MAX_SCHEDULE_TIMEOUT; <span class="comment">////设置发送的超时时间 全F</span></span><br><span class="line"></span><br><span class="line">	sk-&gt;sk_stamp = SK_DEFAULT_STAMP;</span><br><span class="line"><span class="meta">#<span class="keyword">if</span> BITS_PER_LONG==32</span></span><br><span class="line">	seqlock_init(&amp;sk-&gt;sk_stamp_seq);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="type">atomic_set</span>(&amp;sk-&gt;sk_zckey, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_NET_RX_BUSY_POLL</span></span><br><span class="line">	sk-&gt;sk_napi_id		=	<span class="number">0</span>;</span><br><span class="line">	sk-&gt;sk_ll_usec		=	READ_ONCE(sysctl_net_busy_read);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line"></span><br><span class="line">	sk-&gt;sk_max_pacing_rate = ~<span class="number">0UL</span>;  <span class="comment">//发送速率相关，tcp拥塞控制的时候会用到bbr算法会用到</span></span><br><span class="line">	sk-&gt;sk_pacing_rate = ~<span class="number">0UL</span>;</span><br><span class="line">	WRITE_ONCE(sk-&gt;sk_pacing_shift, <span class="number">10</span>);</span><br><span class="line">	sk-&gt;sk_incoming_cpu = <span class="number">-1</span>;   <span class="comment">//记录属于哪个cpu</span></span><br><span class="line"></span><br><span class="line">	sk_rx_queue_clear(sk);</span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * Before updating sk_refcnt, we must commit prior changes to memory</span></span><br><span class="line"><span class="comment">	 * (Documentation/RCU/rculist_nulls.rst for details)</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	smp_wmb();</span><br><span class="line">	refcount_set(&amp;sk-&gt;sk_refcnt, <span class="number">1</span>);</span><br><span class="line">	<span class="type">atomic_set</span>(&amp;sk-&gt;sk_drops, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br><span class="line">EXPORT_SYMBOL(sock_init_data_uid);</span><br></pre></td></tr></table></figure>
+
+<p>上述代码主要做了如下几个个事情，调用<code>sk_init_common</code> 初始化sock的接受队列和发送队列，这个错误队列好像是ip层收到icmp的错误报文，会放到这个错误队列中。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">sk_init_common</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//初始化接收，发送和错误队列。</span></span><br><span class="line">	skb_queue_head_init(&amp;sk-&gt;sk_receive_queue);</span><br><span class="line">	skb_queue_head_init(&amp;sk-&gt;sk_write_queue);</span><br><span class="line">	skb_queue_head_init(&amp;sk-&gt;sk_error_queue);</span><br><span class="line"></span><br><span class="line">	rwlock_init(&amp;sk-&gt;sk_callback_lock);</span><br><span class="line">	<span class="comment">//锁相关没太懂</span></span><br><span class="line">	lockdep_set_class_and_name(&amp;sk-&gt;sk_receive_queue.lock,</span><br><span class="line">			af_rlock_keys + sk-&gt;sk_family,</span><br><span class="line">			af_family_rlock_key_strings[sk-&gt;sk_family]);</span><br><span class="line">	lockdep_set_class_and_name(&amp;sk-&gt;sk_write_queue.lock,</span><br><span class="line">			af_wlock_keys + sk-&gt;sk_family,</span><br><span class="line">			af_family_wlock_key_strings[sk-&gt;sk_family]);</span><br><span class="line">	lockdep_set_class_and_name(&amp;sk-&gt;sk_error_queue.lock,</span><br><span class="line">			af_elock_keys + sk-&gt;sk_family,</span><br><span class="line">			af_family_elock_key_strings[sk-&gt;sk_family]);</span><br><span class="line">	lockdep_set_class_and_name(&amp;sk-&gt;sk_callback_lock,</span><br><span class="line">			af_callback_keys + sk-&gt;sk_family,</span><br><span class="line">			af_family_clock_key_strings[sk-&gt;sk_family]);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>然后在<code>sock_init_data_uid()</code>中初始化了接收缓冲区和发送缓冲区的大小，将socket的sock字段指向当前的sock结构，然后注册唤醒进程睡眠的相关函数，例如收包的唤醒函数，有空间可写的回调函数，tcp状态发生改变的回调函数。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/socket/" rel="tag"># socket</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/05/21/socket_sock_file_%E6%A6%82%E5%BF%B5/" rel="prev" title="套接字层socket、sock、文件系统之间的关系">
+      <i class="fa fa-chevron-left"></i> 套接字层socket、sock、文件系统之间的关系
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#sk-alloc"><span class="nav-number">1.</span> <span class="nav-text">sk_alloc()</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#sock-init-data"><span class="nav-number">2.</span> <span class="nav-text">sock_init_data()</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">6</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">3</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "评论秒回复，你试试",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
