@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="1.套接字与文件系统每一种文件都有各自的文件类型，例如设备文件包括字符设备文件和块设备文件等，而与套接字关联的文件类型为套接字文件。 1.1套接字文件系统的注册为了能够让套接字与文件描述符相关联，并支持特殊套接字曾的节点分配和释放，系统中增加了sockfs文件系统类型sock_fs_type,具体定义如下： 1234567static struct file_system_type sock_fs">
+<meta property="og:type" content="article">
+<meta property="og:title" content="socket文件系统">
+<meta property="og:url" content="http://example.com/2025/05/26/socket%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/index.html">
+<meta property="og:site_name" content="标题">
+<meta property="og:description" content="1.套接字与文件系统每一种文件都有各自的文件类型，例如设备文件包括字符设备文件和块设备文件等，而与套接字关联的文件类型为套接字文件。 1.1套接字文件系统的注册为了能够让套接字与文件描述符相关联，并支持特殊套接字曾的节点分配和释放，系统中增加了sockfs文件系统类型sock_fs_type,具体定义如下： 1234567static struct file_system_type sock_fs">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-05-26T13:00:00.000Z">
+<meta property="article:modified_time" content="2025-05-26T13:39:52.397Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="socket">
+<meta property="article:tag" content="VFS">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/05/26/socket%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>socket文件系统 | 标题</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">标题</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">副标题</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/26/socket%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="标题">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          socket文件系统
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-05-26 21:00:00 / 修改时间：21:39:52" itemprop="dateCreated datePublished" datetime="2025-05-26T21:00:00+08:00">2025-05-26</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/05/26/socket%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/26/socket%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="1-套接字与文件系统"><a href="#1-套接字与文件系统" class="headerlink" title="1.套接字与文件系统"></a>1.套接字与文件系统</h2><p>每一种文件都有各自的文件类型，例如设备文件包括字符设备文件和块设备文件等，而与套接字关联的文件类型为套接字文件。</p>
+<h3 id="1-1套接字文件系统的注册"><a href="#1-1套接字文件系统的注册" class="headerlink" title="1.1套接字文件系统的注册"></a>1.1套接字文件系统的注册</h3><p>为了能够让套接字与文件描述符相关联，并支持特殊套接字曾的节点分配和释放，系统中增加了<code>sockfs</code>文件系统类型<code>sock_fs_type</code>,具体定义如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="class"><span class="keyword">struct</span> <span class="title">file_system_type</span> <span class="title">sock_fs_type</span> =</span> &#123;</span><br><span class="line">	.name =		<span class="string">&quot;sockfs&quot;</span>, <span class="comment">//文件系统名字</span></span><br><span class="line">	<span class="comment">//挂载的时候会被调用，在kern_mount()被调用</span></span><br><span class="line">	.init_fs_context = sockfs_init_fs_context,<span class="comment">//初始化文件系统的回调函数，</span></span><br><span class="line">	.kill_sb =	kill_anon_super,<span class="comment">//卸载文件系统</span></span><br><span class="line">&#125;;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p><code>sock_fs_type</code>类型的文件系统注册发生在<code>sock_init()</code>在<code>start_kernel</code>中经过一些列调用会被调到.</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//start_kernel会调用到它</span></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> __init <span class="title function_">sock_init</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line"></span><br><span class="line">    ...</span><br><span class="line">	<span class="comment">//注册socket类型的文件系统</span></span><br><span class="line">	err = register_filesystem(&amp;sock_fs_type);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">    <span class="comment">//挂载这个文件系统，返回一个超级块</span></span><br><span class="line">	sock_mnt = kern_mount(&amp;sock_fs_type);</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR(sock_mnt)) &#123;</span><br><span class="line">		err = PTR_ERR(sock_mnt);</span><br><span class="line">		<span class="keyword">goto</span> out_mount;</span><br><span class="line">	&#125;</span><br><span class="line">    ....</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>在上述代码中首先调用<code>register_filesystem(&amp;sock_fs_type);</code>来注册socket文件系统，主要工作判断是否有相同名字文件系统并插入到链表中。然后调用<code>kern_mount</code>完成挂载操作并返回一个超级块，在创建socket的时候创建inode就是用的这个超级块的alloc_node回调函数。<br><code>kern_mount</code>函数定义如下</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> vfsmount *<span class="title function_">kern_mount</span><span class="params">(<span class="keyword">struct</span> file_system_type *type)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfsmount</span> *<span class="title">mnt</span>;</span></span><br><span class="line">	<span class="comment">//实际的挂载操作</span></span><br><span class="line">	mnt = vfs_kern_mount(type, SB_KERNMOUNT, type-&gt;name, <span class="literal">NULL</span>);</span><br><span class="line">	<span class="keyword">if</span> (!IS_ERR(mnt)) &#123;</span><br><span class="line">		<span class="comment">/*</span></span><br><span class="line"><span class="comment">		 * it is a longterm mount, don&#x27;t release mnt until</span></span><br><span class="line"><span class="comment">		 * we unmount before file sys is unregistered</span></span><br><span class="line"><span class="comment">		*/</span></span><br><span class="line">		real_mount(mnt)-&gt;mnt_ns = MNT_NS_INTERNAL;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> mnt;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述代码调用<code>vfs_kern_mount</code>中调用了<code>vfs_kern_mount</code>完成实际的挂载，返回的为一个挂载点，其中<code>SB_KERNMOUNT</code>表示表示该挂载属于内核内部命名空间。</p>
+<p>在<code>vfs_kern_mount</code>中的工作就是创建一个fs_context结构体，把具体文件系统的回调函数与<strong>ctx-&gt;ops相关联，，这里的ctx是fs的一个私有结构。然后通过<code>fc_mount</code>中的get_tree把sb与ctx-&gt;ops关联了起来</strong></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> vfsmount *<span class="title function_">vfs_kern_mount</span><span class="params">(<span class="keyword">struct</span> file_system_type *type,</span></span><br><span class="line"><span class="params">				<span class="type">int</span> flags, <span class="type">const</span> <span class="type">char</span> *name,</span></span><br><span class="line"><span class="params">				<span class="type">void</span> *data)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fs_context</span> *<span class="title">fc</span>;</span></span><br><span class="line">	<span class="comment">//mnt为返回的挂载点</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfsmount</span> *<span class="title">mnt</span>;</span></span><br><span class="line">	<span class="type">int</span> ret = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!type)</span><br><span class="line">		<span class="keyword">return</span> ERR_PTR(-EINVAL);</span><br><span class="line">	</span><br><span class="line">	<span class="comment">//分配一个fs结构，并初始化，这里把具体文件系统的回调函数与ctx-&gt;ops相关联</span></span><br><span class="line">	<span class="comment">//fs为ctx的一个私有结构</span></span><br><span class="line">	fc = fs_context_for_mount(type, flags);</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR(fc))</span><br><span class="line">		<span class="keyword">return</span> ERR_CAST(fc);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (name)</span><br><span class="line">		ret = vfs_parse_fs_string(fc, <span class="string">&quot;source&quot;</span>,</span><br><span class="line">					  name, <span class="built_in">strlen</span>(name));</span><br><span class="line">	<span class="keyword">if</span> (!ret)</span><br><span class="line">		ret = parse_monolithic_mount_data(fc, data);</span><br><span class="line">	<span class="keyword">if</span> (!ret)</span><br><span class="line">	<span class="comment">//分配并初始化超级块和挂载点</span></span><br><span class="line">	<span class="comment">//注意这里面的get_tree把超级块与ctx-&gt;ops关联了起来</span></span><br><span class="line">		mnt = fc_mount(fc);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		mnt = ERR_PTR(ret);</span><br><span class="line"></span><br><span class="line">	put_fs_context(fc);</span><br><span class="line">	<span class="keyword">return</span> mnt;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p><code>fs_context_for_mount</code>是一个包裹函数，最终实际调用的是<code>alloc_fs_context</code> <strong>核心逻辑就是创建一个fs结构体并初始化然后调用文件系统注册的<code>init_fs_context</code>函数，将<code>fs的ctx</code>与文件系统的ops关联上。</strong> 函数原型如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">struct</span> fs_context *<span class="title function_">alloc_fs_context</span><span class="params">(<span class="keyword">struct</span> file_system_type *fs_type,</span></span><br><span class="line"><span class="params">				      <span class="keyword">struct</span> dentry *reference,</span></span><br><span class="line"><span class="params">				      <span class="type">unsigned</span> <span class="type">int</span> sb_flags,</span></span><br><span class="line"><span class="params">				      <span class="type">unsigned</span> <span class="type">int</span> sb_flags_mask,</span></span><br><span class="line"><span class="params">				      <span class="keyword">enum</span> fs_context_purpose purpose)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> (*init_fs_context)(<span class="keyword">struct</span> fs_context *);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fs_context</span> *<span class="title">fc</span>;</span></span><br><span class="line">	<span class="type">int</span> ret = -ENOMEM;</span><br><span class="line">	<span class="comment">//分配一个fc</span></span><br><span class="line">	fc = kzalloc(<span class="keyword">sizeof</span>(<span class="keyword">struct</span> fs_context), GFP_KERNEL_ACCOUNT);</span><br><span class="line">	<span class="keyword">if</span> (!fc)</span><br><span class="line">		<span class="keyword">return</span> ERR_PTR(-ENOMEM);</span><br><span class="line"></span><br><span class="line">	fc-&gt;purpose	= purpose;</span><br><span class="line">	fc-&gt;sb_flags	= sb_flags;</span><br><span class="line">	fc-&gt;sb_flags_mask = sb_flags_mask;</span><br><span class="line">	fc-&gt;fs_type	= get_filesystem(fs_type);</span><br><span class="line">	fc-&gt;cred	= get_current_cred();</span><br><span class="line">	fc-&gt;net_ns	= get_net(current-&gt;nsproxy-&gt;net_ns);</span><br><span class="line">	fc-&gt;<span class="built_in">log</span>.prefix	= fs_type-&gt;name;</span><br><span class="line"></span><br><span class="line">	mutex_init(&amp;fc-&gt;uapi_mutex);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">switch</span> (purpose) &#123;</span><br><span class="line">	<span class="keyword">case</span> FS_CONTEXT_FOR_MOUNT:</span><br><span class="line">		fc-&gt;user_ns = get_user_ns(fc-&gt;cred-&gt;user_ns);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> FS_CONTEXT_FOR_SUBMOUNT:</span><br><span class="line">		fc-&gt;user_ns = get_user_ns(reference-&gt;d_sb-&gt;s_user_ns);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> FS_CONTEXT_FOR_RECONFIGURE:</span><br><span class="line">		<span class="type">atomic_inc</span>(&amp;reference-&gt;d_sb-&gt;s_active);</span><br><span class="line">		fc-&gt;user_ns = get_user_ns(reference-&gt;d_sb-&gt;s_user_ns);</span><br><span class="line">		fc-&gt;root = dget(reference);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* <span class="doctag">TODO:</span> Make all filesystems support this unconditionally */</span></span><br><span class="line">	init_fs_context = fc-&gt;fs_type-&gt;init_fs_context;</span><br><span class="line">	<span class="keyword">if</span> (!init_fs_context)</span><br><span class="line">		init_fs_context = legacy_init_fs_context;</span><br><span class="line">	<span class="comment">//调用文件系统的init函数，将fs与文件系统的ops关联上。</span></span><br><span class="line">	ret = init_fs_context(fc);</span><br><span class="line">	<span class="keyword">if</span> (ret &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> err_fc;</span><br><span class="line">	fc-&gt;need_free = <span class="literal">true</span>;</span><br><span class="line">	<span class="keyword">return</span> fc;</span><br><span class="line"></span><br><span class="line">err_fc:</span><br><span class="line">	put_fs_context(fc);</span><br><span class="line">	<span class="keyword">return</span> ERR_PTR(ret);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p><code>ret = init_fs_context(fc);</code> 为上述文件系统注册的回调函数</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">sockfs_init_fs_context</span><span class="params">(<span class="keyword">struct</span> fs_context *fc)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">pseudo_fs_context</span> *<span class="title">ctx</span> =</span> init_pseudo(fc, SOCKFS_MAGIC);</span><br><span class="line">	<span class="keyword">if</span> (!ctx)</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">	ctx-&gt;ops = &amp;sockfs_ops;<span class="comment">//alloc_inode ,free_inode</span></span><br><span class="line">	ctx-&gt;dops = &amp;sockfs_dentry_operations;</span><br><span class="line">	ctx-&gt;xattr = sockfs_xattr_handlers;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述<code>init_pseudo()</code>中主要zu了两件事，申请了ctx结构作为fs的私有结构，然后注册了<code>get_tree</code>回调函数。<strong>这个<code>get_tree</code> ，<br>回调里面的逻辑就是创建一个超级块，然后将ctx的ops赋值给超级块的ops</strong>，在<code>fc_mount</code>中会调用这个回调函数，函数定义如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">fs_context_operations</span> <span class="title">pseudo_fs_context_ops</span> =</span> &#123;</span><br><span class="line">	.<span class="built_in">free</span>		= pseudo_fs_free,</span><br><span class="line">	.get_tree	= pseudo_fs_get_tree,<span class="comment">//创建了一个超级块最终会调用err = fill_super(sb, fc);填充超级块</span></span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">struct</span> pseudo_fs_context *<span class="title function_">init_pseudo</span><span class="params">(<span class="keyword">struct</span> fs_context *fc,</span></span><br><span class="line"><span class="params">					<span class="type">unsigned</span> <span class="type">long</span> magic)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">pseudo_fs_context</span> *<span class="title">ctx</span>;</span></span><br><span class="line"></span><br><span class="line">	ctx = kzalloc(<span class="keyword">sizeof</span>(<span class="keyword">struct</span> pseudo_fs_context), GFP_KERNEL);</span><br><span class="line">	<span class="keyword">if</span> (likely(ctx)) &#123;</span><br><span class="line">		ctx-&gt;magic = magic;</span><br><span class="line">		fc-&gt;fs_private = ctx;<span class="comment">//设置私有结构</span></span><br><span class="line">		fc-&gt;ops = &amp;pseudo_fs_context_ops; <span class="comment">//设置ops集合，如上述代码所示</span></span><br><span class="line">		fc-&gt;sb_flags |= SB_NOUSER;</span><br><span class="line">		fc-&gt;global = <span class="literal">true</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> ctx;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述<code>fs_context_for_mount</code>函数在<code>vfs_kern_mount</code>中被调用后会调用<code>fc_mount</code>来申请一个超级块，并初始化相关字段</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="keyword">struct</span> vfsmount *<span class="title function_">fc_mount</span><span class="params">(<span class="keyword">struct</span> fs_context *fc)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//创建并初始化超级块</span></span><br><span class="line">	<span class="type">int</span> err = vfs_get_tree(fc);</span><br><span class="line">	<span class="keyword">if</span> (!err) &#123;</span><br><span class="line">		up_write(&amp;fc-&gt;root-&gt;d_sb-&gt;s_umount);</span><br><span class="line">		<span class="comment">//创建挂载点</span></span><br><span class="line">		<span class="keyword">return</span> vfs_create_mount(fc);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> ERR_PTR(err);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p><code>vfs_get_tree</code>中调用<code>fc-&gt;ops-&gt;get_tree(fc)</code>创建并初始化了超级块，代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">vfs_get_tree</span><span class="params">(<span class="keyword">struct</span> fs_context *fc)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">super_block</span> *<span class="title">sb</span>;</span></span><br><span class="line">	<span class="type">int</span> error;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (fc-&gt;root)</span><br><span class="line">		<span class="keyword">return</span> -EBUSY;</span><br><span class="line"></span><br><span class="line">	<span class="comment">//这里创建了超级块</span></span><br><span class="line">	error = fc-&gt;ops-&gt;get_tree(fc);</span><br><span class="line">	<span class="keyword">if</span> (error &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">return</span> error;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!fc-&gt;root) &#123;</span><br><span class="line">		pr_err(<span class="string">&quot;Filesystem %s get_tree() didn&#x27;t set fc-&gt;root\n&quot;</span>,</span><br><span class="line">		       fc-&gt;fs_type-&gt;name);</span><br><span class="line">		<span class="comment">/* We don&#x27;t know what the locking state of the superblock is -</span></span><br><span class="line"><span class="comment">		 * if there is a superblock.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		BUG();</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//将申请的sb赋值给sb</span></span><br><span class="line">	sb = fc-&gt;root-&gt;d_sb;</span><br><span class="line">	WARN_ON(!sb-&gt;s_bdi);</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">	super_wake(sb, SB_BORN);</span><br><span class="line"></span><br><span class="line">	error = security_sb_set_mnt_opts(sb, fc-&gt;security, <span class="number">0</span>, <span class="literal">NULL</span>);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(error)) &#123;</span><br><span class="line">		fc_drop_locked(fc);</span><br><span class="line">		<span class="keyword">return</span> error;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	WARN((sb-&gt;s_maxbytes &lt; <span class="number">0</span>), <span class="string">&quot;%s set sb-&gt;s_maxbytes to &quot;</span></span><br><span class="line">		<span class="string">&quot;negative value (%lld)\n&quot;</span>, fc-&gt;fs_type-&gt;name, sb-&gt;s_maxbytes);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/socket/" rel="tag"># socket</a>
+              <a href="/tags/VFS/" rel="tag"># VFS</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/05/24/sock%E7%9A%84%E5%88%9B%E5%BB%BA%E4%B8%8E%E5%88%9D%E5%A7%8B%E5%8C%96/" rel="prev" title="sock的创建与初始化">
+      <i class="fa fa-chevron-left"></i> sock的创建与初始化
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E5%A5%97%E6%8E%A5%E5%AD%97%E4%B8%8E%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F"><span class="nav-number">1.</span> <span class="nav-text">1.套接字与文件系统</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-1%E5%A5%97%E6%8E%A5%E5%AD%97%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F%E7%9A%84%E6%B3%A8%E5%86%8C"><span class="nav-number">1.1.</span> <span class="nav-text">1.1套接字文件系统的注册</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">8</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "评论秒回复，你试试",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
