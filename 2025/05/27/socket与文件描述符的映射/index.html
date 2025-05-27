@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="socket与文件描述符的映射1.socket与fd的映射应用层是通过文件描述符来找到内核的socket的一系列结构，因此在调用socket系统调用创建socket的过程中，会将一个fd与一个套接字相关联，对应的函数为__sys_socket函数中的sock_map_fd在sock_map_fd中，主要做了如下几个事情，获取一个空闲的文件描述符，创建一个file实例，将fd与file实例绑定，然后">
+<meta property="og:type" content="article">
+<meta property="og:title" content="socket与文件描述符的映射">
+<meta property="og:url" content="http://example.com/2025/05/27/socket%E4%B8%8E%E6%96%87%E4%BB%B6%E6%8F%8F%E8%BF%B0%E7%AC%A6%E7%9A%84%E6%98%A0%E5%B0%84/index.html">
+<meta property="og:site_name" content="标题">
+<meta property="og:description" content="socket与文件描述符的映射1.socket与fd的映射应用层是通过文件描述符来找到内核的socket的一系列结构，因此在调用socket系统调用创建socket的过程中，会将一个fd与一个套接字相关联，对应的函数为__sys_socket函数中的sock_map_fd在sock_map_fd中，主要做了如下几个事情，获取一个空闲的文件描述符，创建一个file实例，将fd与file实例绑定，然后">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-05-27T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-05-27T13:17:44.837Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="socket">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/05/27/socket%E4%B8%8E%E6%96%87%E4%BB%B6%E6%8F%8F%E8%BF%B0%E7%AC%A6%E7%9A%84%E6%98%A0%E5%B0%84/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>socket与文件描述符的映射 | 标题</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">标题</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">副标题</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/27/socket%E4%B8%8E%E6%96%87%E4%BB%B6%E6%8F%8F%E8%BF%B0%E7%AC%A6%E7%9A%84%E6%98%A0%E5%B0%84/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="标题">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          socket与文件描述符的映射
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-05-27 22:00:00 / 修改时间：21:17:44" itemprop="dateCreated datePublished" datetime="2025-05-27T22:00:00+08:00">2025-05-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/05/27/socket%E4%B8%8E%E6%96%87%E4%BB%B6%E6%8F%8F%E8%BF%B0%E7%AC%A6%E7%9A%84%E6%98%A0%E5%B0%84/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/27/socket%E4%B8%8E%E6%96%87%E4%BB%B6%E6%8F%8F%E8%BF%B0%E7%AC%A6%E7%9A%84%E6%98%A0%E5%B0%84/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h1 id="socket与文件描述符的映射"><a href="#socket与文件描述符的映射" class="headerlink" title="socket与文件描述符的映射"></a>socket与文件描述符的映射</h1><h2 id="1-socket与fd的映射"><a href="#1-socket与fd的映射" class="headerlink" title="1.socket与fd的映射"></a>1.socket与fd的映射</h2><p>应用层是通过文件描述符来找到内核的socket的一系列结构，因此在调用socket系统调用创建socket的过程中，会将一个fd与一个套接字相关联，对应的函数为<code>__sys_socket</code>函数中的<code>sock_map_fd</code><br>在<code>sock_map_fd</code>中，主要做了如下几个事情，获取一个空闲的文件描述符，创建一个file实例，将fd与file实例绑定，然后将这个file实例加入到进程打开的文件指针数组中，然后再将套接字与file相关连。这样fd，file，进程，socket四者之间就紧密的联系在了一起。代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">sock_map_fd</span><span class="params">(<span class="keyword">struct</span> socket *sock, <span class="type">int</span> flags)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">file</span> *<span class="title">newfile</span>;</span></span><br><span class="line">	<span class="comment">//从当前进程获取一个未使用的文件描述符fd</span></span><br><span class="line">	<span class="type">int</span> fd = get_unused_fd_flags(flags);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(fd &lt; <span class="number">0</span>)) &#123;</span><br><span class="line">		sock_release(sock);</span><br><span class="line">		<span class="keyword">return</span> fd;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//创建一个文件对象</span></span><br><span class="line">	newfile = sock_alloc_file(sock, flags, <span class="literal">NULL</span>);</span><br><span class="line">	<span class="comment">//关联fd和文件对象</span></span><br><span class="line">	<span class="keyword">if</span> (!IS_ERR(newfile)) &#123;</span><br><span class="line">		fd_install(fd, newfile);</span><br><span class="line">		<span class="keyword">return</span> fd;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//有错误，将fd标记为未使用</span></span><br><span class="line">	put_unused_fd(fd);</span><br><span class="line">	<span class="keyword">return</span> PTR_ERR(newfile);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述代码调用<code>get_unused_fd_flags</code>是一个包裹函数最终调用<code>return alloc_fd(0, nofile, flags);</code>获取一个未使用的文件描述符。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">alloc_fd</span><span class="params">(<span class="type">unsigned</span> start, <span class="type">unsigned</span> end, <span class="type">unsigned</span> flags)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//获取当前进程的文件描述副列表</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">files_struct</span> *<span class="title">files</span> =</span> current-&gt;files;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> fd;</span><br><span class="line">	<span class="type">int</span> error;</span><br><span class="line">	<span class="comment">//fd表，用来指向files_struct的fdtable</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fdtable</span> *<span class="title">fdt</span>;</span></span><br><span class="line"></span><br><span class="line">	spin_lock(&amp;files-&gt;file_lock);</span><br><span class="line">repeat:</span><br><span class="line">	<span class="comment">//这里指了一下</span></span><br><span class="line">	fdt = files_fdtable(files);</span><br><span class="line">	fd = start;</span><br><span class="line">	<span class="comment">//跳过已分配的fd</span></span><br><span class="line">	<span class="keyword">if</span> (fd &lt; files-&gt;next_fd)</span><br><span class="line">		fd = files-&gt;next_fd;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (fd &lt; fdt-&gt;max_fds)</span><br><span class="line">	<span class="comment">//返回一个没有被使用的fd</span></span><br><span class="line">		fd = find_next_fd(fdt, fd);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * N.B. For clone tasks sharing a files structure, this test</span></span><br><span class="line"><span class="comment">	 * will limit the total number of files that can be opened.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	error = -EMFILE;</span><br><span class="line">	<span class="keyword">if</span> (fd &gt;= end)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	<span class="comment">//这里面会判断当前的fd是否大于max_fd,如果大于可能需要对​​文件描述符表的扩容</span></span><br><span class="line">	error = expand_files(files, fd);</span><br><span class="line">	<span class="keyword">if</span> (error &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * If we needed to expand the fs array we</span></span><br><span class="line"><span class="comment">	 * might have blocked - try again.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//可能会阻塞在试一次</span></span><br><span class="line">	<span class="keyword">if</span> (error)</span><br><span class="line">		<span class="keyword">goto</span> repeat;</span><br><span class="line">	<span class="comment">//这里修改一下下一个要分配的fd，加速一下</span></span><br><span class="line">	<span class="keyword">if</span> (start &lt;= files-&gt;next_fd)</span><br><span class="line">		files-&gt;next_fd = fd + <span class="number">1</span>;</span><br><span class="line">	<span class="comment">//设置已经使用的标志</span></span><br><span class="line">	__set_open_fd(fd, fdt);</span><br><span class="line">	<span class="keyword">if</span> (flags &amp; O_CLOEXEC)</span><br><span class="line">		__set_close_on_exec(fd, fdt);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		__clear_close_on_exec(fd, fdt);</span><br><span class="line">	error = fd;</span><br><span class="line"><span class="meta">#<span class="keyword">if</span> 1</span></span><br><span class="line">	<span class="comment">/* Sanity check */</span></span><br><span class="line">	<span class="keyword">if</span> (rcu_access_pointer(fdt-&gt;fd[fd]) != <span class="literal">NULL</span>) &#123;</span><br><span class="line">		printk(KERN_WARNING <span class="string">&quot;alloc_fd: slot %d not NULL!\n&quot;</span>, fd);</span><br><span class="line">		rcu_assign_pointer(fdt-&gt;fd[fd], <span class="literal">NULL</span>);</span><br><span class="line">	&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">	spin_unlock(&amp;files-&gt;file_lock);</span><br><span class="line">	<span class="keyword">return</span> error;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述代码参数中的<code>start</code>为0,<code>end</code>为系统配置一个进程最多持有的描述数量，默认通常是1024，最大是多少？？如果文件描述副的fd大于了end则会报错打开了太多文件描述符。申请到fd之后在<code>sock_map_fd</code>中会调用<code>sock_alloc_file</code>创建文件对象，具体代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> file *<span class="title function_">sock_alloc_file</span><span class="params">(<span class="keyword">struct</span> socket *sock, <span class="type">int</span> flags, <span class="type">const</span> <span class="type">char</span> *dname)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">file</span> *<span class="title">file</span>;</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!dname)</span><br><span class="line">		dname = sock-&gt;sk ? sock-&gt;sk-&gt;sk_prot_creator-&gt;name : <span class="string">&quot;&quot;</span>;</span><br><span class="line">	<span class="comment">//alloc一个file绑定了socket_file_ops 回调函数集合 sock_mnt为一个挂在点</span></span><br><span class="line">	file = alloc_file_pseudo(SOCK_INODE(sock), sock_mnt, dname,</span><br><span class="line">				O_RDWR | (flags &amp; O_NONBLOCK),</span><br><span class="line">				&amp;socket_file_ops);</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR(file)) &#123;</span><br><span class="line">		sock_release(sock);</span><br><span class="line">		<span class="keyword">return</span> file;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	file-&gt;f_mode |= FMODE_NOWAIT;</span><br><span class="line">	sock-&gt;file = file;</span><br><span class="line">	<span class="comment">//注意：这里关联了socket和file</span></span><br><span class="line">	file-&gt;private_data = sock;</span><br><span class="line">	<span class="comment">//标记为流式文件，不支持lseek(随机访问)？</span></span><br><span class="line">	stream_open(SOCK_INODE(sock), file);</span><br><span class="line">	<span class="keyword">return</span> file;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述<code>sock_alloc_file</code>中调用<code>alloc_file_pseudo</code>创建了一个<code>file</code>结构和<code>dentry</code>结构，并把sock对应的inode和denry相关联，然后在<code>alloc_file_pseudo</code>中将file的私有指针指向socket。<strong>这一系列逻辑完成了file，socket，inode，dentry，之间的关联和绑定了文件的ops</strong>，之后就可以通过file可以找到socket，通过dentry可以快速找到inode通过inode也可以找到socket。<code>alloc_file_pseudo</code>实现如下:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> file *<span class="title function_">alloc_file_pseudo</span><span class="params">(<span class="keyword">struct</span> inode *inode, <span class="keyword">struct</span> vfsmount *mnt,</span></span><br><span class="line"><span class="params">				<span class="type">const</span> <span class="type">char</span> *name, <span class="type">int</span> flags,</span></span><br><span class="line"><span class="params">				<span class="type">const</span> <span class="keyword">struct</span> file_operations *fops)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">static</span> <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">dentry_operations</span> <span class="title">anon_ops</span> =</span> &#123;</span><br><span class="line">		.d_dname = simple_dname</span><br><span class="line">	&#125;;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">qstr</span> <span class="title">this</span> =</span> QSTR_INIT(name, <span class="built_in">strlen</span>(name));</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">path</span> <span class="title">path</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">file</span> *<span class="title">file</span>;</span></span><br><span class="line">	<span class="comment">//创建一个dentry</span></span><br><span class="line">	path.dentry = d_alloc_pseudo(mnt-&gt;mnt_sb, &amp;this);</span><br><span class="line">	<span class="keyword">if</span> (!path.dentry)</span><br><span class="line">		<span class="keyword">return</span> ERR_PTR(-ENOMEM);</span><br><span class="line">	<span class="keyword">if</span> (!mnt-&gt;mnt_sb-&gt;s_d_op)</span><br><span class="line">		d_set_d_op(path.dentry, &amp;anon_ops);</span><br><span class="line">	<span class="comment">//给挂载点加一个引用计数</span></span><br><span class="line">	path.mnt = mntget(mnt);</span><br><span class="line">	<span class="comment">//关联denry和socket的inode 之后可以通过这个dentry快速找到inode</span></span><br><span class="line">	d_instantiate(path.dentry, inode);</span><br><span class="line">	<span class="comment">//申请一个file，同时挂上ops (也就是read，write)</span></span><br><span class="line">	file = alloc_file(&amp;path, flags, fops);</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR(file)) &#123;</span><br><span class="line">		ihold(inode);</span><br><span class="line">		path_put(&amp;path);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> file;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>当申请了fd和file结构之后，会调用<code>fd_install</code> 完成文件描述fd与file的关联，此后用户就可以通过这个fd找到file，通过file找到socket，等等一系列信息。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">fd_install</span><span class="params">(<span class="type">unsigned</span> <span class="type">int</span> fd, <span class="keyword">struct</span> file *file)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">files_struct</span> *<span class="title">files</span> =</span> current-&gt;files;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fdtable</span> *<span class="title">fdt</span>;</span></span><br><span class="line"></span><br><span class="line">	rcu_read_lock_sched();</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (unlikely(files-&gt;resize_in_progress)) &#123;</span><br><span class="line">		rcu_read_unlock_sched();</span><br><span class="line">		spin_lock(&amp;files-&gt;file_lock);</span><br><span class="line">		fdt = files_fdtable(files);</span><br><span class="line">		BUG_ON(fdt-&gt;fd[fd] != <span class="literal">NULL</span>);</span><br><span class="line">		<span class="comment">//将fdt表的fd元素指向外面申请的file，这个file的私有结构就是socket！</span></span><br><span class="line">		rcu_assign_pointer(fdt-&gt;fd[fd], file);</span><br><span class="line">		spin_unlock(&amp;files-&gt;file_lock);</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">/* coupled with smp_wmb() in expand_fdtable() */</span></span><br><span class="line">	smp_rmb();</span><br><span class="line">	fdt = rcu_dereference_sched(files-&gt;fdt);</span><br><span class="line">	BUG_ON(fdt-&gt;fd[fd] != <span class="literal">NULL</span>);</span><br><span class="line">	rcu_assign_pointer(fdt-&gt;fd[fd], file);</span><br><span class="line">	rcu_read_unlock_sched();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h2 id="2-根据文件描述符获取套接字"><a href="#2-根据文件描述符获取套接字" class="headerlink" title="2.根据文件描述符获取套接字"></a>2.根据文件描述符获取套接字</h2><p>当用户创建socket返回fd之后，执行<code>bind，listen，send，recv</code>都要传入上述提到的fd，内核会根据用户传入的fd找到对应的文件file，进而通过私有指针找到socket，对应的函数接口为<code>sockfd_lookup_light</code></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//返回值为socket</span></span><br><span class="line"><span class="type">static</span> <span class="keyword">struct</span> socket *<span class="title function_">sockfd_lookup_light</span><span class="params">(<span class="type">int</span> fd, <span class="type">int</span> *err, <span class="type">int</span> *fput_needed)</span></span><br><span class="line">&#123;	</span><br><span class="line"></span><br><span class="line">	<span class="comment">//根据fd从进程管理的fdtable中找到对应的file，这里struct fd结构体中的一个字段为file</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fd</span> <span class="title">f</span> =</span> fdget(fd);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">socket</span> *<span class="title">sock</span>;</span></span><br><span class="line"></span><br><span class="line">	*err = -EBADF;</span><br><span class="line">	<span class="keyword">if</span> (f.file) &#123;</span><br><span class="line">		<span class="comment">//从file的私有指针中拿到socket</span></span><br><span class="line">		sock = sock_from_file(f.file);</span><br><span class="line">		<span class="keyword">if</span> (likely(sock)) &#123;</span><br><span class="line">			*fput_needed = f.flags &amp; FDPUT_FPUT;</span><br><span class="line">			<span class="keyword">return</span> sock;</span><br><span class="line">		&#125;</span><br><span class="line">		*err = -ENOTSOCK;</span><br><span class="line">		fdput(f);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述<code>fdget</code>最终调用到<code>__fget_light</code>，具体代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">unsigned</span> <span class="type">long</span> __fget_light(<span class="type">unsigned</span> <span class="type">int</span> fd, <span class="type">fmode_t</span> mask)</span><br><span class="line">&#123;</span><br><span class="line"></span><br><span class="line">	<span class="comment">//通过current宏获取文件描述符表</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">files_struct</span> *<span class="title">files</span> =</span> current-&gt;files;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">file</span> *<span class="title">file</span>;</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * If another thread is concurrently calling close_fd() followed</span></span><br><span class="line"><span class="comment">	 * by put_files_struct(), we must not observe the old table</span></span><br><span class="line"><span class="comment">	 * entry combined with the new refcount - otherwise we could</span></span><br><span class="line"><span class="comment">	 * return a file that is concurrently being freed.</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * atomic_read_acquire() pairs with atomic_dec_and_test() in</span></span><br><span class="line"><span class="comment">	 * put_files_struct().</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//判断当前进程的文件描述符表是否被其他进程共享，如果没有被共享，直接无锁查找</span></span><br><span class="line">	<span class="keyword">if</span> (atomic_read_acquire(&amp;files-&gt;count) == <span class="number">1</span>) &#123;</span><br><span class="line">		<span class="comment">//逻辑很简单，直接根据fd取对应的files</span></span><br><span class="line">		file = files_lookup_fd_raw(files, fd);</span><br><span class="line">		<span class="keyword">if</span> (!file || unlikely(file-&gt;f_mode &amp; mask))</span><br><span class="line">			<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">		<span class="keyword">return</span> (<span class="type">unsigned</span> <span class="type">long</span>)file;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="comment">//加rcu锁查找，多线程可能会走这里吧？？？</span></span><br><span class="line">		file = __fget(fd, mask);</span><br><span class="line">		<span class="keyword">if</span> (!file)</span><br><span class="line">			<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">		<span class="keyword">return</span> FDPUT_FPUT | (<span class="type">unsigned</span> <span class="type">long</span>)file;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述查找file的过程可以分为快速路径和慢速路径，当文件描述符表存在被多个线程访问时，需要加锁访问，否则直接走快速路径无锁拿到<code>file(atomic_read_acquire(&amp;files-&gt;count))</code></p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/socket/" rel="tag"># socket</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/05/26/socket%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/" rel="prev" title="socket文件系统">
+      <i class="fa fa-chevron-left"></i> socket文件系统
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/" rel="next" title="x86汇编学习(一)">
+      x86汇编学习(一) <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#socket%E4%B8%8E%E6%96%87%E4%BB%B6%E6%8F%8F%E8%BF%B0%E7%AC%A6%E7%9A%84%E6%98%A0%E5%B0%84"><span class="nav-number">1.</span> <span class="nav-text">socket与文件描述符的映射</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-socket%E4%B8%8Efd%E7%9A%84%E6%98%A0%E5%B0%84"><span class="nav-number">1.1.</span> <span class="nav-text">1.socket与fd的映射</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-%E6%A0%B9%E6%8D%AE%E6%96%87%E4%BB%B6%E6%8F%8F%E8%BF%B0%E7%AC%A6%E8%8E%B7%E5%8F%96%E5%A5%97%E6%8E%A5%E5%AD%97"><span class="nav-number">1.2.</span> <span class="nav-text">2.根据文件描述符获取套接字</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">10</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "评论秒回复，你试试",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

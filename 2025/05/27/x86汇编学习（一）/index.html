@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="汇编语言GCC（C语言编译器）可以将程序编译为汇编代码的形式进行输出。汇编语言是机器指令的文本表示形式，它详细地列出了程序中每一条指令。然后GCC 会调用汇编器（assembler）和链接器（linker），根据这些汇编代码生成最终的可执行机器代码。 本文基于x86-64架构,	 它是现在最常见处理器的机器语言，也是驱动大型数据中心和超级计算机的最常见处理器的机器语言。这种语言的历史悠久，开始 于">
+<meta property="og:type" content="article">
+<meta property="og:title" content="x86汇编学习(一)">
+<meta property="og:url" content="http://example.com/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/index.html">
+<meta property="og:site_name" content="标题">
+<meta property="og:description" content="汇编语言GCC（C语言编译器）可以将程序编译为汇编代码的形式进行输出。汇编语言是机器指令的文本表示形式，它详细地列出了程序中每一条指令。然后GCC 会调用汇编器（assembler）和链接器（linker），根据这些汇编代码生成最终的可执行机器代码。 本文基于x86-64架构,	 它是现在最常见处理器的机器语言，也是驱动大型数据中心和超级计算机的最常见处理器的机器语言。这种语言的历史悠久，开始 于">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-05-27T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-05-27T14:55:47.648Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="汇编语言">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>x86汇编学习(一) | 标题</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">标题</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">副标题</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="标题">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          x86汇编学习(一)
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-05-27 22:00:00 / 修改时间：22:55:47" itemprop="dateCreated datePublished" datetime="2025-05-27T22:00:00+08:00">2025-05-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h1 id="汇编语言"><a href="#汇编语言" class="headerlink" title="汇编语言"></a>汇编语言</h1><p>GCC（C语言编译器）可以将程序编译为汇编代码的形式进行输出。汇编语言是机器指令的文本表示形式，它详细地列出了程序中每一条指令。然后GCC 会调用汇编器（assembler）和链接器（linker），根据这些汇编代码生成最终的可执行机器代码。</p>
+<p>本文基于x86-64架构,	 它是现在最常见处理器的机器语言，也是驱动大型数据中心和超级计算机的最常见处理器的机器语言。这种语言的历史悠久，开始 于 Intel 公司 1978 年的第一个 16 位处理器，然后扩展为 32 位，最近又扩展到 64 位。</p>
+<h2 id="1-x86的发展过程"><a href="#1-x86的发展过程" class="headerlink" title="1.x86的发展过程"></a>1.<strong>x86的发展过程</strong></h2><p><strong>8086</strong>(1978 年， 29K 个晶体管）。它是第一代单芯片、 16 位微处理器之一。 </p>
+<p><strong>i386</strong>(1985 年， 275K 个晶体管）。将体系结构扩展到 32 位。这是 Intel 系列中第一台全面支持 Unix操作系统的机器。</p>
+<p><strong>Pentium</strong> 4E(2004 年， 125M 个品体管）。增加了超线程(hyperthreading) , 这种技术可以在一个处理器上同时运行两个程序；还增加了 EM64T, 它是 Intel 对AMD提出的对 IA32 的 64 位扩展的实现，我们称之为 x86-64。</p>
+<h2 id="2-程序编码"><a href="#2-程序编码" class="headerlink" title="2.程序编码"></a>2.程序编码</h2><p>假设一个C程序，有两个文件<code>p1.c</code> 和 <code>p2.c</code> 我们用 Unix命令行编译这些代码：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">linux&gt; gcc -Og -o p p1.c p2.c </span><br></pre></td></tr></table></figure>
+
+<p>命令 <code>gcc</code> 指的就是 <code>GCC C</code> 编译器。因为这是 <code>Linux</code>上默认的编译器。编译选项<code>-Og</code>告诉编译器使用的优化等级。</p>
+<p>实际上 <code>gcc</code> 命令调用了一整套的程序，将源代码转化成可执行代码。首先， C预处理器扩展源代码，插入所有用<code>#include</code>命令指定的文件，并展开所有用#define 声明指定的宏。其次，编译器产生两个源文件的汇编代码，名字分别为 <code>p1.s</code> 和 <code>p2.s</code>。接下来，汇编器会将汇编代码转化成二进制目标代码文件<code>p1.a</code> 和 <code>p2.o</code>。 目标代码是机器代码的一种形式，<strong>它包含所有指令的二进制表示，但是还没有填入全局值的地址（此时全局变量的地址应该没有确定）</strong>。最后，链接器将两个目标代码文件与实现库函数（例如printf)的代码合并，并产生最终的可执行代码文件<code>p</code>。</p>
+<p>虽然 C语言提供了一种模型，可以在内存中声明和分配各种数据类型的对象**，但是机器码只是简单地将内存看成一个很大的、按字节寻址的数组**。 C语言中的数据类型，例如数组和结构体，在机器代码中用一组连续的字节来表示。</p>
+<p><strong>代码示例：</strong></p>
+<p>假设我们写了一个 C 语言代码文件 <code>mstore.c</code>，包含如下的函数定义：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">long</span> <span class="title function_">mult2</span><span class="params">(<span class="type">long</span>, <span class="type">long</span>)</span>;</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> <span class="title function_">multstore</span><span class="params">(<span class="type">long</span> x, <span class="type">long</span> y, <span class="type">long</span> *dest)</span> &#123;</span><br><span class="line">    <span class="type">long</span> t = mult2(x, y);</span><br><span class="line">    *dest = t;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在命令行上使用 <code>-S</code> 选项，就能看到 C 语言编译器产生的汇编代码</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">linux&gt; gcc -Og -S mstore.c</span><br></pre></td></tr></table></figure>
+
+<p>这会使 <code>GCC</code> 运行编译器，产生一个汇编文件 <code>mstore.s</code>，但是不做其他进一步的工作。（通常情况下，它还会继续调用汇编器产生目标代码文件）。</p>
+<p>汇编代码文件包含各种声明，包括下面几行：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">multstore:</span><br><span class="line">    pushq   %rbx //把寄存器 %rbx 的值压栈，保存现场，防止被后面修改</span><br><span class="line">    movq    %rdx, %rbx //把第三个参数（dest 指针）保存到 %rbx 中，因为调用 mult2 之后 %rdx 可能会被破坏</span><br><span class="line">    call    mult2 //调用 mult2(x, y) 函数（参数 x 和 y 存在 %rdi 和 %rsi 中）。</span><br><span class="line">    movq    %rax, (%rbx) //将 mult2 的返回值（在 %rax 中）存储到 %rbx 指向的地址中，也就是 *dest = result。</span><br><span class="line">    popq    %rbx //恢复之前保存的 %rbx 的值，保持寄存器一致性。</span><br><span class="line">    ret</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>要查看机器代码文件的内容，有一类称为反汇编器（disassembler）的程序非常有用。这些程序根据机器代码产生一种类似于汇编代码的格式。在 Linux 系统中，带 <code>-d</code> 命令行标志的程序 <strong>objdump</strong>（表示 “object dump”）可以充当这个角色：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">linux&gt; objdump -d mstore.o</span><br></pre></td></tr></table></figure>
+
+<p>结果如下</p>
+<figure class="highlight perl"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">Disassembly of function multstore in binary file mstore.o</span><br><span class="line"></span><br><span class="line"><span class="number">0000000000000000</span> &lt;multstore&gt;:</span><br><span class="line"> Offset  Bytes         Equivalent assembly language</span><br><span class="line">----------------------------------------------------</span><br><span class="line">  <span class="number">0</span>:     <span class="number">53</span>            <span class="keyword">push</span>   <span class="variable">%rbx</span>                ; 保存 <span class="variable">%rbx</span> 到栈中</span><br><span class="line">  <span class="number">1</span>:     <span class="number">48</span> <span class="number">89</span> d3      mov    <span class="variable">%rdx</span>, <span class="variable">%rbx</span>          ; 把第三个参数 dest 存入 <span class="variable">%rbx</span></span><br><span class="line">  <span class="number">4</span>:     e8 <span class="number">00</span> <span class="number">00</span> <span class="number">00</span> <span class="number">00</span> callq  <span class="number">9</span> &lt;multstore+<span class="number">0x9</span>&gt;  ; 调用 mult2(<span class="keyword">x</span>, <span class="keyword">y</span>)</span><br><span class="line">  <span class="number">9</span>:     <span class="number">48</span> <span class="number">89</span> <span class="number">03</span>      mov    <span class="variable">%rax</span>, (<span class="variable">%rbx</span>)        ; 把结果保存到 *dest 中</span><br><span class="line">  c:     5b            <span class="keyword">pop</span>    <span class="variable">%rbx</span>                ; 恢复 <span class="variable">%rbx</span></span><br><span class="line">  d:     c3            retq                       ; 返回</span><br></pre></td></tr></table></figure>
+
+
+
+<p>然而<strong>生成实际可执行的代码需要对一组目标代码文件运行链接器，而这一组目标代码文件中必须含有一个main 函数</strong>。假设在文件 main.c 中有下面这样的函数：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;stdio.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="type">void</span> <span class="title function_">multstore</span><span class="params">(<span class="type">long</span>, <span class="type">long</span>, <span class="type">long</span> *)</span>;</span><br><span class="line"></span><br><span class="line"><span class="type">int</span> <span class="title function_">main</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="type">long</span> d;</span><br><span class="line">    multstore(<span class="number">2</span>, <span class="number">3</span>, &amp;d);</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">&quot;2 * 3 --&gt; %ld\n&quot;</span>, d);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">long</span> <span class="title function_">mult2</span><span class="params">(<span class="type">long</span> a, <span class="type">long</span> b)</span> &#123;</span><br><span class="line">    <span class="type">long</span> s = a * b;</span><br><span class="line">    <span class="keyword">return</span> s;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>用如下命令成可执行文件prog:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">linux&gt; gcc -Og -o prog main.c mstore.c</span><br></pre></td></tr></table></figure>
+
+<p>我们也可以反汇编 <code>prog</code> 文件</p>
+<figure class="highlight perl"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">Disassembly of function sum multstore binary file prog</span><br><span class="line"></span><br><span class="line"><span class="number">0000000000400540</span> &lt;multstore&gt;:</span><br><span class="line"> Offset     Bytes             Equivalent assembly language</span><br><span class="line">----------------------------------------------------------</span><br><span class="line"> <span class="number">400540</span>:    <span class="number">53</span>                <span class="keyword">push</span>   <span class="variable">%rbx</span></span><br><span class="line"> <span class="number">400541</span>:    <span class="number">48</span> <span class="number">89</span> d3          mov    <span class="variable">%rdx</span>, <span class="variable">%rbx</span></span><br><span class="line"> <span class="number">400544</span>:    e8 <span class="number">42</span> <span class="number">00</span> <span class="number">00</span> <span class="number">00</span>    callq  40058b &lt;mult2&gt;</span><br><span class="line"> <span class="number">400549</span>:    <span class="number">48</span> <span class="number">89</span> <span class="number">03</span>          mov    <span class="variable">%rax</span>, (<span class="variable">%rbx</span>)</span><br><span class="line"> 40054c:    5b                <span class="keyword">pop</span>    <span class="variable">%rbx</span></span><br><span class="line"> 40054d:    c3                retq</span><br><span class="line"> 40054e:    <span class="number">90</span>                nop</span><br><span class="line"> 40054f:    <span class="number">90</span>                nop</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>这段代码与 <code>mstore.c</code> 反汇编产生的代码几乎完全一样。其中一个主要的区别是左边列出的地址不同——链接器将这段代码的地址移动到了一段不同的地址范围中。第二个不同之处在于链接器填上了 <code>callq</code> 指令调用函数 <code>mult2</code> 需要使用的地址（反汇编代码第 4 行）。链接器的任务之一就是为函数调用匹配到可执行代码中函数的地址.（这里的地址0000000000400540应该就是虚拟内存中的地址）</p>
+<h2 id="3-汇编伪指令"><a href="#3-汇编伪指令" class="headerlink" title="3.汇编伪指令"></a>3.汇编伪指令</h2><p>假设我们用如下命令生成文件 <code>mstore.s</code>完整的汇编文件代码如下所示：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">	.file	&quot;010-mstore.c&quot; //告诉汇编器这个文件来源于哪个源文件（调试信息用）</span><br><span class="line">	.text  					//告诉汇编器后面的内容是程序代码</span><br><span class="line">	.globl	multstore 		//使函数对其他文件可见（链接时可调用）</span><br><span class="line">	.type	multstore, @function //	指定符号类型是函数	供链接器识别该符号为函数</span><br><span class="line">multstore:</span><br><span class="line">	pushq	%rbx</span><br><span class="line">	movq	%rdx, %rbx</span><br><span class="line">	call	mult2</span><br><span class="line">	movq	%rax, (%rbx)</span><br><span class="line">	popq	%rbx</span><br><span class="line">	ret</span><br><span class="line">	.size	multstore, .-multstore //告诉链接器这个函数占用了多少字节。在 ELF 格式中，每个符号都可以带有大小信息</span><br><span class="line">	.ident	&quot;GCC: (Ubuntu 4.8.1-2ubuntu1~12.04) 4.8.1&quot; //加入一条标识信息，说明是用什么编译器编译的。</span><br><span class="line">	.section	.note.GNU-stack,&quot;&quot;,@progbits</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>所有以 <code>.</code> 开头的行都是指导汇编器和链接器工作的伪指令。</p>
+<h2 id="4-C-类型与汇编指令后缀对应表"><a href="#4-C-类型与汇编指令后缀对应表" class="headerlink" title="4.C 类型与汇编指令后缀对应表"></a>4.C 类型与汇编指令后缀对应表</h2><p> <strong>Intel 用术语”字(word)” 表示 16 位数据类型</strong>。因此，<strong>称 32 位数为“双字”, 称 64 位数为“四字”</strong> 下表为C语言基本数据类型对应的 x86-64 表示：</p>
+<table>
+<thead>
+<tr>
+<th align="left">C 声明</th>
+<th>Intel 数据类型</th>
+<th>汇编代码后缀</th>
+<th>大小（字节）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left"><code>char</code></td>
+<td>字节</td>
+<td><code>b</code>（byte）</td>
+<td>1 字节</td>
+</tr>
+<tr>
+<td align="left"><code>short</code></td>
+<td>字</td>
+<td><code>w</code>（word）</td>
+<td>2 字节</td>
+</tr>
+<tr>
+<td align="left"><code>int</code></td>
+<td>双字</td>
+<td><code>l</code>（long）</td>
+<td>4 字节</td>
+</tr>
+<tr>
+<td align="left"><code>long</code></td>
+<td>四字</td>
+<td><code>q</code>（quad）</td>
+<td>8 字节</td>
+</tr>
+<tr>
+<td align="left"><code>char*</code></td>
+<td>四字（指针）</td>
+<td><code>q</code></td>
+<td>8 字节</td>
+</tr>
+<tr>
+<td align="left"><code>float</code></td>
+<td>单精度</td>
+<td><code>s</code>（single）</td>
+<td>4 字节</td>
+</tr>
+<tr>
+<td align="left"><code>double</code></td>
+<td>双精度</td>
+<td><code>l</code>（long）</td>
+<td>8 字节</td>
+</tr>
+</tbody></table>
+<p> <strong>汇编后缀的意义</strong>：</p>
+<p>在 x86-64 汇编中，许多指令都有后缀来说明操作数的数据大小：</p>
+<ul>
+<li><code>movb</code>：移动 1 字节（byte）</li>
+<li><code>movw</code>：移动 2 字节（word）</li>
+<li><code>movl</code>：移动 4 字节（long word）</li>
+<li><code>movq</code>：移动 8 字节（quad word）</li>
+</ul>
+<h2 id="5-x86-64-架构下的通用寄存器"><a href="#5-x86-64-架构下的通用寄存器" class="headerlink" title="5.x86-64 架构下的通用寄存器"></a>5.<strong>x86-64 架构下的通用寄存器</strong></h2><p>通用寄存器：临时存储运算数据、函数参数、返回值、地址、计数、内存地址等各种信息，能够<strong>加快数据处理速度</strong>，<strong>减少内存读写</strong>等</p>
+<p><strong>每个寄存器的用途（按调用约定）如下表所示：</strong></p>
+<table>
+<thead>
+<tr>
+<th>64位寄存器</th>
+<th>32位</th>
+<th>16位</th>
+<th>8位</th>
+<th>用途说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>%rax</code></td>
+<td><code>%eax</code></td>
+<td><code>%ax</code></td>
+<td><code>%al</code></td>
+<td>返回值寄存器</td>
+</tr>
+<tr>
+<td><code>%rbx</code></td>
+<td><code>%ebx</code></td>
+<td><code>%bx</code></td>
+<td><code>%bl</code></td>
+<td>被调用者保存</td>
+</tr>
+<tr>
+<td><code>%rcx</code></td>
+<td><code>%ecx</code></td>
+<td><code>%cx</code></td>
+<td><code>%cl</code></td>
+<td>第4个参数</td>
+</tr>
+<tr>
+<td><code>%rdx</code></td>
+<td><code>%edx</code></td>
+<td><code>%dx</code></td>
+<td><code>%dl</code></td>
+<td>第3个参数</td>
+</tr>
+<tr>
+<td><code>%rsi</code></td>
+<td><code>%esi</code></td>
+<td><code>%si</code></td>
+<td><code>%sil</code></td>
+<td>第2个参数</td>
+</tr>
+<tr>
+<td><code>%rdi</code></td>
+<td><code>%edi</code></td>
+<td><code>%di</code></td>
+<td><code>%dil</code></td>
+<td>第1个参数</td>
+</tr>
+<tr>
+<td><code>%rbp</code></td>
+<td><code>%ebp</code></td>
+<td><code>%bp</code></td>
+<td><code>%bpl</code></td>
+<td>被调用者保存</td>
+</tr>
+<tr>
+<td><code>%rsp</code></td>
+<td><code>%esp</code></td>
+<td><code>%sp</code></td>
+<td><code>%spl</code></td>
+<td>栈指针</td>
+</tr>
+<tr>
+<td><code>%r8</code></td>
+<td><code>%r8d</code></td>
+<td><code>%r8w</code></td>
+<td><code>%r8b</code></td>
+<td>第5个参数</td>
+</tr>
+<tr>
+<td><code>%r9</code></td>
+<td><code>%r9d</code></td>
+<td><code>%r9w</code></td>
+<td><code>%r9b</code></td>
+<td>第6个参数</td>
+</tr>
+<tr>
+<td><code>%r10</code></td>
+<td><code>%r10d</code></td>
+<td><code>%r10w</code></td>
+<td><code>%r10b</code></td>
+<td>调用者保存</td>
+</tr>
+<tr>
+<td><code>%r11</code></td>
+<td><code>%r11d</code></td>
+<td><code>%r11w</code></td>
+<td><code>%r11b</code></td>
+<td>调用者保存</td>
+</tr>
+<tr>
+<td><code>%r12</code></td>
+<td><code>%r12d</code></td>
+<td><code>%r12w</code></td>
+<td><code>%r12b</code></td>
+<td>被调用者保存</td>
+</tr>
+<tr>
+<td><code>%r13</code></td>
+<td><code>%r13d</code></td>
+<td><code>%r13w</code></td>
+<td><code>%r13b</code></td>
+<td>被调用者保存</td>
+</tr>
+<tr>
+<td><code>%r14</code></td>
+<td><code>%r14d</code></td>
+<td><code>%r14w</code></td>
+<td><code>%r14b</code></td>
+<td>被调用者保存</td>
+</tr>
+<tr>
+<td><code>%r15</code></td>
+<td><code>%r15d</code></td>
+<td><code>%r15w</code></td>
+<td><code>%r15b</code></td>
+<td>被调用者保存</td>
+</tr>
+</tbody></table>
+<p><strong>所有这些寄存器本质上都是 64 位的，但我们可以只访问其中的低 32、16、8 位</strong>（如上表第二，第三，第四列所示）</p>
+<p><strong>与专用寄存器的区别：</strong></p>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>说明</th>
+<th>例子</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>通用寄存器</td>
+<td>用于各种灵活数据操作</td>
+<td><code>%rax</code>, <code>%rdi</code></td>
+</tr>
+<tr>
+<td>专用寄存器</td>
+<td>有固定用途</td>
+<td><code>%rip</code>（指令指针），<code>%cr3</code>（控制）</td>
+</tr>
+<tr>
+<td>段寄存器</td>
+<td>用于段地址（早期保护模式）</td>
+<td><code>%cs</code>, <code>%ds</code></td>
+</tr>
+<tr>
+<td>标志寄存器</td>
+<td>保存运算结果标志</td>
+<td><code>%eflags</code></td>
+</tr>
+</tbody></table>
+<h2 id="6-x86-汇编寻址方式表"><a href="#6-x86-汇编寻址方式表" class="headerlink" title="6.x86 汇编寻址方式表"></a>6.<strong>x86 汇编寻址方式表</strong></h2><p>寻址（Addressing）就是确定数据所在地址的过程，具体汇编的格式和含义如下表所示：</p>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>格式</th>
+<th>操作数值表示</th>
+<th>名称（寻址方式）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>立即数</td>
+<td><code>$Imm</code></td>
+<td><code>Imm</code></td>
+<td>立即数寻址（Immediate Addressing）</td>
+</tr>
+<tr>
+<td>寄存器</td>
+<td><code>r_a</code></td>
+<td><code>R[r_a]</code></td>
+<td>寄存器寻址（Register Addressing）</td>
+</tr>
+<tr>
+<td>存储器</td>
+<td><code>Imm</code></td>
+<td><code>M[Imm]</code></td>
+<td>绝对寻址（Absolute Addressing）</td>
+</tr>
+<tr>
+<td>存储器</td>
+<td><code>(r_a)</code></td>
+<td><code>M[R[r_a]]</code></td>
+<td>间接寻址（Indirect Addressing）</td>
+</tr>
+<tr>
+<td>存储器</td>
+<td><code>Imm(r_b)</code></td>
+<td><code>M[Imm + R[r_b]]</code></td>
+<td>基址 + 偏移量（Base + Offset）寻址</td>
+</tr>
+<tr>
+<td>存储器</td>
+<td><code>(r_b, r_i)</code></td>
+<td><code>M[R[r_b] + R[r_i]]</code></td>
+<td>变址寻址（Indexed Addressing）</td>
+</tr>
+<tr>
+<td>存储器</td>
+<td><code>Imm(r_b, r_i)</code></td>
+<td><code>M[Imm + R[r_b] + R[r_i]]</code></td>
+<td>变址 + 偏移量寻址</td>
+</tr>
+<tr>
+<td>存储器</td>
+<td><code>(r_i, s)</code></td>
+<td><code>M[R[r_i] * s]</code></td>
+<td>比例变址寻址（Scaled Index）</td>
+</tr>
+<tr>
+<td>存储器</td>
+<td><code>Imm(,r_i,s)</code></td>
+<td><code>M[Imm + R[r_i] * s]</code></td>
+<td>比例变址 + 偏移量寻址</td>
+</tr>
+<tr>
+<td>存储器</td>
+<td><code>(r_b, r_i, s)</code></td>
+<td><code>M[R[r_b] + R[r_i] * s]</code></td>
+<td>比例变址 + 基址寻址</td>
+</tr>
+<tr>
+<td>存储器</td>
+<td><code>Imm(r_b, r_i, s)</code></td>
+<td><code>M[Imm + R[r_b] + R[r_i] * s]</code></td>
+<td>比例变址 + 基址 + 偏移量寻址</td>
+</tr>
+</tbody></table>
+<p>格式指的是在汇编语言中书写一个操作数（比如常量、寄存器或内存地址）时，它的语法结构长什么样，也就是“写法”。</p>
+<p>操作数表示是指汇编语言中那个操作数在执行时真正的数值含义，如下表所示：</p>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>意义</th>
+<th>举例</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>格式</strong></td>
+<td>汇编里写法</td>
+<td><code>8(%rbp)</code></td>
+</tr>
+<tr>
+<td><strong>操作数表示</strong></td>
+<td>真正要访问的值的含义</td>
+<td><code>M[8 + R[rbp]]</code></td>
+</tr>
+</tbody></table>
+<p><strong>举例：</strong></p>
+<ul>
+<li><strong>立即数寻址（Immediate Addressing）</strong></li>
+</ul>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mov $5, %eax      # 把常量 5 移到寄存器 eax 中</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>寄存器寻址（Register Addressing）</li>
+</ul>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mov %ebx, %eax    # 把 %ebx 里的值复制到 %eax</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>间接寻址（Indirect Addressing)</li>
+</ul>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mov (%rbx), %eax  # 把 %rbx 指向的内存地址中的值加载到 %eax</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>基址 + 偏移寻址（Base + Offset)</li>
+</ul>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mov 8(%rbp), %eax # 取栈帧中偏移 8 字节的变量到 %eax</span><br></pre></td></tr></table></figure>
+
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E6%B1%87%E7%BC%96%E8%AF%AD%E8%A8%80/" rel="tag"># 汇编语言</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/05/27/socket%E4%B8%8E%E6%96%87%E4%BB%B6%E6%8F%8F%E8%BF%B0%E7%AC%A6%E7%9A%84%E6%98%A0%E5%B0%84/" rel="prev" title="socket与文件描述符的映射">
+      <i class="fa fa-chevron-left"></i> socket与文件描述符的映射
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E6%B1%87%E7%BC%96%E8%AF%AD%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">汇编语言</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-x86%E7%9A%84%E5%8F%91%E5%B1%95%E8%BF%87%E7%A8%8B"><span class="nav-number">1.1.</span> <span class="nav-text">1.x86的发展过程</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-%E7%A8%8B%E5%BA%8F%E7%BC%96%E7%A0%81"><span class="nav-number">1.2.</span> <span class="nav-text">2.程序编码</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-%E6%B1%87%E7%BC%96%E4%BC%AA%E6%8C%87%E4%BB%A4"><span class="nav-number">1.3.</span> <span class="nav-text">3.汇编伪指令</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-C-%E7%B1%BB%E5%9E%8B%E4%B8%8E%E6%B1%87%E7%BC%96%E6%8C%87%E4%BB%A4%E5%90%8E%E7%BC%80%E5%AF%B9%E5%BA%94%E8%A1%A8"><span class="nav-number">1.4.</span> <span class="nav-text">4.C 类型与汇编指令后缀对应表</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-x86-64-%E6%9E%B6%E6%9E%84%E4%B8%8B%E7%9A%84%E9%80%9A%E7%94%A8%E5%AF%84%E5%AD%98%E5%99%A8"><span class="nav-number">1.5.</span> <span class="nav-text">5.x86-64 架构下的通用寄存器</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-x86-%E6%B1%87%E7%BC%96%E5%AF%BB%E5%9D%80%E6%96%B9%E5%BC%8F%E8%A1%A8"><span class="nav-number">1.6.</span> <span class="nav-text">6.x86 汇编寻址方式表</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">10</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "评论秒回复，你试试",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
