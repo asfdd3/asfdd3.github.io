@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="moudle_init()原理学习1.静态加载与动态加载内核模块代码的例子1234567891011121314151617#include &lt;linux&#x2F;module.h&gt;#include &lt;linux&#x2F;init.h&gt; static int hello_init(void)&#123;    printk(KERN_ALERT &quot;Hello World\n&amp;qu">
+<meta property="og:type" content="article">
+<meta property="og:title" content="moudle_init()原理学习">
+<meta property="og:url" content="http://example.com/2025/05/28/module_init%E5%8E%9F%E7%90%86%E5%AD%A6%E4%B9%A0/index.html">
+<meta property="og:site_name" content="标题">
+<meta property="og:description" content="moudle_init()原理学习1.静态加载与动态加载内核模块代码的例子1234567891011121314151617#include &lt;linux&#x2F;module.h&gt;#include &lt;linux&#x2F;init.h&gt; static int hello_init(void)&#123;    printk(KERN_ALERT &quot;Hello World\n&amp;qu">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-05-28T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-05-28T15:07:59.307Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="linux内核">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/05/28/module_init%E5%8E%9F%E7%90%86%E5%AD%A6%E4%B9%A0/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>moudle_init()原理学习 | 标题</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">标题</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">副标题</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/28/module_init%E5%8E%9F%E7%90%86%E5%AD%A6%E4%B9%A0/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="标题">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          moudle_init()原理学习
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-05-28 22:00:00 / 修改时间：23:07:59" itemprop="dateCreated datePublished" datetime="2025-05-28T22:00:00+08:00">2025-05-28</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E5%85%B6%E4%BB%96/" itemprop="url" rel="index"><span itemprop="name">其他</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/05/28/module_init%E5%8E%9F%E7%90%86%E5%AD%A6%E4%B9%A0/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/28/module_init%E5%8E%9F%E7%90%86%E5%AD%A6%E4%B9%A0/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h1 id="moudle-init-原理学习"><a href="#moudle-init-原理学习" class="headerlink" title="moudle_init()原理学习"></a>moudle_init()原理学习</h1><h2 id="1-静态加载与动态加载"><a href="#1-静态加载与动态加载" class="headerlink" title="1.静态加载与动态加载"></a>1.静态加载与动态加载</h2><h3 id="内核模块代码的例子"><a href="#内核模块代码的例子" class="headerlink" title="内核模块代码的例子"></a>内核模块代码的例子</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;linux/module.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;linux/init.h&gt;</span></span></span><br><span class="line"> </span><br><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">hello_init</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">    printk(KERN_ALERT <span class="string">&quot;Hello World\n&quot;</span>);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"> </span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">hello_exit</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">    printk(KERN_ALERT <span class="string">&quot;Bye Bye World\n&quot;</span>);</span><br><span class="line">&#125;</span><br><span class="line"> </span><br><span class="line">module_init(hello_init);</span><br><span class="line">module_exit(hello_exit);</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p>上述编写的内核模块有两种运行方式，一是静态编译链接进内核，在系统启动过程中进行初始化；一是编译成可动态加载的module，通过insmod动态加载重定位到内核。<strong>这两种方式可以在Makefile中通过obj-y或obj-m选项进行选择</strong>。</p>
+<p><strong>动态加载</strong>：</p>
+<ul>
+<li>可根据系统需要运行动态加载模块，以扩充内核功能，不需要时将其卸载，以释放内存空间；</li>
+<li>当需要修改内核功能时，只需编译相应模块，而不必重新编译整个内核。</li>
+</ul>
+<p><strong>静态加载</strong><br>但是有些模块必须要编译到内核，随内核一起运行，从不卸载，如 vfs等</p>
+<h2 id="2-动态加载与静态加载实现原理"><a href="#2-动态加载与静态加载实现原理" class="headerlink" title="2.动态加载与静态加载实现原理"></a>2.动态加载与静态加载实现原理</h2><p><strong>同样的内核代码通过对<code>moudle_init</code>这个宏的不同展开来实现动态加载与卸载</strong><br>下面看一下<code>moudle_init</code>这个宏的实现：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">ifndef</span> MODULE</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> module_init(x)	__initcall(x);</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> module_exit(x)	__exitcall(x);</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">else</span> <span class="comment">/* MODULE */</span></span></span><br><span class="line">...</span><br><span class="line"><span class="comment">/* Each module must use one module_init(). */</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> module_init(initfn)					\</span></span><br><span class="line"><span class="meta">	static inline initcall_t __maybe_unused __inittest(void)		\</span></span><br><span class="line"><span class="meta">	&#123; return initfn; &#125;					\</span></span><br><span class="line"><span class="meta">	int init_module(void) __copy(initfn)			\</span></span><br><span class="line"><span class="meta">		__attribute__((alias(#initfn)));		\</span></span><br><span class="line"><span class="meta">	___ADDRESSABLE(init_module, __initdata);</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* This is only required if you want to be unloadable. */</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> module_exit(exitfn)					\</span></span><br><span class="line"><span class="meta">	static inline exitcall_t __maybe_unused __exittest(void)		\</span></span><br><span class="line"><span class="meta">	&#123; return exitfn; &#125;					\</span></span><br><span class="line"><span class="meta">	void cleanup_module(void) __copy(exitfn)		\</span></span><br><span class="line"><span class="meta">		__attribute__((alias(#exitfn)));		\</span></span><br><span class="line"><span class="meta">	___ADDRESSABLE(cleanup_module, __exitdata);</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><strong>从上面代码可以发现<code>moudle_init</code>宏的不同展开方式取决于<code>MODULE</code>是否被定义，也就是通过Makefile控制的，上面部分用于将模块静态编译连接进内核，下面部分用于编译可动态加载的模块。</strong></p>
+<h3 id="2-1静态加载"><a href="#2-1静态加载" class="headerlink" title="2.1静态加载"></a>2.1静态加载</h3><p>静态加载<code>moudle_init</code>宏经过一系列宏展开后如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 静态断言（确保函数类型匹配）</span></span><br><span class="line"><span class="keyword">static_assert</span>(__same_type(<span class="type">initcall_t</span>, &amp;hello_init));</span><br><span class="line"></span><br><span class="line"><span class="comment">// 汇编部分：将函数地址存入特定节</span></span><br><span class="line"><span class="keyword">asm</span> <span class="title function_">volatile</span> <span class="params">(</span></span><br><span class="line"><span class="params">    <span class="string">&quot;.section    \&quot;.initcall6.init\&quot;, \&quot;a\&quot;        \n&quot;</span>  <span class="comment">// 定义节</span></span></span><br><span class="line"><span class="params">    <span class="string">&quot;__initcall_hello__0_10_hello_init6:          \n&quot;</span>  <span class="comment">// 标签</span></span></span><br><span class="line"><span class="params">    <span class="string">&quot;.long       hello_init - .                   \n&quot;</span>  <span class="comment">//函数地址与标签地址的偏移量</span></span></span><br><span class="line"><span class="params">    <span class="string">&quot;.previous                                   \n&quot;</span>    <span class="comment">// 恢复默认节</span></span></span><br><span class="line"><span class="params">)</span>;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述这段汇编代码的作用就是在 .initcall6.init 节中定义一个条目（entry），条目内容就是 hello_init 函数的相对偏移量。<br>具体逻辑如下：</p>
+<p>切换到名为 .initcall6.init 的 <code>ELF</code> 段（Section）。<code>.initcall6.init</code> 是内核用于存储初始化函数指针的特殊段，数字 6 表示优先级（数字越小优先级越高）。内核启动时，会按优先级顺序遍历这些段。<br><code>__initcall_hello__0_10_hello_init6</code> ：定义一个标签，用于标识当前初始化函数的位置。<br><code>.long       hello_init - .</code>存储 hello_init 函数地址相对于当前标签的偏移量。</p>
+<p><strong>上述存放于 .initcall6.init 段中的__initcall_hello__0_10_hello_init6 是在start_kernel(系统调用的第一个c语言程序)中调用。</strong> 具体调用流程如下所示：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">start_kernel</span><br><span class="line">|</span><br><span class="line">--&gt; rest_init</span><br><span class="line">    |</span><br><span class="line">    --&gt; kernel_thread</span><br><span class="line">        |</span><br><span class="line">        --&gt; kernel_init</span><br><span class="line">            |</span><br><span class="line">            --&gt; kernel_init_freeable</span><br><span class="line">                |</span><br><span class="line">                --&gt; do_basic_setup</span><br><span class="line">                    |</span><br><span class="line">                    --&gt; do_initcalls</span><br><span class="line">                        |</span><br><span class="line">                        --&gt; do_initcall_level(level)</span><br><span class="line">                            |</span><br><span class="line">                            --&gt; do_one_initcall(initcall_t fn)</span><br></pre></td></tr></table></figure>
+
+<p>其中<code>do_initcalls</code>可以理解为处理<code>module_init</code>的一个入口函数具体定义如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> __init <span class="title function_">do_initcalls</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> level;<span class="comment">//初始化级别，0-7,优先级由高到低</span></span><br><span class="line">	<span class="type">size_t</span> len = saved_command_line_len + <span class="number">1</span>;</span><br><span class="line">	<span class="type">char</span> *command_line;</span><br><span class="line"></span><br><span class="line">	command_line = kzalloc(len, GFP_KERNEL);</span><br><span class="line">	<span class="keyword">if</span> (!command_line)</span><br><span class="line">		panic(<span class="string">&quot;%s: Failed to allocate %zu bytes\n&quot;</span>, __func__, len);</span><br><span class="line">	<span class="comment">//遍历不同的优先级</span></span><br><span class="line">	<span class="keyword">for</span> (level = <span class="number">0</span>; level &lt; ARRAY_SIZE(initcall_levels) - <span class="number">1</span>; level++) &#123;</span><br><span class="line">		<span class="comment">/* Parser modifies command_line, restore it each time */</span></span><br><span class="line">		<span class="built_in">strcpy</span>(command_line, saved_command_line);</span><br><span class="line">		<span class="comment">//执行单个级别的初始化函数</span></span><br><span class="line">		do_initcall_level(level, command_line);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	kfree(command_line);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p><code>do_initcalls</code> 中调用<code>do_initcall_level</code>来​​执行某个特定级别的所有初始化函数，具体函数如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> __init <span class="title function_">do_initcall_level</span><span class="params">(<span class="type">int</span> level, <span class="type">char</span> *command_line)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">initcall_entry_t</span> *fn;</span><br><span class="line"></span><br><span class="line">	parse_args(initcall_level_names[level],</span><br><span class="line">		   command_line, __start___param,</span><br><span class="line">		   __stop___param - __start___param,</span><br><span class="line">		   level, level,</span><br><span class="line">		   <span class="literal">NULL</span>, ignore_unknown_bootoption);</span><br><span class="line"></span><br><span class="line">	trace_initcall_level(initcall_level_names[level]);</span><br><span class="line">	<span class="keyword">for</span> (fn = initcall_levels[level]; fn &lt; initcall_levels[level+<span class="number">1</span>]; fn++)</span><br><span class="line">		do_one_initcall(initcall_from_entry(fn));</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p><code>do_one_initcall</code>中根据一个具体的<code>level</code>依次调用<code>do_one_initcall</code>执行某一个level中的所有初始化函数</p>
+<p>上面的<code>initcall_levels[]</code>是一个指针数组定义如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">initcall_t</span> *initcall_levels[] __initdata = &#123;</span><br><span class="line">    __initcall0_start,</span><br><span class="line">    __initcall1_start,</span><br><span class="line">    __initcall2_start,</span><br><span class="line">    __initcall3_start,</span><br><span class="line">    __initcall4_start,</span><br><span class="line">    __initcall5_start,</span><br><span class="line">    __initcall6_start,</span><br><span class="line">    __initcall7_start,</span><br><span class="line">    __initcall_end,</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p>上述指针数组中每个元素定义如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">extern</span> <span class="type">initcall_entry_t</span> __initcall_start[];</span><br><span class="line"><span class="keyword">extern</span> <span class="type">initcall_entry_t</span> __initcall0_start[];</span><br><span class="line"><span class="keyword">extern</span> <span class="type">initcall_entry_t</span> __initcall1_start[];</span><br><span class="line"><span class="keyword">extern</span> <span class="type">initcall_entry_t</span> __initcall2_start[];</span><br><span class="line"><span class="keyword">extern</span> <span class="type">initcall_entry_t</span> __initcall3_start[];</span><br><span class="line"><span class="keyword">extern</span> <span class="type">initcall_entry_t</span> __initcall4_start[];</span><br><span class="line"><span class="keyword">extern</span> <span class="type">initcall_entry_t</span> __initcall5_start[];</span><br><span class="line"><span class="keyword">extern</span> <span class="type">initcall_entry_t</span> __initcall6_start[];</span><br><span class="line"><span class="keyword">extern</span> <span class="type">initcall_entry_t</span> __initcall7_start[];</span><br><span class="line"><span class="keyword">extern</span> <span class="type">initcall_entry_t</span> __initcall_end[];</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p><strong>这里 <code>__initcallX_start</code> 符号不是传统意义上的变量。它们的值是在内核链接时由链接器自动计算的</strong> 可以理解也就是module_init注册的函数的偏移量就存在上述的__initcall6_start[]数组中</p>
+<p>这里举个例子：<br>1.驱动通过 module_init 注册</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> __init <span class="title function_">usb_init</span><span class="params">(<span class="type">void</span>)</span> &#123; <span class="comment">/* ... */</span> &#125;</span><br><span class="line">module_init(usb_init);  <span class="comment">// 默认对应级别6</span></span><br></pre></td></tr></table></figure>
+<p>2.译器会将其转换为：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">.section <span class="string">&quot;.initcall6.init&quot;</span>, <span class="string">&quot;a&quot;</span>  ; 放入级别<span class="number">6</span>的段</span><br><span class="line">__initcall_usb_init:</span><br><span class="line">    .<span class="type">long</span> usb_init - .  ; 存储偏移量（非直接地址）</span><br></pre></td></tr></table></figure>
+
+<p>3.链接脚本（vmlinux.lds）将所有 .initcall6.init 段合并？？？</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">.initcall6.init : &#123;</span><br><span class="line">    __initcall6_start = .;</span><br><span class="line">    *(.initcall6.init)  ; 包含所有级别<span class="number">6</span>的驱动初始化条目</span><br><span class="line">    __initcall7_start = .;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p>4.内核通过 initcall_levels 访问</p>
+<p><strong>可以看到上面的<code>do_initcall_level</code>中参数为<code>initcall_from_entry</code> 这个函数实现了将存储在内核初始化表中的​​相对偏移量​​转换为​​实际的函数地址</strong>​，​具体定义如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">initcall_t</span> <span class="title function_">initcall_from_entry</span><span class="params">(<span class="type">initcall_entry_t</span> *entry)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span> offset_to_ptr(entry);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>最终的<code>do_one_initcall</code>完成了针对某一个level中的一个entry的初始化：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">int</span> __init_or_module <span class="title function_">do_one_initcall</span><span class="params">(<span class="type">initcall_t</span> fn)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> count = preempt_count();</span><br><span class="line">	<span class="type">char</span> msgbuf[<span class="number">64</span>];</span><br><span class="line">	<span class="type">int</span> ret;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (initcall_blacklisted(fn))</span><br><span class="line">		<span class="keyword">return</span> -EPERM;</span><br><span class="line"></span><br><span class="line">	do_trace_initcall_start(fn);</span><br><span class="line">    <span class="comment">//这里执行具体的函数调用！！！</span></span><br><span class="line">	ret = fn();</span><br><span class="line">	do_trace_initcall_finish(fn, ret);</span><br><span class="line"></span><br><span class="line">	msgbuf[<span class="number">0</span>] = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (preempt_count() != count) &#123;</span><br><span class="line">		<span class="built_in">sprintf</span>(msgbuf, <span class="string">&quot;preemption imbalance &quot;</span>);</span><br><span class="line">		preempt_count_set(count);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> (irqs_disabled()) &#123;</span><br><span class="line">		strlcat(msgbuf, <span class="string">&quot;disabled interrupts &quot;</span>, <span class="keyword">sizeof</span>(msgbuf));</span><br><span class="line">		local_irq_enable();</span><br><span class="line">	&#125;</span><br><span class="line">	WARN(msgbuf[<span class="number">0</span>], <span class="string">&quot;initcall %pS returned with %s\n&quot;</span>, fn, msgbuf);</span><br><span class="line"></span><br><span class="line">	add_latent_entropy();</span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+
+<h3 id="2-2动态加载"><a href="#2-2动态加载" class="headerlink" title="2.2动态加载"></a>2.2动态加载</h3><p>动态加载通常通过insmod加载内核模块，原理就是执行了init_module这个系统调用。<br>如果是动态加载，<code>moudle_init</code>宏展开如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">initcall_t</span> __maybe_unused __inittest(<span class="type">void</span>) &#123; </span><br><span class="line">    <span class="keyword">return</span> hello_init; </span><br><span class="line">&#125;</span><br><span class="line"><span class="type">int</span> <span class="title function_">init_module</span><span class="params">(<span class="type">void</span>)</span> __<span class="title function_">attribute__</span><span class="params">((alias(<span class="string">&quot;hello_init&quot;</span>)))</span>;</span><br><span class="line">___ADDRESSABLE(init_module, __initdata);</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述<code>__inittest</code> 函数确保 hello_init 符合 initcall_t 类型（返回 int 且无参数）</p>
+<p>上述的alias 属性是 gcc 的特有属性，将定义 init_module 为函数 initfn 的别名。所<strong>以 module_init(hello_init) 的作用就是定义一个变量名 init_module，其地址和 hello_init 是一样的</strong></p>
+<p>上述例子编译可动态加载模块过程中，会自动产生 HelloWorld.mod.c 文件(最终会合并所有.o链接生成一个.ko)，内容如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;linux/module.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;linux/vermagic.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;linux/compiler.h&gt;</span></span></span><br><span class="line"> </span><br><span class="line">MODULE_INFO(vermagic, VERMAGIC_STRING);</span><br><span class="line"> </span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">module</span> __<span class="title">this_module</span></span></span><br><span class="line"><span class="class">__<span class="title">attribute__</span>((<span class="title">section</span>(&quot;.<span class="title">gnu</span>.<span class="title">linkonce</span>.<span class="title">this_module</span>&quot;))) =</span> &#123;</span><br><span class="line">    .name = KBUILD_MODNAME,</span><br><span class="line">    .init = init_module,</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_MODULE_UNLOAD</span></span><br><span class="line">    .<span class="built_in">exit</span> = cleanup_module,</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">    .arch = MODULE_ARCH_INIT,</span><br><span class="line">&#125;;</span><br><span class="line"> </span><br><span class="line"><span class="type">static</span> <span class="type">const</span> <span class="type">char</span> __module_depends[]</span><br><span class="line">__used</span><br><span class="line">__attribute__((section(<span class="string">&quot;.modinfo&quot;</span>))) =</span><br><span class="line"><span class="string">&quot;depends=&quot;</span>;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>由上述代码可知，定义了一个类型为 <code>module </code>的全局变量 <code>__this_module</code>，<strong>成员 <code>init</code> 为 <code>init_module</code>（即 hello_init）</strong>，且该变量链接到 .gnu.linkonce.this_module 段中</p>
+<p>最终，通过执行insmod这个可执行程序会通过系统调用加载内核模块，具体流程如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">SYSCALL_DEFINE3(init_module, ...)</span><br><span class="line">|</span><br><span class="line">--&gt;load_module</span><br><span class="line">    |</span><br><span class="line">    --&gt; do_init_module(mod)</span><br><span class="line">        |</span><br><span class="line">        --&gt; do_one_initcall(mod-&gt;init);</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>可以看到动态加载的方式最终也是调用到了<code>do_one_initcall</code>只不过传入的参数实际上就是<code>hello_init</code></p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/linux%E5%86%85%E6%A0%B8/" rel="tag"># linux内核</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/05/28/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%BA%8C%EF%BC%89/" rel="prev" title="x86汇编学习(二)">
+      <i class="fa fa-chevron-left"></i> x86汇编学习(二)
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#moudle-init-%E5%8E%9F%E7%90%86%E5%AD%A6%E4%B9%A0"><span class="nav-number">1.</span> <span class="nav-text">moudle_init()原理学习</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E9%9D%99%E6%80%81%E5%8A%A0%E8%BD%BD%E4%B8%8E%E5%8A%A8%E6%80%81%E5%8A%A0%E8%BD%BD"><span class="nav-number">1.1.</span> <span class="nav-text">1.静态加载与动态加载</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%86%85%E6%A0%B8%E6%A8%A1%E5%9D%97%E4%BB%A3%E7%A0%81%E7%9A%84%E4%BE%8B%E5%AD%90"><span class="nav-number">1.1.1.</span> <span class="nav-text">内核模块代码的例子</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-%E5%8A%A8%E6%80%81%E5%8A%A0%E8%BD%BD%E4%B8%8E%E9%9D%99%E6%80%81%E5%8A%A0%E8%BD%BD%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86"><span class="nav-number">1.2.</span> <span class="nav-text">2.动态加载与静态加载实现原理</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#2-1%E9%9D%99%E6%80%81%E5%8A%A0%E8%BD%BD"><span class="nav-number">1.2.1.</span> <span class="nav-text">2.1静态加载</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-2%E5%8A%A8%E6%80%81%E5%8A%A0%E8%BD%BD"><span class="nav-number">1.2.2.</span> <span class="nav-text">2.2动态加载</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">12</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "评论秒回复，你试试",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
