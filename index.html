@@ -194,6 +194,262 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="标题">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/" class="post-title-link" itemprop="url">x86汇编学习(三)</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-06-03 22:00:00 / 修改时间：23:26:10" itemprop="dateCreated datePublished" datetime="2025-06-03T22:00:00+08:00">2025-06-03</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="函数调用"><a href="#函数调用" class="headerlink" title="函数调用"></a>函数调用</h2><p><strong>函数调用是一种代码封装机制，他通过参数和返回值实现特定的功能，隐藏实现的细节，提供清晰的接口</strong></p>
+<p>实现函数调用需要提供以下机制：</p>
+<ul>
+<li><strong>控制转移</strong>：跳转到被调用过程并在结束后返回原处；</li>
+<li><strong>参数传递</strong>：将调用方的数据传给被调用方；</li>
+<li><strong>返回值传递</strong>：将结果从被调用方传回；</li>
+<li><strong>局部变量管理</strong>：分配并释放被调用过程所需的内存</li>
+</ul>
+<p><strong>x86-64 架构的过程调用</strong>依赖一套特定的寄存器和内存使用规范，以减少开销和提高效率。</p>
+<h3 id="栈帧"><a href="#栈帧" class="headerlink" title="栈帧"></a>栈帧</h3><p><strong>栈帧</strong>就是<strong>每次函数调用时，在栈上分配的一块内存区域</strong>,里面通常会包含：</p>
+<table>
+<thead>
+<tr>
+<th>内容</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>参数区</strong></td>
+<td>用来保存传入函数的参数（如果没用寄存器传）</td>
+</tr>
+<tr>
+<td><strong>返回地址</strong></td>
+<td>函数执行完后，跳回调用者的地方</td>
+</tr>
+<tr>
+<td><strong>保存的寄存器</strong></td>
+<td>保存调用者的寄存器内容，防止被破坏</td>
+</tr>
+<tr>
+<td><strong>局部变量</strong></td>
+<td>函数内部使用的变量（如 <code>int x = 5;</code>）</td>
+</tr>
+<tr>
+<td><strong>临时空间</strong></td>
+<td>编译器优化、对齐等需求</td>
+</tr>
+</tbody></table>
+<p>对应的布局大体如下：</p>
+<figure class="highlight diff"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">↑ 高地址</span><br><span class="line">│</span><br><span class="line">│ 调用者保存的返回地址      ← call 指令自动压入（跳回调用点）</span><br><span class="line">│</span><br><span class="line">│ 可选：旧的基址指针 (%rbp)  ← 如果使用帧指针（frame pointer）</span><br><span class="line">│</span><br><span class="line">│ 被调用者保存的寄存器      ← 被调用函数保存如 rbx, rbp, r12 等</span><br><span class="line">│</span><br><span class="line">│ 对齐填充                  ← 保证16字节对齐要求</span><br><span class="line">│</span><br><span class="line">│ 被调用者的局部变量        ← 编译器通过 sub rsp, XXX 分配空间</span><br><span class="line">│</span><br><span class="line">│ 可选：超过6个参数的栈参数  ← 前6个参数通过寄存器传，其余在栈上传</span><br><span class="line">↓</span><br><span class="line">低地址</span><br></pre></td></tr></table></figure>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="标题">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/" class="post-title-link" itemprop="url">socket I/O</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-06-03 22:00:00 / 修改时间：23:28:42" itemprop="dateCreated datePublished" datetime="2025-06-03T22:00:00+08:00">2025-06-03</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h1 id="socket-I-O"><a href="#socket-I-O" class="headerlink" title="socket I&#x2F;O"></a>socket I&#x2F;O</h1><h2 id="输出系统调用"><a href="#输出系统调用" class="headerlink" title="输出系统调用"></a>输出系统调用</h2><p><code>send、sendto 和 sendmsg</code> 都是用于发送数据的系统调用，面向连接的协议通常使用<code>send</code>(例如tcp或者已经connect的udp)，而无连接的协议通常使用<code>send_to</code>而<code>sendmsg</code>支持发送时设置多个缓存区，也就是说一次调用可以发送多个数据包。</p>
+<h3 id="send系统调用"><a href="#send系统调用" class="headerlink" title="send系统调用"></a><code>send</code>系统调用</h3><p><strong>用户态调用<code>send</code>的函数原型</strong></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;sys/socket.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="type">ssize_t</span> <span class="title function_">send</span><span class="params">(<span class="type">int</span> sockfd, <span class="type">const</span> <span class="type">void</span> *buf, <span class="type">size_t</span> len, <span class="type">int</span> flags)</span>;</span><br></pre></td></tr></table></figure>
+<p>上述参数解释如下：</p>
+<table>
+<thead>
+<tr>
+<th>参数名</th>
+<th>类型</th>
+<th>描述</th>
+<th>注意事项</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>sockfd</code></td>
+<td><code>int</code></td>
+<td>已连接的 socket 文件描述符</td>
+<td>必须是通过 <code>connect()</code> 建立连接的 TCP socket 或已连接的 UDP socket</td>
+</tr>
+<tr>
+<td><code>buf</code></td>
+<td><code>const void *</code></td>
+<td>待发送数据的缓冲区地址</td>
+<td>用户态指针，指向要发送的数据（如字符串、二进制数据等）</td>
+</tr>
+<tr>
+<td><code>len</code></td>
+<td><code>size_t</code></td>
+<td>要发送的数据长度（字节数）</td>
+<td>实际发送的数据量可能小于此值（需检查返回值）</td>
+</tr>
+<tr>
+<td><code>flags</code></td>
+<td><code>int</code></td>
+<td>控制发送行为的标志位</td>
+<td>多个标志可通过按位或 <code>|</code> 组合（如 <code>MSG_DONTWAIT | MSG_NOSIGNAL</code>）</td>
+</tr>
+</tbody></table>
+<p><strong><code>send</code>系统调用内核实现</strong></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">SYSCALL_DEFINE4(send, <span class="type">int</span>, fd, <span class="type">void</span> __user *, buff, <span class="type">size_t</span>, len,</span><br><span class="line">		<span class="type">unsigned</span> <span class="type">int</span>, flags)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span> __sys_sendto(fd, buff, len, flags, <span class="literal">NULL</span>, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/28/module_init%E5%8E%9F%E7%90%86%E5%AD%A6%E4%B9%A0/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -314,10 +570,16 @@
                 <i class="far fa-calendar"></i>
               </span>
               <span class="post-meta-item-text">发表于</span>
-              
 
-              <time title="创建时间：2025-05-28 22:00:00 / 修改时间：23:39:11" itemprop="dateCreated datePublished" datetime="2025-05-28T22:00:00+08:00">2025-05-28</time>
+              <time title="创建时间：2025-05-28 22:00:00" itemprop="dateCreated datePublished" datetime="2025-05-28T22:00:00+08:00">2025-05-28</time>
             </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-05-31 01:39:48" itemprop="dateModified" datetime="2025-05-31T01:39:48+08:00">2025-05-31</time>
+              </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
                 <i class="far fa-folder"></i>
@@ -478,101 +740,6 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="标题">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/" class="post-title-link" itemprop="url">x86汇编学习(一)</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2025-05-27 22:00:00 / 修改时间：22:55:47" itemprop="dateCreated datePublished" datetime="2025-05-27T22:00:00+08:00">2025-05-27</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h1 id="汇编语言"><a href="#汇编语言" class="headerlink" title="汇编语言"></a>汇编语言</h1><p>GCC（C语言编译器）可以将程序编译为汇编代码的形式进行输出。汇编语言是机器指令的文本表示形式，它详细地列出了程序中每一条指令。然后GCC 会调用汇编器（assembler）和链接器（linker），根据这些汇编代码生成最终的可执行机器代码。</p>
-<p>本文基于x86-64架构,	 它是现在最常见处理器的机器语言，也是驱动大型数据中心和超级计算机的最常见处理器的机器语言。这种语言的历史悠久，开始 于 Intel 公司 1978 年的第一个 16 位处理器，然后扩展为 32 位，最近又扩展到 64 位。</p>
-<h2 id="1-x86的发展过程"><a href="#1-x86的发展过程" class="headerlink" title="1.x86的发展过程"></a>1.<strong>x86的发展过程</strong></h2><p><strong>8086</strong>(1978 年， 29K 个晶体管）。它是第一代单芯片、 16 位微处理器之一。 </p>
-<p><strong>i386</strong>(1985 年， 275K 个晶体管）。将体系结构扩展到 32 位。这是 Intel 系列中第一台全面支持 Unix操作系统的机器。</p>
-<p><strong>Pentium</strong> 4E(2004 年， 125M 个品体管）。增加了超线程(hyperthreading) , 这种技术可以在一个处理器上同时运行两个程序；还增加了 EM64T, 它是 Intel 对AMD提出的对 IA32 的 64 位扩展的实现，我们称之为 x86-64。</p>
-<h2 id="2-程序编码"><a href="#2-程序编码" class="headerlink" title="2.程序编码"></a>2.程序编码</h2><p>假设一个C程序，有两个文件<code>p1.c</code> 和 <code>p2.c</code> 我们用 Unix命令行编译这些代码：</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">linux&gt; gcc -Og -o p p1.c p2.c </span><br></pre></td></tr></table></figure>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/27/socket%E4%B8%8E%E6%96%87%E4%BB%B6%E6%8F%8F%E8%BF%B0%E7%AC%A6%E7%9A%84%E6%98%A0%E5%B0%84/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -649,6 +816,101 @@
           <!--noindex-->
             <div class="post-button">
               <a class="btn" href="/2025/05/27/socket%E4%B8%8E%E6%96%87%E4%BB%B6%E6%8F%8F%E8%BF%B0%E7%AC%A6%E7%9A%84%E6%98%A0%E5%B0%84/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="标题">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/" class="post-title-link" itemprop="url">x86汇编学习(一)</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-05-27 22:00:00 / 修改时间：22:55:58" itemprop="dateCreated datePublished" datetime="2025-05-27T22:00:00+08:00">2025-05-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h1 id="汇编语言"><a href="#汇编语言" class="headerlink" title="汇编语言"></a>汇编语言</h1><p>GCC（C语言编译器）可以将程序编译为汇编代码的形式进行输出。汇编语言是机器指令的文本表示形式，它详细地列出了程序中每一条指令。然后GCC 会调用汇编器（assembler）和链接器（linker），根据这些汇编代码生成最终的可执行机器代码。</p>
+<p>本文基于x86-64架构,	 它是现在最常见处理器的机器语言，也是驱动大型数据中心和超级计算机的最常见处理器的机器语言。这种语言的历史悠久，开始 于 Intel 公司 1978 年的第一个 16 位处理器，然后扩展为 32 位，最近又扩展到 64 位。</p>
+<h2 id="1-x86的发展过程"><a href="#1-x86的发展过程" class="headerlink" title="1.x86的发展过程"></a>1.<strong>x86的发展过程</strong></h2><p><strong>8086</strong>(1978 年， 29K 个晶体管）。它是第一代单芯片、 16 位微处理器之一。 </p>
+<p><strong>i386</strong>(1985 年， 275K 个晶体管）。将体系结构扩展到 32 位。这是 Intel 系列中第一台全面支持 Unix操作系统的机器。</p>
+<p><strong>Pentium</strong> 4E(2004 年， 125M 个品体管）。增加了超线程(hyperthreading) , 这种技术可以在一个处理器上同时运行两个程序；还增加了 EM64T, 它是 Intel 对AMD提出的对 IA32 的 64 位扩展的实现，我们称之为 x86-64。</p>
+<h2 id="2-程序编码"><a href="#2-程序编码" class="headerlink" title="2.程序编码"></a>2.程序编码</h2><p>假设一个C程序，有两个文件<code>p1.c</code> 和 <code>p2.c</code> 我们用 Unix命令行编译这些代码：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">linux&gt; gcc -Og -o p p1.c p2.c </span><br></pre></td></tr></table></figure>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/#more" rel="contents">
                 阅读全文 &raquo;
               </a>
             </div>
@@ -1021,7 +1283,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-05-24 18:21:55" itemprop="dateModified" datetime="2025-05-24T18:21:55+08:00">2025-05-24</time>
+                <time title="修改时间：2025-05-26 21:17:51" itemprop="dateModified" datetime="2025-05-26T21:17:51+08:00">2025-05-26</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -1068,211 +1330,6 @@
           <!--noindex-->
             <div class="post-button">
               <a class="btn" href="/2025/05/21/socket_sock_file_%E6%A6%82%E5%BF%B5/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/21/%E5%86%85%E6%A0%B8socket%E5%88%9B%E5%BB%BA/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="标题">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/05/21/%E5%86%85%E6%A0%B8socket%E5%88%9B%E5%BB%BA/" class="post-title-link" itemprop="url">内核socket套接字的创建</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2025-05-21 21:00:00" itemprop="dateCreated datePublished" datetime="2025-05-21T21:00:00+08:00">2025-05-21</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-05-24 18:21:52" itemprop="dateModified" datetime="2025-05-24T18:21:52+08:00">2025-05-24</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/05/21/%E5%86%85%E6%A0%B8socket%E5%88%9B%E5%BB%BA/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/21/%E5%86%85%E6%A0%B8socket%E5%88%9B%E5%BB%BA/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h3 id="内核socket创建"><a href="#内核socket创建" class="headerlink" title="内核socket创建"></a>内核socket创建</h3><p>用户程序执行<code>syscall</code>指令，系统会从用户态陷入内核态并根据传入的系统调用号（例如在x86架构下socket系统调用号为41）从系统调用表中找到对应的处理函数，<code>socekt（）</code>系统调用对应的处理函数如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">SYSCALL_DEFINE3(socket, <span class="type">int</span>, family, <span class="type">int</span>, type, <span class="type">int</span>, protocol)</span><br><span class="line">&#123;</span><br><span class="line"> <span class="keyword">return</span> __sys_socket(family, type, protocol);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<p>上述宏<code>SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)</code>经过一系列展开后其实就是系统调用表中系统调用号41对应的处理函数</p>
-<p>上述<code>__sys_socket</code>函数定义如下：</p>
-<h3 id="1-sock-create（）"><a href="#1-sock-create（）" class="headerlink" title="1.sock_create（）"></a>1.sock_create（）</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">int</span> __sys_socket(<span class="type">int</span> family, <span class="type">int</span> type, <span class="type">int</span> protocol)</span><br><span class="line">&#123;</span><br><span class="line"> <span class="class"><span class="keyword">struct</span> <span class="title">socket</span> *<span class="title">sock</span>;</span></span><br><span class="line"> <span class="type">int</span> flags;</span><br><span class="line"> <span class="comment">//根据传入的参数创建socket</span></span><br><span class="line"> sock = __sys_socket_create(family, type,</span><br><span class="line">       update_socket_protocol(family, type, protocol));</span><br><span class="line"> <span class="keyword">if</span> (IS_ERR(sock))</span><br><span class="line">  <span class="keyword">return</span> PTR_ERR(sock);</span><br><span class="line"> <span class="comment">//不关心低4bit sock的type</span></span><br><span class="line"> flags = type &amp; ~SOCK_TYPE_MASK;</span><br><span class="line"> <span class="keyword">if</span> (SOCK_NONBLOCK != O_NONBLOCK &amp;&amp; (flags &amp; SOCK_NONBLOCK))</span><br><span class="line">  <span class="comment">//清位之后置位</span></span><br><span class="line">  flags = (flags &amp; ~SOCK_NONBLOCK) | O_NONBLOCK;</span><br><span class="line"> <span class="comment">//将socket映射一个文件描述符号</span></span><br><span class="line"> <span class="keyword">return</span> sock_map_fd(sock, flags &amp; (O_CLOEXEC | O_NONBLOCK));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>该函数主要做了两个事情，创建socekt和映射描述符fd。</p>
-<p>上面创建socket函数<code>__sys_socket_create</code>定义如下：</p>
-<h3 id="2-sys-socket-create（）"><a href="#2-sys-socket-create（）" class="headerlink" title="2.__sys_socket_create（）"></a>2.__sys_socket_create（）</h3>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/05/21/%E5%86%85%E6%A0%B8socket%E5%88%9B%E5%BB%BA/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/19/VFS%E8%99%9A%E6%8B%9F%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="标题">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/05/19/VFS%E8%99%9A%E6%8B%9F%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/" class="post-title-link" itemprop="url">VFS虚拟文件系统</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2025-05-19 22:00:00" itemprop="dateCreated datePublished" datetime="2025-05-19T22:00:00+08:00">2025-05-19</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-05-22 23:44:42" itemprop="dateModified" datetime="2025-05-22T23:44:42+08:00">2025-05-22</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">文件系统学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/05/19/VFS%E8%99%9A%E6%8B%9F%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/19/VFS%E8%99%9A%E6%8B%9F%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="VFS-虚拟文件系统"><a href="#VFS-虚拟文件系统" class="headerlink" title="VFS(虚拟文件系统)"></a>VFS(虚拟文件系统)</h2><h3 id="1-什么是VFS"><a href="#1-什么是VFS" class="headerlink" title="1.什么是VFS"></a>1.什么是VFS</h3><p>Linux 需要支持多种不同的文件系统（因为不同的文件系统有不同的特点），同时还要为用户提供一组统一的接口，因此要实现这个目的，就要将对各种不同文件系统和管理纳入到一个统一的框架中，也就是同一组系统调用，对各种不同的文件系统进行操作，这就是存在VFS的目的。</p>
-<p>这样，就可以对用户程序隐去各种不同文件系统的细节，<strong>为用户程序提供一个统一的、抽象的、虚拟的文件系统，这就是所谓“虚拟文件系统” - VFS（Virtual Filesystem Switch）</strong>。这个抽象层由一组标准的、抽象的文件操作构成，以系统调用的形式提供于用户程序，如<code>read（）、write（）、lseek（）</code>等等。这样，用户程序就可以 把所有的文件都看作一致的、抽象的“VFS文件”，通过这些系统调用对文件进行操作，而无需关心具体的文件属于什么文件系统以及具体文件系统的设计和实现,也就是说<strong>VFS是一个内核软件层，使应用程序与具体的文件系统解耦</strong>。</p>
-<p>举一个例子：在编写应用程序时，会经常使用到<code>write（）</code>系统调用，也就是向一个文件中写入数据。函数的原型为 ssize_t write(int fd, const void *buf, size_t count); 用户程序调用write（f, &amp;buf, len）的含义为向文件描述符为f的文件中，写入len个字节数据，。下图为write（）将数据写入到设备上的宏观流程。我们看到首先通过虚拟文件系统VFS，然后根据不同文件系统的write（）方法将数据写入物理设备上，宏观的调用流程如下图所示：</p>
-<p><img src="/images/vfs/1.svg" alt="vfs系统调用"></p>
-<h3 id="2-VFS-整体架构"><a href="#2-VFS-整体架构" class="headerlink" title="2.VFS 整体架构"></a>2.VFS 整体架构</h3><p>虚拟文件系统作为内核中的一个抽象层，起到一个中间层的作用，对上(应用程序)提供统一接口，应用程序只需使用标准的文件操作（如<code> open、read、write1</code>），无需关心底层是哪种文件系统（<code>EXT4、NTFS、FAT</code>等），对下为各种具体的文件系统（如 ext4、XFS 等）提供了统一的接口（其实就是实现不同文件系统的ops集合），VFS在内核中的整体架构如下所示。</p>
-<hr>
-<p><img src="/images/vfs/vfs%E6%A1%86%E6%9E%B6.png" alt="vfs在内核中的位置"></p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/05/19/VFS%E8%99%9A%E6%8B%9F%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/#more" rel="contents">
                 阅读全文 &raquo;
               </a>
             </div>
@@ -1361,7 +1418,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">12</span>
+          <span class="site-state-item-count">14</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>

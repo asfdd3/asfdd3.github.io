@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="函数调用函数调用是一种代码封装机制，他通过参数和返回值实现特定的功能，隐藏实现的细节，提供清晰的接口 实现函数调用需要提供以下机制：  控制转移：跳转到被调用过程并在结束后返回原处； 参数传递：将调用方的数据传给被调用方； 返回值传递：将结果从被调用方传回； 局部变量管理：分配并释放被调用过程所需的内存  x86-64 架构的过程调用依赖一套特定的寄存器和内存使用规范，以减少开销和提高效率。 栈帧">
+<meta property="og:type" content="article">
+<meta property="og:title" content="x86汇编学习(三)">
+<meta property="og:url" content="http://example.com/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/index.html">
+<meta property="og:site_name" content="标题">
+<meta property="og:description" content="函数调用函数调用是一种代码封装机制，他通过参数和返回值实现特定的功能，隐藏实现的细节，提供清晰的接口 实现函数调用需要提供以下机制：  控制转移：跳转到被调用过程并在结束后返回原处； 参数传递：将调用方的数据传给被调用方； 返回值传递：将结果从被调用方传回； 局部变量管理：分配并释放被调用过程所需的内存  x86-64 架构的过程调用依赖一套特定的寄存器和内存使用规范，以减少开销和提高效率。 栈帧">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-06-03T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-06-03T15:26:10.116Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="汇编语言">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>x86汇编学习(三) | 标题</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">标题</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">副标题</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="标题">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          x86汇编学习(三)
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-06-03 22:00:00 / 修改时间：23:26:10" itemprop="dateCreated datePublished" datetime="2025-06-03T22:00:00+08:00">2025-06-03</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="函数调用"><a href="#函数调用" class="headerlink" title="函数调用"></a>函数调用</h2><p><strong>函数调用是一种代码封装机制，他通过参数和返回值实现特定的功能，隐藏实现的细节，提供清晰的接口</strong></p>
+<p>实现函数调用需要提供以下机制：</p>
+<ul>
+<li><strong>控制转移</strong>：跳转到被调用过程并在结束后返回原处；</li>
+<li><strong>参数传递</strong>：将调用方的数据传给被调用方；</li>
+<li><strong>返回值传递</strong>：将结果从被调用方传回；</li>
+<li><strong>局部变量管理</strong>：分配并释放被调用过程所需的内存</li>
+</ul>
+<p><strong>x86-64 架构的过程调用</strong>依赖一套特定的寄存器和内存使用规范，以减少开销和提高效率。</p>
+<h3 id="栈帧"><a href="#栈帧" class="headerlink" title="栈帧"></a>栈帧</h3><p><strong>栈帧</strong>就是<strong>每次函数调用时，在栈上分配的一块内存区域</strong>,里面通常会包含：</p>
+<table>
+<thead>
+<tr>
+<th>内容</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>参数区</strong></td>
+<td>用来保存传入函数的参数（如果没用寄存器传）</td>
+</tr>
+<tr>
+<td><strong>返回地址</strong></td>
+<td>函数执行完后，跳回调用者的地方</td>
+</tr>
+<tr>
+<td><strong>保存的寄存器</strong></td>
+<td>保存调用者的寄存器内容，防止被破坏</td>
+</tr>
+<tr>
+<td><strong>局部变量</strong></td>
+<td>函数内部使用的变量（如 <code>int x = 5;</code>）</td>
+</tr>
+<tr>
+<td><strong>临时空间</strong></td>
+<td>编译器优化、对齐等需求</td>
+</tr>
+</tbody></table>
+<p>对应的布局大体如下：</p>
+<figure class="highlight diff"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">↑ 高地址</span><br><span class="line">│</span><br><span class="line">│ 调用者保存的返回地址      ← call 指令自动压入（跳回调用点）</span><br><span class="line">│</span><br><span class="line">│ 可选：旧的基址指针 (%rbp)  ← 如果使用帧指针（frame pointer）</span><br><span class="line">│</span><br><span class="line">│ 被调用者保存的寄存器      ← 被调用函数保存如 rbx, rbp, r12 等</span><br><span class="line">│</span><br><span class="line">│ 对齐填充                  ← 保证16字节对齐要求</span><br><span class="line">│</span><br><span class="line">│ 被调用者的局部变量        ← 编译器通过 sub rsp, XXX 分配空间</span><br><span class="line">│</span><br><span class="line">│ 可选：超过6个参数的栈参数  ← 前6个参数通过寄存器传，其余在栈上传</span><br><span class="line">↓</span><br><span class="line">低地址</span><br></pre></td></tr></table></figure>
+
+
+
+
+
+<p>一个简单的例子演示函数 P 调用 Q 时，两者的<strong>栈帧结构</strong>分别是什么样的</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 被调用函数 Q</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">Q</span><span class="params">(<span class="type">int</span> a, <span class="type">int</span> b)</span> &#123;</span><br><span class="line">    <span class="type">int</span> sum = a + b;   <span class="comment">// 局部变量</span></span><br><span class="line">    <span class="keyword">return</span> sum;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 调用者函数 P</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">P</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="type">int</span> x = <span class="number">3</span>, y = <span class="number">4</span>;</span><br><span class="line">    <span class="type">int</span> result = Q(x, y);  <span class="comment">// 调用 Q</span></span><br><span class="line">    <span class="keyword">return</span> result + <span class="number">1</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>栈帧分析</strong></p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">内存高地址</span><br><span class="line">↑</span><br><span class="line"><span class="operator">|</span><span class="comment">-----------------------------------------|</span></span><br><span class="line"><span class="operator">|</span> main → <span class="keyword">call</span> P 压入的返回地址            <span class="operator">|</span> ←  P 的返回地址</span><br><span class="line"><span class="operator">|</span><span class="comment">-----------------------------------------|</span></span><br><span class="line"><span class="operator">|</span> P 保存的寄存器（如 rbx）                 <span class="operator">|</span></span><br><span class="line"><span class="operator">|</span> P 的局部变量 y <span class="operator">=</span> <span class="number">4</span>                      <span class="operator">|</span></span><br><span class="line"><span class="operator">|</span> P 的局部变量 x <span class="operator">=</span> <span class="number">3</span>                      <span class="operator">|</span></span><br><span class="line"><span class="operator">|</span> P 的局部变量 <span class="keyword">result</span>                     <span class="operator">|</span></span><br><span class="line"><span class="operator">|</span><span class="comment">-----------------------------------------|</span></span><br><span class="line"><span class="operator">|</span> P → <span class="keyword">call</span> Q 压入的返回地址               <span class="operator">|</span> ←  Q 的返回地址</span><br><span class="line"><span class="operator">|</span><span class="comment">-----------------------------------------|</span></span><br><span class="line"><span class="operator">|</span> Q 参数 a <span class="operator">=</span> <span class="number">3</span>（由 rdi 传，但可写入栈）     <span class="operator">|</span></span><br><span class="line"><span class="operator">|</span> Q 参数 b <span class="operator">=</span> <span class="number">4</span>（由 rsi 传，但可写入栈）     <span class="operator">|</span></span><br><span class="line"><span class="operator">|</span> Q 保存的寄存器（如 rbx）                 <span class="operator">|</span></span><br><span class="line"><span class="operator">|</span> Q 的局部变量 sum                        <span class="operator">|</span></span><br><span class="line">↓</span><br><span class="line">内存低地址</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h3 id="函数调用-1"><a href="#函数调用-1" class="headerlink" title="函数调用"></a>函数调用</h3><p><strong>函数调用其实就是“跳转”到另一个地址</strong>，把控制权从函数 <code>P</code> 跳转到函数 <code>Q</code>，就是把程序计数器（PC）设置为 <code>Q</code> 函数起始地址。</p>
+<p>但跳转之后，返回原来位置怎么办？</p>
+<ul>
+<li>跳到 <code>Q</code> 之后，执行完 <code>Q</code> 后，<strong>还得回到 <code>P</code> 原来的地方继续执行</strong>。</li>
+<li>所以：<strong>调用时必须“记住”返回地址</strong>。</li>
+</ul>
+<p><strong>在 x86-64 中，是怎么记住这个返回地址的？</strong></p>
+<p>使用 <code>call</code> 指令</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">call Q</span><br></pre></td></tr></table></figure>
+
+<p>做了两件事：</p>
+<ol>
+<li><strong>把“下一条指令地址”压入栈</strong>（这就是“返回地址”）；</li>
+<li><strong>跳转到 <code>Q</code> 函数的入口</strong>。</li>
+</ol>
+<p>这个压入栈的地址（称为 <strong>地址 A</strong>），就是 <code>call Q</code> 指令执行完后，应该继续执行的下一条指令地址。</p>
+<p>使用 <code>ret</code> 指令：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ret</span><br></pre></td></tr></table></figure>
+
+<table>
+<thead>
+<tr>
+<th>指令形式</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>call Label</code></td>
+<td>调用固定地址的函数（如 <code>call Q</code>）</td>
+</tr>
+<tr>
+<td><code>call *Operand</code></td>
+<td>调用函数指针（如 <code>call *%rax</code>）</td>
+</tr>
+<tr>
+<td><code>ret</code></td>
+<td>返回上一函数</td>
+</tr>
+</tbody></table>
+<p>举个例子</p>
+<p>c语言代码如下:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">long</span> <span class="title function_">swap_add</span><span class="params">(<span class="type">long</span> *xp, <span class="type">long</span> *yp)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="type">long</span> x = *xp;  <span class="comment">// 取出 *xp</span></span><br><span class="line">    <span class="type">long</span> y = *yp;  <span class="comment">// 取出 *yp</span></span><br><span class="line">    *xp = y;       <span class="comment">// 交换 *xp 和 *yp 的值</span></span><br><span class="line">    *yp = x;</span><br><span class="line">    <span class="keyword">return</span> x + y;  <span class="comment">// 返回原值之和</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">long</span> <span class="title function_">caller</span><span class="params">()</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="type">long</span> arg1 = <span class="number">534</span>;</span><br><span class="line">    <span class="type">long</span> arg2 = <span class="number">1057</span>;</span><br><span class="line">    <span class="type">long</span> sum = swap_add(&amp;arg1, &amp;arg2);</span><br><span class="line">    <span class="type">long</span> diff = arg1 - arg2;</span><br><span class="line">    <span class="keyword">return</span> sum * diff;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>对应的汇编代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">subq $<span class="number">16</span>, %rsp                  # 为局部变量 arg1 和 arg2 分配 <span class="number">16</span> 字节栈空间</span><br><span class="line"></span><br><span class="line">movq $<span class="number">534</span>, (%rsp)              # 把常量 <span class="number">534</span> 存入栈顶 → arg1</span><br><span class="line">movq $<span class="number">1057</span>, <span class="number">8</span>(%rsp)            # 把常量 <span class="number">1057</span> 存入 [rsp + <span class="number">8</span>] → arg2</span><br><span class="line"></span><br><span class="line">leaq <span class="number">8</span>(%rsp), %rsi             # 加载 &amp;arg2 的地址到 %rsi → 作为第二个参数</span><br><span class="line">movq %rsp, %rdi                # 加载 &amp;arg1 的地址到 %rdi → 作为第一个参数</span><br><span class="line"></span><br><span class="line">call swap_add                  # 调用 swap_add 函数（结果保存在 %rax，返回地址被压栈）</span><br><span class="line"></span><br><span class="line">movq (%rsp), %rdx             # 把交换后的 arg1 取到 %rdx</span><br><span class="line">subq <span class="number">8</span>(%rsp), %rdx            # 计算 diff = arg1 - arg2，结果保存在 %rdx</span><br><span class="line"></span><br><span class="line">imulq %rdx, %rax              <span class="meta"># sum * diff，结果保存在 %rax（作为最终返回值）</span></span><br><span class="line"></span><br><span class="line">addq $<span class="number">16</span>, %rsp                # 恢复栈指针，释放之前为 arg1/arg2 分配的栈空间</span><br><span class="line"></span><br><span class="line">ret                           # 从 caller 函数返回，ret 会从栈中弹出返回地址并跳回</span><br></pre></td></tr></table></figure>
+
+<h2 id="数组"><a href="#数组" class="headerlink" title="数组"></a>数组</h2><p>C语言把数组实现得非常<strong>简单直接</strong> —— 它其实就是一段<strong>连续内存块</strong></p>
+<p>举例：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">char</span> A[<span class="number">12</span>];</span><br><span class="line"><span class="type">char</span> *B[<span class="number">8</span>];</span><br><span class="line"><span class="type">int</span> C[<span class="number">6</span>];</span><br><span class="line"><span class="type">double</span> *D[<span class="number">5</span>];</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<table>
+<thead>
+<tr>
+<th>数组</th>
+<th>元素大小（字节）</th>
+<th>总大小（字节）</th>
+<th>起始地址</th>
+<th>第 i 个元素地址</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A</td>
+<td>1</td>
+<td>12</td>
+<td><code>x_A</code></td>
+<td><code>x_A + i</code></td>
+</tr>
+<tr>
+<td>B</td>
+<td>8</td>
+<td>64</td>
+<td><code>x_B</code></td>
+<td><code>x_B + 8i</code></td>
+</tr>
+<tr>
+<td>C</td>
+<td>4</td>
+<td>24</td>
+<td><code>x_C</code></td>
+<td><code>x_C + 4i</code></td>
+</tr>
+<tr>
+<td>D</td>
+<td>8</td>
+<td>40</td>
+<td><code>x_D</code></td>
+<td><code>x_D + 8i</code></td>
+</tr>
+</tbody></table>
+<p>举例：</p>
+<p>在 x86-64 架构中，内存引用指令可以用来简化数组访问的实现。比如，假设 <code>E</code> 是一个 <code>int</code> 类型的数组，而我们想要计算 <code>E[i]</code> 的值。</p>
+<p>此时，<code>E</code> 的起始地址被存储在寄存器 <code>%rdx</code> 中，索引 <code>i</code> 存储在寄存器 <code>%rcx</code> 中。那么下面这条指令</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">movl (%rdx, %rcx, 4), %eax</span><br></pre></td></tr></table></figure>
+
+<p>会执行地址计算：<code>x_E + 4*i</code>，读取该地址处的内存内容，并将这个值存入寄存器 <code>%eax</code> 中。</p>
+<h3 id="指针的的运算"><a href="#指针的的运算" class="headerlink" title="指针的的运算"></a>指针的的运算</h3><p>C语言允许对指针做加法运算；</p>
+<p>表达式 <code>p + i</code> 并不是简单的“地址 + 数字”，而是<strong>地址 + i × L</strong>，其中 L 是该指针类型 <code>T</code> 的大小；</p>
+<ul>
+<li>比如 <code>int *p</code>，每加1其实是加4字节；</li>
+<li>比如 <code>double *p</code>，每加1是加8字节；</li>
+</ul>
+<p>举例：</p>
+<p>以表达式 <code>E[i]</code>（访问第 i 个元素）为例：</p>
+<ul>
+<li><strong>假设 <code>E</code> 是一个 <code>int</code> 数组，起始地址在 <code>%rdx</code>，下标 <code>i</code> 存在 <code>%rcx</code></strong>；</li>
+<li>那么 <code>E[i]</code> 就是从 <code>rdx + 4*i</code> 所在的内存读取；</li>
+<li>对应汇编是：</li>
+</ul>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">movl (%rdx, %rcx, 4), %eax</span><br></pre></td></tr></table></figure>
+
+<p>说明：<code>int</code> 是 4 字节，所以用 <code>movl</code>（加载 4 字节）和缩放因子 4</p>
+<h2 id="结构体"><a href="#结构体" class="headerlink" title="结构体"></a>结构体</h2><p>C语言的 <code>struct</code> 用来定义一种<strong>聚合类型</strong>，它可以把多个不同类型的变量“组合成一个整体”。</p>
+<ul>
+<li>在内存中，结构体的所有成员是<strong>连续存放</strong>的；</li>
+<li>结构体变量其实就是一个内存块；</li>
+<li>结构体指针指向结构体起始地址，访问成员时靠<strong>偏移量</strong>；</li>
+<li><strong>编译器会记录每个成员相对结构体首地址的偏移，用来计算成员地址</strong>。</li>
+</ul>
+<p>举例：</p>
+<p>假设有如下结构体</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">rec</span> &#123;</span></span><br><span class="line">    <span class="type">int</span> i;</span><br><span class="line">    <span class="type">int</span> j;</span><br><span class="line">    <span class="type">int</span> a[<span class="number">2</span>];</span><br><span class="line">    <span class="type">int</span> *p;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>对应的各个字段的偏移如下所示：</p>
+<table>
+<thead>
+<tr>
+<th>偏移量 (byte)</th>
+<th>字段内容</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td><code>i</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>j</code></td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>a[0]</code></td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>a[1]</code></td>
+</tr>
+<tr>
+<td>16</td>
+<td><code>p</code></td>
+</tr>
+</tbody></table>
+<p>如果访问结构体字段 <code>r-&gt;i</code> 并将其存入 <code>r-&gt;j</code>，对应的汇编如下所示：</p>
+<p>假设 <code>struct rec *r</code> 的地址保存在 <code>%rdi</code> 中：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"># Registers: r in %rdi</span><br><span class="line"></span><br><span class="line">movl (%rdi), %eax        # 将 r-&gt;i 的值读入 %eax</span><br><span class="line">movl %eax, 4(%rdi)       # 把 r-&gt;i 的值写入 r-&gt;j（偏移 4 字节）</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E6%B1%87%E7%BC%96%E8%AF%AD%E8%A8%80/" rel="tag"># 汇编语言</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/" rel="prev" title="socket I/O">
+      <i class="fa fa-chevron-left"></i> socket I/O
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%87%BD%E6%95%B0%E8%B0%83%E7%94%A8"><span class="nav-number">1.</span> <span class="nav-text">函数调用</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%A0%88%E5%B8%A7"><span class="nav-number">1.1.</span> <span class="nav-text">栈帧</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%87%BD%E6%95%B0%E8%B0%83%E7%94%A8-1"><span class="nav-number">1.2.</span> <span class="nav-text">函数调用</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%95%B0%E7%BB%84"><span class="nav-number">2.</span> <span class="nav-text">数组</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%8C%87%E9%92%88%E7%9A%84%E7%9A%84%E8%BF%90%E7%AE%97"><span class="nav-number">2.1.</span> <span class="nav-text">指针的的运算</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BB%93%E6%9E%84%E4%BD%93"><span class="nav-number">3.</span> <span class="nav-text">结构体</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">14</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "评论秒回复，你试试",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

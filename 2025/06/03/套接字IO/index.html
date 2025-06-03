@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="socket I&#x2F;O输出系统调用send、sendto 和 sendmsg 都是用于发送数据的系统调用，面向连接的协议通常使用send(例如tcp或者已经connect的udp)，而无连接的协议通常使用send_to而sendmsg支持发送时设置多个缓存区，也就是说一次调用可以发送多个数据包。 send系统调用用户态调用send的函数原型 123#include &lt;sys&#x2F;sock">
+<meta property="og:type" content="article">
+<meta property="og:title" content="socket I&#x2F;O">
+<meta property="og:url" content="http://example.com/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/index.html">
+<meta property="og:site_name" content="标题">
+<meta property="og:description" content="socket I&#x2F;O输出系统调用send、sendto 和 sendmsg 都是用于发送数据的系统调用，面向连接的协议通常使用send(例如tcp或者已经connect的udp)，而无连接的协议通常使用send_to而sendmsg支持发送时设置多个缓存区，也就是说一次调用可以发送多个数据包。 send系统调用用户态调用send的函数原型 123#include &lt;sys&#x2F;sock">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-06-03T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-06-03T15:28:42.387Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="socket">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>socket I/O | 标题</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">标题</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">副标题</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="标题">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          socket I/O
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-06-03 22:00:00 / 修改时间：23:28:42" itemprop="dateCreated datePublished" datetime="2025-06-03T22:00:00+08:00">2025-06-03</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h1 id="socket-I-O"><a href="#socket-I-O" class="headerlink" title="socket I&#x2F;O"></a>socket I&#x2F;O</h1><h2 id="输出系统调用"><a href="#输出系统调用" class="headerlink" title="输出系统调用"></a>输出系统调用</h2><p><code>send、sendto 和 sendmsg</code> 都是用于发送数据的系统调用，面向连接的协议通常使用<code>send</code>(例如tcp或者已经connect的udp)，而无连接的协议通常使用<code>send_to</code>而<code>sendmsg</code>支持发送时设置多个缓存区，也就是说一次调用可以发送多个数据包。</p>
+<h3 id="send系统调用"><a href="#send系统调用" class="headerlink" title="send系统调用"></a><code>send</code>系统调用</h3><p><strong>用户态调用<code>send</code>的函数原型</strong></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;sys/socket.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="type">ssize_t</span> <span class="title function_">send</span><span class="params">(<span class="type">int</span> sockfd, <span class="type">const</span> <span class="type">void</span> *buf, <span class="type">size_t</span> len, <span class="type">int</span> flags)</span>;</span><br></pre></td></tr></table></figure>
+<p>上述参数解释如下：</p>
+<table>
+<thead>
+<tr>
+<th>参数名</th>
+<th>类型</th>
+<th>描述</th>
+<th>注意事项</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>sockfd</code></td>
+<td><code>int</code></td>
+<td>已连接的 socket 文件描述符</td>
+<td>必须是通过 <code>connect()</code> 建立连接的 TCP socket 或已连接的 UDP socket</td>
+</tr>
+<tr>
+<td><code>buf</code></td>
+<td><code>const void *</code></td>
+<td>待发送数据的缓冲区地址</td>
+<td>用户态指针，指向要发送的数据（如字符串、二进制数据等）</td>
+</tr>
+<tr>
+<td><code>len</code></td>
+<td><code>size_t</code></td>
+<td>要发送的数据长度（字节数）</td>
+<td>实际发送的数据量可能小于此值（需检查返回值）</td>
+</tr>
+<tr>
+<td><code>flags</code></td>
+<td><code>int</code></td>
+<td>控制发送行为的标志位</td>
+<td>多个标志可通过按位或 <code>|</code> 组合（如 <code>MSG_DONTWAIT | MSG_NOSIGNAL</code>）</td>
+</tr>
+</tbody></table>
+<p><strong><code>send</code>系统调用内核实现</strong></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">SYSCALL_DEFINE4(send, <span class="type">int</span>, fd, <span class="type">void</span> __user *, buff, <span class="type">size_t</span>, len,</span><br><span class="line">		<span class="type">unsigned</span> <span class="type">int</span>, flags)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span> __sys_sendto(fd, buff, len, flags, <span class="literal">NULL</span>, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><code>__sys_sendto</code>实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __sys_sendto(<span class="type">int</span> fd, <span class="type">void</span> __user *buff, <span class="type">size_t</span> len, <span class="type">unsigned</span> <span class="type">int</span> flags,</span><br><span class="line">		 <span class="keyword">struct</span> sockaddr __user *addr,  <span class="type">int</span> addr_len)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">socket</span> *<span class="title">sock</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sockaddr_storage</span> <span class="title">address</span>;</span><span class="comment">//这个叫通用地址容器，目的就是兼容用户态传进来的不同结构，例如sock_addrin或者ll</span></span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">msghdr</span> <span class="title">msg</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">iovec</span> <span class="title">iov</span>;</span></span><br><span class="line">	<span class="type">int</span> fput_needed;</span><br><span class="line">	<span class="comment">//这里吧用户态的地址和长度记录到msg.msg_iter这个结构体中，后续内核会操作这个结构体，ITER_SOURCE 表示写</span></span><br><span class="line">	err = import_single_range(ITER_SOURCE, buff, len, &amp;iov, &amp;msg.msg_iter);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(err))</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line">	<span class="comment">//根据fd找到socekt结构体 从fdt中找到file从file的私有字段找到socket</span></span><br><span class="line">	sock = sockfd_lookup_light(fd, &amp;err, &amp;fput_needed);</span><br><span class="line">	<span class="keyword">if</span> (!sock)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	<span class="comment">//设置msg的其他字段</span></span><br><span class="line">	msg.msg_name = <span class="literal">NULL</span>;</span><br><span class="line">	msg.msg_control = <span class="literal">NULL</span>;</span><br><span class="line">	msg.msg_controllen = <span class="number">0</span>;</span><br><span class="line">	msg.msg_namelen = <span class="number">0</span>;</span><br><span class="line">	msg.msg_ubuf = <span class="literal">NULL</span>;</span><br><span class="line">	<span class="comment">//用户调用sendto时才走这个分支，因为addr不为空</span></span><br><span class="line">	<span class="keyword">if</span> (addr) &#123;</span><br><span class="line">		err = move_addr_to_kernel(addr, addr_len, &amp;address);</span><br><span class="line">		<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">			<span class="keyword">goto</span> out_put;</span><br><span class="line">		msg.msg_name = (<span class="keyword">struct</span> sockaddr *)&amp;address;</span><br><span class="line">		msg.msg_namelen = addr_len;</span><br><span class="line">	&#125;</span><br><span class="line">	flags &amp;= ~MSG_INTERNAL_SENDMSG_FLAGS;</span><br><span class="line">	<span class="comment">//如果需要设置非阻塞</span></span><br><span class="line">	<span class="keyword">if</span> (sock-&gt;file-&gt;f_flags &amp; O_NONBLOCK)</span><br><span class="line">		flags |= MSG_DONTWAIT;</span><br><span class="line">	msg.msg_flags = flags;</span><br><span class="line">	<span class="comment">//调用对应socekt的发函数</span></span><br><span class="line">	err = __sock_sendmsg(sock, &amp;msg);</span><br><span class="line"></span><br><span class="line">out_put:</span><br><span class="line">	fput_light(sock-&gt;file, fput_needed);</span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+
+<p>上述代码主要工作就是申请了一个msg变量，并把用户态传进来的数据的地址和长度记录到msg变量的迭代器<code>msg_iter</code>中，并根据fd找到对应的socket套接字，然后调用<code>__sock_sendmsg</code>发送数据。<code>import_single_range</code>里面调用到<code>iov_iter_ubuf</code>来填充迭代器这个结构，填充这个结构的目的就是内核接下来会操作这个结构进行数据的拷贝。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">iov_iter_ubuf</span><span class="params">(<span class="keyword">struct</span> iov_iter *i, <span class="type">unsigned</span> <span class="type">int</span> direction,</span></span><br><span class="line"><span class="params">			<span class="type">void</span> __user *buf, <span class="type">size_t</span> count)</span></span><br><span class="line">&#123;</span><br><span class="line">	WARN_ON(direction &amp; ~(READ | WRITE));</span><br><span class="line">	*i = (<span class="keyword">struct</span> iov_iter) &#123;</span><br><span class="line">		.iter_type = ITER_UBUF, <span class="comment">//标记为用户缓冲区类型</span></span><br><span class="line">		.copy_mc = <span class="literal">false</span>,</span><br><span class="line">		.user_backed = <span class="literal">true</span>, <span class="comment">//标记为来自用户空间</span></span><br><span class="line">		.data_source = direction,  <span class="comment">//记录数据流向</span></span><br><span class="line">		.ubuf = buf, <span class="comment">//用户缓冲区指针</span></span><br><span class="line">		.count = count, <span class="comment">//数据长度</span></span><br><span class="line">		.nr_segs = <span class="number">1</span>  <span class="comment">//单段缓冲区，非聚合分散</span></span><br><span class="line">	&#125;;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>__sock_sendmsg</code>中的逻辑就是调用socket的ops函数，对于AF_INE类型的socket调用的send就是<code>inet_sendmsg</code>具体代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> __sock_sendmsg(<span class="keyword">struct</span> socket *sock, <span class="keyword">struct</span> msghdr *msg)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> err = security_socket_sendmsg(sock, msg,</span><br><span class="line">					  msg_data_left(msg));</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> err ?: sock_sendmsg_nosec(sock, msg);</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">//sock_sendmsg_nosec定义如下</span></span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> <span class="title function_">sock_sendmsg_nosec</span><span class="params">(<span class="keyword">struct</span> socket *sock, <span class="keyword">struct</span> msghdr *msg)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> ret = INDIRECT_CALL_INET(READ_ONCE(sock-&gt;ops)-&gt;sendmsg, inet6_sendmsg,</span><br><span class="line">				     inet_sendmsg, sock, msg,</span><br><span class="line">				     msg_data_left(msg));</span><br><span class="line">	BUG_ON(ret == -EIOCBQUEUED);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (trace_sock_send_length_enabled())</span><br><span class="line">		call_trace_sock_send_length(sock-&gt;sk, ret, <span class="number">0</span>);</span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>在<code>inet_sendmsg</code> 中则会进一步调用socket所关联的sock结果的<code>sendmsg</code>，<strong>注意这里socket与sock的关联是在创建socket的时候根据协议和类型确定的</strong>，对于tcp调用的是<code>tcp_sendmsg</code>对于udp调用的是<code>udp_sendmsg</code>。</p>
+<h3 id="sendto系统调用实现"><a href="#sendto系统调用实现" class="headerlink" title="sendto系统调用实现"></a><strong><code>sendto</code>系统调用实现</strong></h3><p>可以看到sendto系统调用与上面的send系统调用最终调用的都是<code>__sys_sendto</code>，区别就是sendto中的addr字段传入的不为空，在__sys_sendto会有由<code>move_addr_to_kernel</code>处理。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">SYSCALL_DEFINE6(sendto, <span class="type">int</span>, fd, <span class="type">void</span> __user *, buff, <span class="type">size_t</span>, len,</span><br><span class="line">		<span class="type">unsigned</span> <span class="type">int</span>, flags, <span class="keyword">struct</span> sockaddr __user *, addr,</span><br><span class="line">		<span class="type">int</span>, addr_len)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span> __sys_sendto(fd, buff, len, flags, addr, addr_len);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="comment">//传入了用户态的地址空间，和地址长度</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">move_addr_to_kernel</span><span class="params">(<span class="type">void</span> __user *uaddr, <span class="type">int</span> ulen, <span class="keyword">struct</span> sockaddr_storage *kaddr)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">if</span> (ulen &lt; <span class="number">0</span> || ulen &gt; <span class="keyword">sizeof</span>(<span class="keyword">struct</span> sockaddr_storage))</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line">	<span class="keyword">if</span> (ulen == <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//将用户态的结构体copy到内核，这里的kaddr可以兼容所有的sockaddr的结构体128字节</span></span><br><span class="line">	<span class="keyword">if</span> (copy_from_user(kaddr, uaddr, ulen))</span><br><span class="line">		<span class="keyword">return</span> -EFAULT;</span><br><span class="line">	<span class="comment">//安全相关</span></span><br><span class="line">	<span class="keyword">return</span> audit_sockaddr(ulen, kaddr);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h3 id="sendmsg系统调用实现"><a href="#sendmsg系统调用实现" class="headerlink" title="sendmsg系统调用实现"></a><strong><code>sendmsg</code>系统调用实现</strong></h3><p><code>sendmsg</code>送复杂网络消息​​的系统调用，支持多块数据（iovec）、目标地址、控制信息（如 cmsg）等高级功能，对应内核部分代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line">SYSCALL_DEFINE3(sendmsg, <span class="type">int</span>, fd, <span class="keyword">struct</span> user_msghdr __user *, msg, <span class="type">unsigned</span> <span class="type">int</span>, flags)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span> __sys_sendmsg(fd, msg, flags, <span class="literal">true</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="type">long</span> __sys_sendmsg(<span class="type">int</span> fd, <span class="keyword">struct</span> user_msghdr __user *msg, <span class="type">unsigned</span> <span class="type">int</span> flags,</span><br><span class="line">		   <span class="type">bool</span> forbid_cmsg_compat)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> fput_needed, err;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">msghdr</span> <span class="title">msg_sys</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">socket</span> *<span class="title">sock</span>;</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (forbid_cmsg_compat &amp;&amp; (flags &amp; MSG_CMSG_COMPAT))</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line">	<span class="comment">//根据fd查找对应的socket</span></span><br><span class="line">	sock = sockfd_lookup_light(fd, &amp;err, &amp;fput_needed);</span><br><span class="line">	<span class="keyword">if</span> (!sock)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	<span class="comment">//传入用户指定的msg和内核的msg</span></span><br><span class="line">	err = ___sys_sendmsg(sock, msg, &amp;msg_sys, flags, <span class="literal">NULL</span>, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">	fput_light(sock-&gt;file, fput_needed);</span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>与<code>sendto</code>和<code>send</code>不同，sendmsg首先查找对应的socket，然后创建内核msg结构和传入用户的设置的msg结构，调用<code>___sys_sendmsg</code>发送：<code>___sys_sendmsg</code>函数中，主要就是把用户指定的msg信息，存到内核创建的msg_sys中</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> ___sys_sendmsg(<span class="keyword">struct</span> socket *sock, <span class="keyword">struct</span> user_msghdr __user *msg,</span><br><span class="line">			 <span class="keyword">struct</span> msghdr *msg_sys, <span class="type">unsigned</span> <span class="type">int</span> flags,</span><br><span class="line">			 <span class="keyword">struct</span> used_address *used_address,</span><br><span class="line">			 <span class="type">unsigned</span> <span class="type">int</span> allowed_msghdr_flags)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sockaddr_storage</span> <span class="title">address</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">iovec</span> <span class="title">iovstack</span>[<span class="title">UIO_FASTIOV</span>], *<span class="title">iov</span> =</span> iovstack;</span><br><span class="line">	<span class="type">ssize_t</span> err;</span><br><span class="line"></span><br><span class="line">	msg_sys-&gt;msg_name = &amp;address;</span><br><span class="line">	<span class="comment">//将用户态的msg拷贝到内核态msg</span></span><br><span class="line">	err = sendmsg_copy_msghdr(msg_sys, msg, flags, &amp;iov);</span><br><span class="line">	<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line">	<span class="comment">//调用协议栈发送</span></span><br><span class="line">	err = ____sys_sendmsg(sock, msg_sys, flags, used_address,</span><br><span class="line">				allowed_msghdr_flags);</span><br><span class="line">	kfree(iov);</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p>上述<code>____sys_sendmsg</code>中的逻辑为将用户设置的控制信息并保存到内核msg中，</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> ____sys_sendmsg(<span class="keyword">struct</span> socket *sock, <span class="keyword">struct</span> msghdr *msg_sys,</span><br><span class="line">			   <span class="type">unsigned</span> <span class="type">int</span> flags, <span class="keyword">struct</span> used_address *used_address,</span><br><span class="line">			   <span class="type">unsigned</span> <span class="type">int</span> allowed_msghdr_flags)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span> ctl[<span class="keyword">sizeof</span>(<span class="keyword">struct</span> cmsghdr) + <span class="number">20</span>]</span><br><span class="line">				__aligned(<span class="keyword">sizeof</span>(<span class="type">__kernel_size_t</span>));</span><br><span class="line">	<span class="comment">/* 20 is size of ipv6_pktinfo */</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span> *ctl_buf = ctl;</span><br><span class="line">	<span class="type">int</span> ctl_len;</span><br><span class="line">	<span class="type">ssize_t</span> err;</span><br><span class="line"></span><br><span class="line">	err = -ENOBUFS;</span><br><span class="line">	<span class="comment">//msg_controllen为用户msghdr控制字段的总长度</span></span><br><span class="line">	<span class="keyword">if</span> (msg_sys-&gt;msg_controllen &gt; INT_MAX)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	flags |= (msg_sys-&gt;msg_flags &amp; allowed_msghdr_flags);</span><br><span class="line">	ctl_len = msg_sys-&gt;msg_controllen;</span><br><span class="line">	<span class="comment">//32位系统的处理逻辑</span></span><br><span class="line">	<span class="keyword">if</span> ((MSG_CMSG_COMPAT &amp; flags) &amp;&amp; ctl_len) &#123;</span><br><span class="line">		err =</span><br><span class="line">		    cmsghdr_from_user_compat_to_kern(msg_sys, sock-&gt;sk, ctl,</span><br><span class="line">						     <span class="keyword">sizeof</span>(ctl));</span><br><span class="line">		<span class="keyword">if</span> (err)</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line">		ctl_buf = msg_sys-&gt;msg_control;</span><br><span class="line">		ctl_len = msg_sys-&gt;msg_controllen;</span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (ctl_len) &#123;</span><br><span class="line">	<span class="comment">//64位的处理逻辑</span></span><br><span class="line">		BUILD_BUG_ON(<span class="keyword">sizeof</span>(<span class="keyword">struct</span> cmsghdr) !=</span><br><span class="line">			     CMSG_ALIGN(<span class="keyword">sizeof</span>(<span class="keyword">struct</span> cmsghdr)));</span><br><span class="line">		<span class="keyword">if</span> (ctl_len &gt; <span class="keyword">sizeof</span>(ctl)) &#123;</span><br><span class="line">			ctl_buf = sock_kmalloc(sock-&gt;sk, ctl_len, GFP_KERNEL);</span><br><span class="line">			<span class="keyword">if</span> (ctl_buf == <span class="literal">NULL</span>)</span><br><span class="line">				<span class="keyword">goto</span> out;</span><br><span class="line">		&#125;</span><br><span class="line">		err = -EFAULT;</span><br><span class="line">		<span class="comment">//这里的msg_control_user是用户态的指针所以用copy_from_user</span></span><br><span class="line">		<span class="keyword">if</span> (copy_from_user(ctl_buf, msg_sys-&gt;msg_control_user, ctl_len))</span><br><span class="line">			<span class="keyword">goto</span> out_freectl;</span><br><span class="line">		msg_sys-&gt;msg_control = ctl_buf;</span><br><span class="line">		msg_sys-&gt;msg_control_is_user = <span class="literal">false</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	flags &amp;= ~MSG_INTERNAL_SENDMSG_FLAGS;</span><br><span class="line">	msg_sys-&gt;msg_flags = flags;</span><br><span class="line">	<span class="comment">//设置非阻塞</span></span><br><span class="line">	<span class="keyword">if</span> (sock-&gt;file-&gt;f_flags &amp; O_NONBLOCK)</span><br><span class="line">		msg_sys-&gt;msg_flags |= MSG_DONTWAIT;</span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * If this is sendmmsg() and current destination address is same as</span></span><br><span class="line"><span class="comment">	 * previously succeeded address, omit asking LSM&#x27;s decision.</span></span><br><span class="line"><span class="comment">	 * used_address-&gt;name_len is initialized to UINT_MAX so that the first</span></span><br><span class="line"><span class="comment">	 * destination address never matches.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (used_address &amp;&amp; msg_sys-&gt;msg_name &amp;&amp;</span><br><span class="line">	    used_address-&gt;name_len == msg_sys-&gt;msg_namelen &amp;&amp;</span><br><span class="line">	    !<span class="built_in">memcmp</span>(&amp;used_address-&gt;name, msg_sys-&gt;msg_name,</span><br><span class="line">		    used_address-&gt;name_len)) &#123;</span><br><span class="line">		err = sock_sendmsg_nosec(sock, msg_sys);</span><br><span class="line">		<span class="keyword">goto</span> out_freectl;</span><br><span class="line">	&#125;</span><br><span class="line">	err = __sock_sendmsg(sock, msg_sys);</span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * If this is sendmmsg() and sending to current destination address was</span></span><br><span class="line"><span class="comment">	 * successful, remember it.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (used_address &amp;&amp; err &gt;= <span class="number">0</span>) &#123;</span><br><span class="line">		used_address-&gt;name_len = msg_sys-&gt;msg_namelen;</span><br><span class="line">		<span class="keyword">if</span> (msg_sys-&gt;msg_name)</span><br><span class="line">			<span class="built_in">memcpy</span>(&amp;used_address-&gt;name, msg_sys-&gt;msg_name,</span><br><span class="line">			       used_address-&gt;name_len);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">out_freectl:</span><br><span class="line">	<span class="keyword">if</span> (ctl_buf != ctl)</span><br><span class="line">		sock_kfree_s(sock-&gt;sk, ctl_buf, ctl_len);</span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h2 id="接收系统调用"><a href="#接收系统调用" class="headerlink" title="接收系统调用"></a>接收系统调用</h2><p><code>recv</code>,<code>recvfrom</code>,<code>recvmsg</code>三个接收系统调用与发送系统调用类似，不同的地方就是数据流向是相反的。</p>
+<table>
+<thead>
+<tr>
+<th>系统调用</th>
+<th>适用场景</th>
+<th>关键功能</th>
+<th>典型用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>recv</code></td>
+<td>已连接的套接字（如 TCP）</td>
+<td>- 从已建立连接的套接字接收数据<br>- 不支持获取发送方地址</td>
+<td>TCP 数据接收</td>
+</tr>
+<tr>
+<td><code>recvfrom</code></td>
+<td>无连接套接字（如 UDP）</td>
+<td>- 接收数据包<br>- <strong>可获取发送方地址</strong>（<code>struct sockaddr</code>）</td>
+<td>UDP 数据接收</td>
+</tr>
+<tr>
+<td><code>recvmsg</code></td>
+<td>所有套接字（最通用）</td>
+<td>- 支持<strong>多缓冲区</strong>（<code>struct iovec</code>）<br>- 支持<strong>控制信息</strong>（<code>cmsg</code>）<br>- 可获取发送方地址</td>
+<td>高级场景：<br>- 文件描述符传递<br>- 接收 TTL&#x2F;接口信息</td>
+</tr>
+</tbody></table>
+<h3 id="recv系统调用实现"><a href="#recv系统调用实现" class="headerlink" title="recv系统调用实现"></a><strong><code>recv</code>系统调用实现</strong></h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">SYSCALL_DEFINE4(recv, <span class="type">int</span>, fd, <span class="type">void</span> __user *, ubuf, <span class="type">size_t</span>, size,</span><br><span class="line">		<span class="type">unsigned</span> <span class="type">int</span>, flags)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span> __sys_recvfrom(fd, ubuf, size, flags, <span class="literal">NULL</span>, <span class="literal">NULL</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">int</span> __sys_recvfrom(<span class="type">int</span> fd, <span class="type">void</span> __user *ubuf, <span class="type">size_t</span> size, <span class="type">unsigned</span> <span class="type">int</span> flags,</span><br><span class="line">		   <span class="keyword">struct</span> sockaddr __user *addr, <span class="type">int</span> __user *addr_len)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sockaddr_storage</span> <span class="title">address</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">msghdr</span> <span class="title">msg</span> =</span> &#123;</span><br><span class="line">		<span class="comment">/* Save some cycles and don&#x27;t copy the address if not needed */</span></span><br><span class="line">		.msg_name = addr ? (<span class="keyword">struct</span> sockaddr *)&amp;address : <span class="literal">NULL</span>,</span><br><span class="line">	&#125;;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">socket</span> *<span class="title">sock</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">iovec</span> <span class="title">iov</span>;</span></span><br><span class="line">	<span class="type">int</span> err, err2;</span><br><span class="line">	<span class="type">int</span> fput_needed;</span><br><span class="line">	<span class="comment">//将用户态指向的缓冲区地址，存到msg中</span></span><br><span class="line">	err = import_single_range(ITER_DEST, ubuf, size, &amp;iov, &amp;msg.msg_iter);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(err))</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line">	<span class="comment">//查找对应的socket</span></span><br><span class="line">	sock = sockfd_lookup_light(fd, &amp;err, &amp;fput_needed);</span><br><span class="line">	<span class="keyword">if</span> (!sock)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (sock-&gt;file-&gt;f_flags &amp; O_NONBLOCK)</span><br><span class="line">		flags |= MSG_DONTWAIT;</span><br><span class="line">	<span class="comment">//调用套接字的ops收包</span></span><br><span class="line">	err = sock_recvmsg(sock, &amp;msg, flags);</span><br><span class="line">	<span class="comment">//recv系统调用传入的addr为空,如果不为空，会记录源数据包的源ip地址</span></span><br><span class="line">	<span class="keyword">if</span> (err &gt;= <span class="number">0</span> &amp;&amp; addr != <span class="literal">NULL</span>) &#123;</span><br><span class="line">		err2 = move_addr_to_user(&amp;address,</span><br><span class="line">					 msg.msg_namelen, addr, addr_len);</span><br><span class="line">		<span class="keyword">if</span> (err2 &lt; <span class="number">0</span>)</span><br><span class="line">			err = err2;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	fput_light(sock-&gt;file, fput_needed);</span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<h3 id="recvfrom系统调用实现"><a href="#recvfrom系统调用实现" class="headerlink" title="recvfrom系统调用实现"></a><strong><code>recvfrom</code>系统调用实现</strong></h3><p>可获取发送方的 ​​IP 地址和端口​​，适用于 UDP 等无连接协议（每个数据包可能来自不同发送方）</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">SYSCALL_DEFINE6(recvfrom, <span class="type">int</span>, fd, <span class="type">void</span> __user *, ubuf, <span class="type">size_t</span>, size,</span><br><span class="line">		<span class="type">unsigned</span> <span class="type">int</span>, flags, <span class="keyword">struct</span> sockaddr __user *, addr,</span><br><span class="line">		<span class="type">int</span> __user *, addr_len)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span> __sys_recvfrom(fd, ubuf, size, flags, addr, addr_len);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p>与recv一样最终都调用到了<code>__sys_recvfrom</code>，不同的地方在于传入的add不为空，用户可以拿到数据包的源ip地址</p>
+<h3 id="recvmsg系统调用实现"><a href="#recvmsg系统调用实现" class="headerlink" title="recvmsg系统调用实现"></a><strong><code>recvmsg</code>系统调用实现</strong></h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">SYSCALL_DEFINE3(recvmsg, <span class="type">int</span>, fd, <span class="keyword">struct</span> user_msghdr __user *, msg,</span><br><span class="line">		<span class="type">unsigned</span> <span class="type">int</span>, flags)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span> __sys_recvmsg(fd, msg, flags, <span class="literal">true</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><strong>上述<code>__sys_recvmsg</code>与发送系统调用<code>sendmsg</code>类似，主要工作就是将数据包拷贝拷贝到用户的指定的缓冲区，以及数据包的源ip地址，和数据包的控制信息。</strong></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> ____sys_recvmsg(<span class="keyword">struct</span> socket *sock, <span class="keyword">struct</span> msghdr *msg_sys,</span><br><span class="line">			   <span class="keyword">struct</span> user_msghdr __user *msg,</span><br><span class="line">			   <span class="keyword">struct</span> sockaddr __user *uaddr,</span><br><span class="line">			   <span class="type">unsigned</span> <span class="type">int</span> flags, <span class="type">int</span> nosec)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">compat_msghdr</span> __<span class="title">user</span> *<span class="title">msg_compat</span> =</span></span><br><span class="line">					(<span class="keyword">struct</span> compat_msghdr __user *) msg;</span><br><span class="line">	<span class="type">int</span> __user *uaddr_len = COMPAT_NAMELEN(msg);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sockaddr_storage</span> <span class="title">addr</span>;</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> cmsg_ptr;</span><br><span class="line">	<span class="type">int</span> len;</span><br><span class="line">	<span class="type">ssize_t</span> err;</span><br><span class="line"></span><br><span class="line">	msg_sys-&gt;msg_name = &amp;addr;</span><br><span class="line">	cmsg_ptr = (<span class="type">unsigned</span> <span class="type">long</span>)msg_sys-&gt;msg_control;</span><br><span class="line">	msg_sys-&gt;msg_flags = flags &amp; (MSG_CMSG_CLOEXEC|MSG_CMSG_COMPAT);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* We assume all kernel code knows the size of sockaddr_storage */</span></span><br><span class="line">	msg_sys-&gt;msg_namelen = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (sock-&gt;file-&gt;f_flags &amp; O_NONBLOCK)</span><br><span class="line">		flags |= MSG_DONTWAIT;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (unlikely(nosec))</span><br><span class="line">		err = sock_recvmsg_nosec(sock, msg_sys, flags);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">	<span class="comment">//收包逻辑，调用收包函数</span></span><br><span class="line">		err = sock_recvmsg(sock, msg_sys, flags);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	<span class="comment">//这里是接收数据包的长度</span></span><br><span class="line">	len = err;</span><br><span class="line">	<span class="comment">//拷贝源ip地址到用户态的uaddr(把下面的addr拷贝到了uaddr)</span></span><br><span class="line">	<span class="keyword">if</span> (uaddr != <span class="literal">NULL</span>) &#123;</span><br><span class="line">		err = move_addr_to_user(&amp;addr,</span><br><span class="line">					msg_sys-&gt;msg_namelen, uaddr,</span><br><span class="line">					uaddr_len);</span><br><span class="line">		<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//更新用户态的标志位，比如消息截断等标志（收一部分）</span></span><br><span class="line">	err = __put_user((msg_sys-&gt;msg_flags &amp; ~MSG_CMSG_COMPAT),</span><br><span class="line">			 COMPAT_FLAGS(msg));</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	<span class="keyword">if</span> (MSG_CMSG_COMPAT &amp; flags)</span><br><span class="line">		err = __put_user((<span class="type">unsigned</span> <span class="type">long</span>)msg_sys-&gt;msg_control - cmsg_ptr,</span><br><span class="line">				 &amp;msg_compat-&gt;msg_controllen);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		err = __put_user((<span class="type">unsigned</span> <span class="type">long</span>)msg_sys-&gt;msg_control - cmsg_ptr,</span><br><span class="line">				 &amp;msg-&gt;msg_controllen);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	err = len;</span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/socket/" rel="tag"># socket</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/05/28/module_init%E5%8E%9F%E7%90%86%E5%AD%A6%E4%B9%A0/" rel="prev" title="moudle_init()原理学习">
+      <i class="fa fa-chevron-left"></i> moudle_init()原理学习
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/" rel="next" title="x86汇编学习(三)">
+      x86汇编学习(三) <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#socket-I-O"><span class="nav-number">1.</span> <span class="nav-text">socket I&#x2F;O</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%BE%93%E5%87%BA%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8"><span class="nav-number">1.1.</span> <span class="nav-text">输出系统调用</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#send%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8"><span class="nav-number">1.1.1.</span> <span class="nav-text">send系统调用</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#sendto%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8%E5%AE%9E%E7%8E%B0"><span class="nav-number">1.1.2.</span> <span class="nav-text">sendto系统调用实现</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#sendmsg%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8%E5%AE%9E%E7%8E%B0"><span class="nav-number">1.1.3.</span> <span class="nav-text">sendmsg系统调用实现</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8E%A5%E6%94%B6%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8"><span class="nav-number">1.2.</span> <span class="nav-text">接收系统调用</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#recv%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8%E5%AE%9E%E7%8E%B0"><span class="nav-number">1.2.1.</span> <span class="nav-text">recv系统调用实现</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#recvfrom%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8%E5%AE%9E%E7%8E%B0"><span class="nav-number">1.2.2.</span> <span class="nav-text">recvfrom系统调用实现</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#recvmsg%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8%E5%AE%9E%E7%8E%B0"><span class="nav-number">1.2.3.</span> <span class="nav-text">recvmsg系统调用实现</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">14</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "评论秒回复，你试试",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
