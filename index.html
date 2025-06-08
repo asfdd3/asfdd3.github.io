@@ -619,134 +619,6 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="标题">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/" class="post-title-link" itemprop="url">x86汇编学习(三)</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2025-06-03 22:00:00 / 修改时间：23:26:10" itemprop="dateCreated datePublished" datetime="2025-06-03T22:00:00+08:00">2025-06-03</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="函数调用"><a href="#函数调用" class="headerlink" title="函数调用"></a>函数调用</h2><p><strong>函数调用是一种代码封装机制，他通过参数和返回值实现特定的功能，隐藏实现的细节，提供清晰的接口</strong></p>
-<p>实现函数调用需要提供以下机制：</p>
-<ul>
-<li><strong>控制转移</strong>：跳转到被调用过程并在结束后返回原处；</li>
-<li><strong>参数传递</strong>：将调用方的数据传给被调用方；</li>
-<li><strong>返回值传递</strong>：将结果从被调用方传回；</li>
-<li><strong>局部变量管理</strong>：分配并释放被调用过程所需的内存</li>
-</ul>
-<p><strong>x86-64 架构的过程调用</strong>依赖一套特定的寄存器和内存使用规范，以减少开销和提高效率。</p>
-<h3 id="栈帧"><a href="#栈帧" class="headerlink" title="栈帧"></a>栈帧</h3><p><strong>栈帧</strong>就是<strong>每次函数调用时，在栈上分配的一块内存区域</strong>,里面通常会包含：</p>
-<table>
-<thead>
-<tr>
-<th>内容</th>
-<th>作用</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><strong>参数区</strong></td>
-<td>用来保存传入函数的参数（如果没用寄存器传）</td>
-</tr>
-<tr>
-<td><strong>返回地址</strong></td>
-<td>函数执行完后，跳回调用者的地方</td>
-</tr>
-<tr>
-<td><strong>保存的寄存器</strong></td>
-<td>保存调用者的寄存器内容，防止被破坏</td>
-</tr>
-<tr>
-<td><strong>局部变量</strong></td>
-<td>函数内部使用的变量（如 <code>int x = 5;</code>）</td>
-</tr>
-<tr>
-<td><strong>临时空间</strong></td>
-<td>编译器优化、对齐等需求</td>
-</tr>
-</tbody></table>
-<p>对应的布局大体如下：</p>
-<figure class="highlight diff"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">↑ 高地址</span><br><span class="line">│</span><br><span class="line">│ 调用者保存的返回地址      ← call 指令自动压入（跳回调用点）</span><br><span class="line">│</span><br><span class="line">│ 可选：旧的基址指针 (%rbp)  ← 如果使用帧指针（frame pointer）</span><br><span class="line">│</span><br><span class="line">│ 被调用者保存的寄存器      ← 被调用函数保存如 rbx, rbp, r12 等</span><br><span class="line">│</span><br><span class="line">│ 对齐填充                  ← 保证16字节对齐要求</span><br><span class="line">│</span><br><span class="line">│ 被调用者的局部变量        ← 编译器通过 sub rsp, XXX 分配空间</span><br><span class="line">│</span><br><span class="line">│ 可选：超过6个参数的栈参数  ← 前6个参数通过寄存器传，其余在栈上传</span><br><span class="line">↓</span><br><span class="line">低地址</span><br></pre></td></tr></table></figure>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -852,6 +724,134 @@
           <!--noindex-->
             <div class="post-button">
               <a class="btn" href="/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="标题">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/" class="post-title-link" itemprop="url">x86汇编学习(三)</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-06-03 22:00:00 / 修改时间：23:26:10" itemprop="dateCreated datePublished" datetime="2025-06-03T22:00:00+08:00">2025-06-03</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="函数调用"><a href="#函数调用" class="headerlink" title="函数调用"></a>函数调用</h2><p><strong>函数调用是一种代码封装机制，他通过参数和返回值实现特定的功能，隐藏实现的细节，提供清晰的接口</strong></p>
+<p>实现函数调用需要提供以下机制：</p>
+<ul>
+<li><strong>控制转移</strong>：跳转到被调用过程并在结束后返回原处；</li>
+<li><strong>参数传递</strong>：将调用方的数据传给被调用方；</li>
+<li><strong>返回值传递</strong>：将结果从被调用方传回；</li>
+<li><strong>局部变量管理</strong>：分配并释放被调用过程所需的内存</li>
+</ul>
+<p><strong>x86-64 架构的过程调用</strong>依赖一套特定的寄存器和内存使用规范，以减少开销和提高效率。</p>
+<h3 id="栈帧"><a href="#栈帧" class="headerlink" title="栈帧"></a>栈帧</h3><p><strong>栈帧</strong>就是<strong>每次函数调用时，在栈上分配的一块内存区域</strong>,里面通常会包含：</p>
+<table>
+<thead>
+<tr>
+<th>内容</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>参数区</strong></td>
+<td>用来保存传入函数的参数（如果没用寄存器传）</td>
+</tr>
+<tr>
+<td><strong>返回地址</strong></td>
+<td>函数执行完后，跳回调用者的地方</td>
+</tr>
+<tr>
+<td><strong>保存的寄存器</strong></td>
+<td>保存调用者的寄存器内容，防止被破坏</td>
+</tr>
+<tr>
+<td><strong>局部变量</strong></td>
+<td>函数内部使用的变量（如 <code>int x = 5;</code>）</td>
+</tr>
+<tr>
+<td><strong>临时空间</strong></td>
+<td>编译器优化、对齐等需求</td>
+</tr>
+</tbody></table>
+<p>对应的布局大体如下：</p>
+<figure class="highlight diff"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">↑ 高地址</span><br><span class="line">│</span><br><span class="line">│ 调用者保存的返回地址      ← call 指令自动压入（跳回调用点）</span><br><span class="line">│</span><br><span class="line">│ 可选：旧的基址指针 (%rbp)  ← 如果使用帧指针（frame pointer）</span><br><span class="line">│</span><br><span class="line">│ 被调用者保存的寄存器      ← 被调用函数保存如 rbx, rbp, r12 等</span><br><span class="line">│</span><br><span class="line">│ 对齐填充                  ← 保证16字节对齐要求</span><br><span class="line">│</span><br><span class="line">│ 被调用者的局部变量        ← 编译器通过 sub rsp, XXX 分配空间</span><br><span class="line">│</span><br><span class="line">│ 可选：超过6个参数的栈参数  ← 前6个参数通过寄存器传，其余在栈上传</span><br><span class="line">↓</span><br><span class="line">低地址</span><br></pre></td></tr></table></figure>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/06/03/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%89%EF%BC%89/#more" rel="contents">
                 阅读全文 &raquo;
               </a>
             </div>
