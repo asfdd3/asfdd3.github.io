@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="符号解析符号解析就是链接器将“引用的符号”与“定义的符号”进行匹配的过程。 链接器如何解析多重定义的全局符号链接器处理多个 可重定位目标文件（.o 文件）。 每个模块中可能会定义同名的全局符号（如变量、函数）。 符号分为两类：  强符号（strong）：函数、已初始化的全局变量（如 int x &#x3D; 1;） 弱符号（weak）：未初始化的全局变量（如 int x;）     规则编号 描述    规">
+<meta property="og:type" content="article">
+<meta property="og:title" content="链接(二)">
+<meta property="og:url" content="http://example.com/2025/06/25/%E9%93%BE%E6%8E%A5(%E4%BA%8C)/index.html">
+<meta property="og:site_name" content="标题">
+<meta property="og:description" content="符号解析符号解析就是链接器将“引用的符号”与“定义的符号”进行匹配的过程。 链接器如何解析多重定义的全局符号链接器处理多个 可重定位目标文件（.o 文件）。 每个模块中可能会定义同名的全局符号（如变量、函数）。 符号分为两类：  强符号（strong）：函数、已初始化的全局变量（如 int x &#x3D; 1;） 弱符号（weak）：未初始化的全局变量（如 int x;）     规则编号 描述    规">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-06-25T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-06-25T15:50:53.283Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="链接">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/06/25/%E9%93%BE%E6%8E%A5(%E4%BA%8C)/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>链接(二) | 标题</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">标题</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">副标题</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/25/%E9%93%BE%E6%8E%A5(%E4%BA%8C)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="标题">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          链接(二)
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-06-25 22:00:00 / 修改时间：23:50:53" itemprop="dateCreated datePublished" datetime="2025-06-25T22:00:00+08:00">2025-06-25</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/06/25/%E9%93%BE%E6%8E%A5(%E4%BA%8C)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/06/25/%E9%93%BE%E6%8E%A5(%E4%BA%8C)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="符号解析"><a href="#符号解析" class="headerlink" title="符号解析"></a>符号解析</h2><p><strong>符号解析</strong>就是链接器将“引用的符号”与“定义的符号”进行匹配的过程。</p>
+<h3 id="链接器如何解析多重定义的全局符号"><a href="#链接器如何解析多重定义的全局符号" class="headerlink" title="链接器如何解析多重定义的全局符号"></a>链接器如何解析多重定义的全局符号</h3><p>链接器处理多个 <strong>可重定位目标文件（.o 文件）</strong>。</p>
+<p>每个模块中可能会定义同名的全局符号（如变量、函数）。</p>
+<p>符号分为两类：</p>
+<ul>
+<li><strong>强符号（strong）</strong>：函数、已初始化的全局变量（如 <code>int x = 1;</code>）</li>
+<li><strong>弱符号（weak）</strong>：未初始化的全局变量（如 <code>int x;</code>）</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>规则编号</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>规则 1</strong></td>
+<td><strong>多个强符号同名 → 报错</strong>，链接失败（冲突无法解决）。</td>
+</tr>
+<tr>
+<td><strong>规则 2</strong></td>
+<td><strong>强符号 vs 弱符号同名 → 选择强符号</strong>，忽略弱的。</td>
+</tr>
+<tr>
+<td><strong>规则 3</strong></td>
+<td><strong>多个弱符号同名 → 任意选择一个</strong>（通常选择第一个出现的）。</td>
+</tr>
+</tbody></table>
+<h2 id="静态库"><a href="#静态库" class="headerlink" title="静态库"></a>静态库</h2><p><strong>静态库（static library）</strong>：是由多个<strong>可重定位目标文件（.o）打包</strong>成的一个 <code>.a</code> 文件，供链接器使用。</p>
+<p><strong>链接器在使用静态库时</strong>：只提取<strong>被程序实际引用的目标文件</strong>，不会整个复制，从而节省磁盘和内存空间。</p>
+<p>优点：</p>
+<ul>
+<li>将函数各自编译为 <code>.o</code> 文件后，用工具打包成 <code>.a</code> 文件。</li>
+<li>编译程序时只需写出库文件名即可（如 <code>-lm -lc</code>），简洁方便。</li>
+<li>链接器会<strong>自动挑选需要的模块</strong>，避免冗余。</li>
+<li><code>.a</code> 文件是一种<strong>存档格式</strong>，带有成员信息索引（如文件大小、位置等）。</li>
+</ul>
+<p>举例：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">gcc main.o -L. -lmylib -o myapp</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li><code>-L.</code> 指定当前目录搜索库；</li>
+<li><code>-lmylib</code> 会让链接器查找 <code>libmylib.a</code>（静态库）；</li>
+<li>链接器会从中挑出 <code>main.o</code> 需要用到的 <code>.o</code> 文件，<strong>做静态链接</strong>，生成 <code>myapp</code>。</li>
+</ul>
+<p><strong>静态库与静态链接</strong></p>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>静态库</td>
+<td>存放多个 <code>.o</code> 文件的归档文件（<code>.a</code>）</td>
+</tr>
+<tr>
+<td>静态链接</td>
+<td>使用链接器把 <code>.o</code> 文件（含来自 <code>.a</code> 的）合并为一个最终的可执行文件</td>
+</tr>
+<tr>
+<td>二者关系</td>
+<td>静态链接 <strong>可能使用</strong> 静态库作为输入源之一</td>
+</tr>
+</tbody></table>
+<h3 id="链接器如何使用静态库来解析引用"><a href="#链接器如何使用静态库来解析引用" class="headerlink" title="链接器如何使用静态库来解析引用"></a>链接器如何使用静态库来解析引用</h3><h3 id="链接器符号解析的核心流程"><a href="#链接器符号解析的核心流程" class="headerlink" title="链接器符号解析的核心流程"></a>链接器符号解析的核心流程</h3><ol>
+<li><strong>初始状态</strong>：<ul>
+<li>E：已选中的目标文件集合（最终会链接成可执行文件）</li>
+<li>U：未解析的符号集合（只引用但还没找到定义）</li>
+<li>D：已定义的符号集合（已经找到定义的符号）</li>
+<li>初始时这三个集合是空的。</li>
+</ul>
+</li>
+<li><strong>处理目标文件（<code>.o</code>）</strong>：<ul>
+<li>把 <code>.o</code> 文件加入到 E。</li>
+<li>收集该文件中定义的符号加到 D。</li>
+<li>把引用的、未定义的符号加到 U。</li>
+</ul>
+</li>
+<li><strong>处理静态库（<code>.a</code>）</strong>：<ul>
+<li>对 <code>.a</code> 中的每个成员目标文件：<ul>
+<li>如果它<strong>定义了 U 中某个符号</strong>，就把它加入到 E 中。</li>
+<li>然后更新 U 和 D。</li>
+</ul>
+</li>
+<li>重复这个过程直到 U、D 不再变化。</li>
+<li>没有用到的库成员就丢弃（不会加入最终可执行程序中）。</li>
+</ul>
+</li>
+<li><strong>最终检查</strong>：<ul>
+<li>如果还有未解析的符号（U 非空），就报错并终止。</li>
+</ul>
+</li>
+</ol>
+<p><strong>链接器是按命令行从左到右顺序处理的，这会导致以下情况</strong></p>
+<p>举例：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">gcc -static ./libvector.a main2.c</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>先处理 <code>libvector.a</code>，这时 U 是空（没有要解析的符号），所以库的任何成员都不会被加载；</li>
+<li>后处理 <code>main2.c</code>，其中调用了 <code>addvec()</code>，这会把 <code>addvec</code> 加入 U；</li>
+<li>但已经错过了加载库的机会，<strong>链接器不会回头重新看 libvector.a</strong>；</li>
+<li>所以 <code>addvec</code> 没找到 → 报错 <code>undefined reference to &#39;addvec&#39;</code>。</li>
+</ul>
+<p>如果 <code>libx.a</code> 和 <code>liby.a</code> 之间存在循环引用（互相调用），<strong>就需要重复指定</strong>，否则会有未解析符号</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">gcc foo.o libx.a liby.a libx.a</span><br></pre></td></tr></table></figure>
+
+<h2 id="重定位"><a href="#重定位" class="headerlink" title="重定位"></a>重定位</h2><p>重定位就是链接器将多个 <code>.o</code> 文件合并时，<strong>为每个代码和数据分配实际内存地址</strong>，并<strong>修正代码中对符号的引用地址</strong>，使它们能在程序运行时正确访问。</p>
+<p><strong>重定位的两步骤：</strong></p>
+<h4 id="重定位节和符号定义（合并和分配地址）"><a href="#重定位节和符号定义（合并和分配地址）" class="headerlink" title="重定位节和符号定义（合并和分配地址）"></a>重定位节和符号定义（合并和分配地址）</h4><ul>
+<li>链接器会将多个 <code>.o</code> 文件中相同类型的节（比如 <code>.data</code>, <code>.text</code>）合并成一个大的节。</li>
+<li>然后：<ul>
+<li>为这些<strong>合并后的节分配内存地址</strong>。</li>
+<li>为每个符号（函数、全局变量等）<strong>确定最终运行时地址</strong>。</li>
+</ul>
+</li>
+</ul>
+<h4 id="重定位节中的符号引用（修正引用地址）"><a href="#重定位节中的符号引用（修正引用地址）" class="headerlink" title="重定位节中的符号引用（修正引用地址）"></a>重定位节中的符号引用（修正引用地址）</h4><ul>
+<li>接下来，链接器会在代码和数据中找到<strong>所有对符号的引用</strong>（比如调用 <code>printf</code> 的指令）。</li>
+<li>使用 <code>.o</code> 文件中记录的**重定位条目（relocation entry）**来：<ul>
+<li><strong>替换或修改那些引用地址</strong>，让它们指向真正的地址。</li>
+</ul>
+</li>
+</ul>
+<h3 id="重定位条目"><a href="#重定位条目" class="headerlink" title="重定位条目"></a>重定位条目</h3><p>什么是重定位条目：</p>
+<p>举例：</p>
+<p>当编译器&#x2F;汇编器生成一个目标文件（<code>.o</code> 文件）时，它<strong>还不知道变量或函数在内存里的最终地址</strong>比如：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">extern</span> <span class="type">int</span> x;</span><br><span class="line"><span class="type">void</span> <span class="title function_">foo</span><span class="params">()</span> &#123;</span><br><span class="line">    x = <span class="number">42</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>x</code> 是在别的文件里定义的，当前 <code>.o</code> 文件根本不知道 <code>x</code> 的地址。 所以，<strong>汇编器</strong>会留下一个“记号”告诉链接器：</p>
+<p>每一个重定位条目描述了：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>offset</code></td>
+<td>要修改的地方（代码或数据中的偏移）</td>
+</tr>
+<tr>
+<td><code>symbol</code></td>
+<td>当前访问的是哪个符号（变量或函数）</td>
+</tr>
+<tr>
+<td><code>type</code></td>
+<td>用哪种方式修改（是绝对地址还是相对地址）</td>
+</tr>
+<tr>
+<td><code>addend</code></td>
+<td>可选的补偿偏移（比如增加一个偏移量）</td>
+</tr>
+</tbody></table>
+<p><strong>这些信息一般存在 <code>.rela.text</code>（代码里的引用）或 <code>.rela.data</code>（数据段引用）段中。</strong></p>
+<h2 id="可执行目标文件："><a href="#可执行目标文件：" class="headerlink" title="可执行目标文件："></a><strong>可执行目标文件：</strong></h2><p><strong>可执行文件</strong>是编译器和链接器将<code>.o</code> 文件转换成的<strong>最终程序二进制文件</strong>，操作系统可以直接把它加载到内存并运行</p>
+<p><strong>可执行 ELF 文件的结构</strong>：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">+----------------+</span><br><span class="line">| ELF Header     | &lt;== 文件的元数据，如魔数、架构类型、入口点等</span><br><span class="line">+----------------+</span><br><span class="line">| 程序头表       | &lt;== OS 用来加载程序的结构（段的偏移、权限等）</span><br><span class="line">+----------------+</span><br><span class="line">| .init          | &lt;== 程序启动初始化函数（调用 _init）</span><br><span class="line">| .text          | &lt;== 代码段（程序指令）</span><br><span class="line">| .rodata        | &lt;== 只读数据（如字符串常量）</span><br><span class="line">| .data          | &lt;== 已初始化的全局变量</span><br><span class="line">| .bss           | &lt;== 未初始化的全局变量（运行时置 0）</span><br><span class="line">| .symtab        | &lt;== 符号表（调试信息用）</span><br><span class="line">| .debug         | &lt;== 调试信息</span><br><span class="line">| .line          | &lt;== 源码行号表</span><br><span class="line">| .strtab        | &lt;== 字符串表</span><br><span class="line">+----------------+</span><br><span class="line">| 节头部表       | &lt;== 每个节的信息（调试器用）</span><br><span class="line">+----------------+</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>可执行目标文件的结构与可重定位目标文件类似，整体格式由 ELF 头描述。其中包含了程序的入口地址（entry point），即程序运行时将执行的第一条指令的位置。</p>
+<p>其中的 <code>.text</code>、<code>.rodata</code> 和 <code>.data</code> 等节与可重定位文件中的同名节基本相同，只是它们已经被重定位到程序运行时的实际内存地址。</p>
+<p><strong>此外，可执行文件中的 <code>.init</code> 节中定义了一个初始化函数 <code>_init</code>，程序启动时会自动调用它。由于可执行文件已经是完全链接好的，不再需要用于重定位的 <code>.rel</code> 节。</strong></p>
+<p><strong>程序头部表（Program Header Table）</strong> 是 ELF（Executable and Linkable Format）可执行文件中的一个重要结构，用于指导操作系统的<strong>程序加载器</strong>如何将可执行文件映射到内存中运行。它和节头部表（Section Header Table）不同，节头部表更多是给链接器用的，而程序头部表是给操作系统加载程序用的。</p>
+<h2 id="动态库"><a href="#动态库" class="headerlink" title="动态库"></a>动态库</h2><p>动态库是一种<strong>编译好但不嵌入可执行程序本体</strong>的代码库，它提供了函数和变量，供多个程序在<strong>运行时动态加载</strong>并使用</p>
+<p>优点：</p>
+<p><strong>磁盘空间共享</strong>：一个 <code>.so</code> 文件可以被多个程序共用，不像静态库那样每个程序都复制一份。</p>
+<p><strong>内存空间共享</strong>：多个进程可以共享 <code>.so</code> 的 <code>.text</code>（代码段），减少了内存占用。</p>
+<h3 id="动态链接过程"><a href="#动态链接过程" class="headerlink" title="动态链接过程"></a>动态链接过程</h3><ol>
+<li>编译器使用 <code>-fPIC</code>（生成位置无关代码）和 <code>-shared</code> 生成共享库文件：</li>
+</ol>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">gcc -shared -fPIC -o libvector.so addvec.c multvec.c</span><br></pre></td></tr></table></figure>
+
+<ol start="2">
+<li>编译主程序并链接共享库</li>
+</ol>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">gcc -o prog21 main2.c ./libvector.so</span><br></pre></td></tr></table></figure>
+
+<ol start="3">
+<li>运行时加载流程</li>
+</ol>
+<ul>
+<li><strong>加载器</strong>（loader）启动 <code>prog21</code>。</li>
+<li>它发现程序有一个 <code>.interp</code> 段，里面指定了<strong>动态链接器</strong>（如 <code>/lib64/ld-linux-x86-64.so.2</code>）。</li>
+<li>动态链接器负责：<ul>
+<li>加载 <code>libvector.so</code> 和 <code>libc.so</code></li>
+<li>重定位 <code>prog21</code> 中对 <code>printf</code>、<code>addvec</code> 等函数的调用地址</li>
+</ul>
+</li>
+<li>动态链接完成后，<strong>跳转到主程序入口地址开始执行</strong></li>
+</ul>
+<h3 id="位置无关代码"><a href="#位置无关代码" class="headerlink" title="位置无关代码"></a>位置无关代码</h3><p><strong>背景</strong></p>
+<p>共享库（<code>.so</code> 文件）常常被<strong>多个进程同时加载使用</strong>，为了节省内存，系统希望这些进程可以<strong>共享这段库的代码段（text segment）</strong>。</p>
+<p>但是每个进程的虚拟地址空间不同，<strong>无法保证这个共享库总是被加载到相同的地址</strong>。</p>
+<p>解决方法：使用位置无关代码（PIC）</p>
+<p>PIC 为了解决“全局变量地址不确定”的问题，引入了 GOT 表。可以把 GOT 理解成<strong>一个中间跳板表</strong>：</p>
+<p>程序访问变量不是直接访问变量地址，而是：</p>
+<ol>
+<li>先从 GOT 表中找到变量的地址</li>
+<li>然后跳转或读写这个地址</li>
+</ol>
+<p>注意：“<strong>GOT 表属于动态库本身</strong>，位于动态库的 <code>.data</code> 段的开始部分”。</p>
+<p><strong>每个进程加载 <code>.so</code> 时，都会为 <code>.so</code> 分配一段自己的私有地址空间副本</strong>（包括 GOT 表）。所以：</p>
+<ul>
+<li><strong>GOT 表内容每个进程是独立的</strong></li>
+<li><strong>写进去的地址是针对这个进程自己的虚拟地址</strong></li>
+</ul>
+<h2 id="库拦截"><a href="#库拦截" class="headerlink" title="库拦截"></a>库拦截</h2><p><strong>通过替换或重定义动态库中的函数，以拦截或修改函数行为。</strong></p>
+<p><strong>运行时拦截：</strong></p>
+<p>在程序启动时，通过设置环境变量（如 <code>LD_PRELOAD</code>），<strong>优先加载你自己的动态库</strong>，从而覆盖掉原本的库函数。</p>
+<p> <strong>原理：</strong></p>
+<p>动态链接器（如 Linux 上的 <code>ld-linux.so</code>）在程序启动时会加载所有依赖的 <code>.so</code> 文件，它会按照顺序查找函数符号。<br> 如果你用 <code>LD_PRELOAD</code> 指定了一个动态库，这个库里的符号会<strong>优先被解析</strong>，就能**“拦截”掉原始函数**了。</p>
+<p>举例：</p>
+<ol>
+<li>写一个库，重定义 <code>malloc</code></li>
+</ol>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// mymalloc.c</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> _GNU_SOURCE</span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;stdio.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;stdlib.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;dlfcn.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="type">void</span>* <span class="title function_">malloc</span><span class="params">(<span class="type">size_t</span> size)</span> &#123;</span><br><span class="line">    <span class="type">void</span>* (*real_malloc)(<span class="type">size_t</span>) = dlsym(RTLD_NEXT, <span class="string">&quot;malloc&quot;</span>);  <span class="comment">// 调用原始 malloc</span></span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">&quot;malloc(%zu) called\n&quot;</span>, size);</span><br><span class="line">    <span class="keyword">return</span> real_malloc(size);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<ol start="2">
+<li>编译成共享库</li>
+</ol>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">gcc -shared -fPIC -o libmymalloc.so mymalloc.c -ldl</span><br></pre></td></tr></table></figure>
+
+<ol start="3">
+<li>运行目标程序时使用 LD_PRELOAD</li>
+</ol>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">LD_PRELOAD=./libmymalloc.so ./your_program</span><br></pre></td></tr></table></figure>
+
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E9%93%BE%E6%8E%A5/" rel="tag"># 链接</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/06/23/%E9%93%BE%E6%8E%A5(%E4%B8%80)/" rel="prev" title="链接(一)">
+      <i class="fa fa-chevron-left"></i> 链接(一)
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%AC%A6%E5%8F%B7%E8%A7%A3%E6%9E%90"><span class="nav-number">1.</span> <span class="nav-text">符号解析</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%93%BE%E6%8E%A5%E5%99%A8%E5%A6%82%E4%BD%95%E8%A7%A3%E6%9E%90%E5%A4%9A%E9%87%8D%E5%AE%9A%E4%B9%89%E7%9A%84%E5%85%A8%E5%B1%80%E7%AC%A6%E5%8F%B7"><span class="nav-number">1.1.</span> <span class="nav-text">链接器如何解析多重定义的全局符号</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%9D%99%E6%80%81%E5%BA%93"><span class="nav-number">2.</span> <span class="nav-text">静态库</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%93%BE%E6%8E%A5%E5%99%A8%E5%A6%82%E4%BD%95%E4%BD%BF%E7%94%A8%E9%9D%99%E6%80%81%E5%BA%93%E6%9D%A5%E8%A7%A3%E6%9E%90%E5%BC%95%E7%94%A8"><span class="nav-number">2.1.</span> <span class="nav-text">链接器如何使用静态库来解析引用</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%93%BE%E6%8E%A5%E5%99%A8%E7%AC%A6%E5%8F%B7%E8%A7%A3%E6%9E%90%E7%9A%84%E6%A0%B8%E5%BF%83%E6%B5%81%E7%A8%8B"><span class="nav-number">2.2.</span> <span class="nav-text">链接器符号解析的核心流程</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%87%8D%E5%AE%9A%E4%BD%8D"><span class="nav-number">3.</span> <span class="nav-text">重定位</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E9%87%8D%E5%AE%9A%E4%BD%8D%E8%8A%82%E5%92%8C%E7%AC%A6%E5%8F%B7%E5%AE%9A%E4%B9%89%EF%BC%88%E5%90%88%E5%B9%B6%E5%92%8C%E5%88%86%E9%85%8D%E5%9C%B0%E5%9D%80%EF%BC%89"><span class="nav-number">3.0.1.</span> <span class="nav-text">重定位节和符号定义（合并和分配地址）</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E9%87%8D%E5%AE%9A%E4%BD%8D%E8%8A%82%E4%B8%AD%E7%9A%84%E7%AC%A6%E5%8F%B7%E5%BC%95%E7%94%A8%EF%BC%88%E4%BF%AE%E6%AD%A3%E5%BC%95%E7%94%A8%E5%9C%B0%E5%9D%80%EF%BC%89"><span class="nav-number">3.0.2.</span> <span class="nav-text">重定位节中的符号引用（修正引用地址）</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%87%8D%E5%AE%9A%E4%BD%8D%E6%9D%A1%E7%9B%AE"><span class="nav-number">3.1.</span> <span class="nav-text">重定位条目</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8F%AF%E6%89%A7%E8%A1%8C%E7%9B%AE%E6%A0%87%E6%96%87%E4%BB%B6%EF%BC%9A"><span class="nav-number">4.</span> <span class="nav-text">可执行目标文件：</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8A%A8%E6%80%81%E5%BA%93"><span class="nav-number">5.</span> <span class="nav-text">动态库</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%8A%A8%E6%80%81%E9%93%BE%E6%8E%A5%E8%BF%87%E7%A8%8B"><span class="nav-number">5.1.</span> <span class="nav-text">动态链接过程</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BD%8D%E7%BD%AE%E6%97%A0%E5%85%B3%E4%BB%A3%E7%A0%81"><span class="nav-number">5.2.</span> <span class="nav-text">位置无关代码</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BA%93%E6%8B%A6%E6%88%AA"><span class="nav-number">6.</span> <span class="nav-text">库拦截</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">23</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">10</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "评论秒回复，你试试",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
