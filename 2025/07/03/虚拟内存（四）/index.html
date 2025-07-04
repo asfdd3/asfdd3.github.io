@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="malloc()malloc如何管理一个堆的，如下所示：  a) p1 &#x3D; malloc(4 * sizeof(int))  申请4个int的空间，malloc从最前面切一块给p1，前4格变深色。 p1指向新分配的这块内存起始处。   b) p2 &#x3D; malloc(5 * sizeof(int))  申请5个int的空间，为了对齐，实际分配6格，p2指向新分配块的起始处。 p2">
+<meta property="og:type" content="article">
+<meta property="og:title" content="虚拟内存（四）">
+<meta property="og:url" content="http://example.com/2025/07/03/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98%EF%BC%88%E5%9B%9B%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="malloc()malloc如何管理一个堆的，如下所示：  a) p1 &#x3D; malloc(4 * sizeof(int))  申请4个int的空间，malloc从最前面切一块给p1，前4格变深色。 p1指向新分配的这块内存起始处。   b) p2 &#x3D; malloc(5 * sizeof(int))  申请5个int的空间，为了对齐，实际分配6格，p2指向新分配块的起始处。 p2">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/images/CSAPP/vmem16.png">
+<meta property="og:image" content="http://example.com/images/CSAPP/vmem17.png">
+<meta property="og:image" content="http://example.com/images/CSAPP/vmem18.png">
+<meta property="og:image" content="http://example.com/images/CSAPP/vmem19.png">
+<meta property="article:published_time" content="2025-07-03T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-07-04T15:51:23.293Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="虚拟内存">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/images/CSAPP/vmem16.png">
+
+<link rel="canonical" href="http://example.com/2025/07/03/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98%EF%BC%88%E5%9B%9B%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>虚拟内存（四） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">副标题</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/07/03/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98%EF%BC%88%E5%9B%9B%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          虚拟内存（四）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-07-03 22:00:00" itemprop="dateCreated datePublished" datetime="2025-07-03T22:00:00+08:00">2025-07-03</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-07-04 23:51:23" itemprop="dateModified" datetime="2025-07-04T23:51:23+08:00">2025-07-04</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/07/03/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98%EF%BC%88%E5%9B%9B%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/07/03/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98%EF%BC%88%E5%9B%9B%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="malloc"><a href="#malloc" class="headerlink" title="malloc()"></a>malloc()</h2><p>malloc如何管理一个堆的，如下所示：</p>
+<p><img src="/images/CSAPP/vmem16.png" alt="&#96;虚拟内存&#96;"></p>
+<p>a) p1 &#x3D; malloc(4 * sizeof(int))</p>
+<ul>
+<li>申请4个int的空间，malloc从最前面切一块给p1，前4格变深色。</li>
+<li><strong>p1指向新分配的这块内存起始处。</strong></li>
+</ul>
+<hr>
+<p>b) p2 &#x3D; malloc(5 * sizeof(int))</p>
+<ul>
+<li>申请5个int的空间，为了对齐，实际分配6格，p2指向新分配块的起始处。</li>
+<li>p2后面多出1格（深蓝），是为“对齐”而加的（比如要8字节对齐，补了1字节）。</li>
+</ul>
+<hr>
+<p>c) p3 &#x3D; malloc(6 * sizeof(int))</p>
+<ul>
+<li>申请6个int的空间，从剩余空闲区的头部分出去6格，p3指向新块。</li>
+</ul>
+<hr>
+<p>d) free(p2)</p>
+<ul>
+<li>释放p2指向的那一块（包括对齐的多余空间），这一块变成“空闲”状态（浅色），但<strong>p2指针本身没变</strong>，只是p2指向的内存已经不能再用。</li>
+</ul>
+<hr>
+<p>e) p4 &#x3D; malloc(2 * sizeof(int))</p>
+<ul>
+<li>再次申请2个int的空间，malloc会优先复用刚刚释放的空闲块的前2格，p4指向这里。</li>
+<li>剩下4格还是空闲，以后还可以分配。</li>
+</ul>
+<h3 id="碎片"><a href="#碎片" class="headerlink" title="碎片"></a>碎片</h3><p><strong>碎片</strong>：就是虽然堆上还有空闲内存，但分配请求还是失败了（因为空闲块无法直接满足请求），这就导致了内存浪费，降低了利用率。</p>
+<p>碎片分为两种：</p>
+<h4 id="内部碎"><a href="#内部碎" class="headerlink" title="内部碎"></a>内部碎</h4><ul>
+<li>指的是“已分配的内存块”比实际需要的要大，导致部分空间浪费在“块内部”。</li>
+<li>产生原因：<ul>
+<li>有些分配器规定最小分配单位（比如你只要 2 字节，分配器必须分 8 字节）。</li>
+<li>为了<strong>对齐</strong>，比如分配 5 个字节，实际给你 8 个字节，后面空着不用。</li>
+</ul>
+</li>
+<li><strong>图 b</strong> 就是典型：malloc(5*sizeof(int))，但分配了6个int空间，多出来的1个就是“内部碎片”。</li>
+<li><strong>内部碎片的量</strong>&#x3D;每个分配块的“总大小” - “实际需要大小”，全堆累加。</li>
+</ul>
+<h4 id="外部碎片"><a href="#外部碎片" class="headerlink" title="外部碎片"></a>外部碎片</h4><ul>
+<li>指的是：<strong>堆上总的空闲空间足够，但没有一块连续空闲块能满足分配请求</strong>。</li>
+<li>举例：图 9e 里，假如此时需要分配 6 个 int 空间，但空闲区被分成了两个小块（每块&lt;6），就没法直接分配出一块6的，必须要向系统再要新内存。</li>
+<li><strong>外部碎片的根本问题</strong>：内存空闲块“被切得很碎”，不能凑出一块大的。</li>
+<li>外部碎片的难点是，<strong>它依赖于将来的分配请求</strong>：<ul>
+<li>如果后续请求都很小（比如≤4字节），这些小空闲块可以用完，也就没有外部碎片。</li>
+<li>如果有大请求（比如要8字节），就没法直接满足了，外部碎片就出现了。</li>
+</ul>
+</li>
+</ul>
+<h3 id="分配器的实现难点："><a href="#分配器的实现难点：" class="headerlink" title="分配器的实现难点："></a>分配器的实现难点：</h3><p>真实世界的分配器（如glibc中的malloc），<strong>既要快（高吞吐），又要省（高利用率）</strong>，所以必须要解决很多实际问题，主要包括：</p>
+<h3 id="（1）空闲块如何组织？"><a href="#（1）空闲块如何组织？" class="headerlink" title="（1）空闲块如何组织？"></a>（1）空闲块如何组织？</h3><ul>
+<li>释放后的内存如何记录下来（比如用链表、树，或者分段等方法管理）？</li>
+</ul>
+<h3 id="（2）放置策略"><a href="#（2）放置策略" class="headerlink" title="（2）放置策略"></a>（2）放置策略</h3><ul>
+<li>每次分配新内存时，从所有空闲块里<strong>怎么选一块</strong>？<ul>
+<li>是选第一个合适的？最大&#x2F;最小的？还是最靠前的？</li>
+</ul>
+</li>
+</ul>
+<h3 id="（3）分割策略"><a href="#（3）分割策略" class="headerlink" title="（3）分割策略"></a>（3）分割策略</h3><ul>
+<li>如果空闲块比请求的大，<strong>如何把剩下的部分保留下来</strong>？（比如分割成两块）</li>
+</ul>
+<h3 id="（4）合并策略"><a href="#（4）合并策略" class="headerlink" title="（4）合并策略"></a>（4）合并策略</h3><ul>
+<li>当有块被释放时，如果相邻块也是空闲的，<strong>是否应该合并成更大的空闲块</strong>？（防止出现太多小碎片）</li>
+</ul>
+<h3 id="隐式空闲链表"><a href="#隐式空闲链表" class="headerlink" title="隐式空闲链表"></a>隐式空闲链表</h3><p><img src="/images/CSAPP/vmem17.png" alt="&#96;虚拟内存&#96;"></p>
+<ol>
+<li><strong>头部（Header）</strong></li>
+</ol>
+<ul>
+<li>每个内存块的开头有一个“头部”（通常4字节或8字节），保存<strong>块的大小</strong>和<strong>分配状态</strong>。</li>
+<li>图中用“块大小”字段的低3位来记录状态：<ul>
+<li><strong>00a</strong>：a表示分配标志（allocated），如果<code>a=1</code>表示已分配，<code>a=0</code>表示空闲。</li>
+<li>因为块总是按8字节对齐，最低3位平时都为0，可以拿出来用。</li>
+</ul>
+</li>
+</ul>
+<ol start="2">
+<li><h3 id="有效载荷（Payload）"><a href="#有效载荷（Payload）" class="headerlink" title="有效载荷（Payload）"></a><strong>有效载荷（Payload）</strong></h3></li>
+</ol>
+<ul>
+<li>这是用户调用<code>malloc</code>后实际可以用的那块空间（也是<code>malloc</code>返回的指针指向的起始地址）。</li>
+<li>只包括用户申请到的那部分。</li>
+</ul>
+<ol start="3">
+<li><h3 id="填充（Padding，可选）"><a href="#填充（Padding，可选）" class="headerlink" title="填充（Padding，可选）"></a><strong>填充（Padding，可选）</strong></h3></li>
+</ol>
+<ul>
+<li>为了保证<strong>对齐</strong>，如果用户申请的空间不是对齐大小，会在末尾加一些无用的填充字节，把整个块补齐到8字节的倍数。</li>
+<li>这个填充区是“可选的”，只在需要时加。</li>
+</ul>
+<p><strong>分配器通过顺序扫描每块头部信息，来判断块边界、大小和分配状态</strong></p>
+<p><img src="/images/CSAPP/vmem18.png" alt="&#96;虚拟内存&#96;"></p>
+<h4 id="内存分配时，怎么找“空闲块”"><a href="#内存分配时，怎么找“空闲块”" class="headerlink" title="内存分配时，怎么找“空闲块”"></a>内存分配时，怎么找“空闲块”</h4><p><strong>主要有三种策略</strong></p>
+<p><strong>首次适配（First Fit）</strong></p>
+<ul>
+<li><strong>做法</strong>：每次都从链表头开始遍历，找到第一个大小足够的空闲块就用。</li>
+<li><strong>优点</strong>：实现简单，通常速度比较快。</li>
+<li><strong>缺点</strong>：容易在链表前面留下很多“小碎片”，这些碎片很难再利用，后面分配大块时就需要一直往后找，效率下降。</li>
+</ul>
+<p><strong>下一次适配（Next Fit）</strong></p>
+<ul>
+<li><strong>做法</strong>：和首次适配类似，但每次搜索不是从头开始，而是从上一次分配结束的地方开始搜索。</li>
+<li><strong>优点</strong>：如果前面已经被分成很多碎片，跳过它们会快一些。</li>
+<li><strong>缺点</strong>：长期运行后，内存利用率往往比首次适配更低（因为大块可能被“跳过”，碎片问题更严重）。</li>
+</ul>
+<p><strong>最佳适配（Best Fit）</strong></p>
+<ul>
+<li><strong>做法</strong>：遍历所有空闲块，找到“刚好能放下所需空间”的最小空闲块。</li>
+<li><strong>优点</strong>：理论上能最大化内存利用率，减少碎片。</li>
+<li><strong>缺点</strong>：要遍历所有空闲块，速度慢，效率低。</li>
+</ul>
+<h4 id="分割空闲块-“用多少”"><a href="#分割空闲块-“用多少”" class="headerlink" title="分割空闲块 “用多少”"></a>分割空闲块 “用多少”</h4><ul>
+<li>当分配器找到一个足够大的空闲块时，如果这个块比需要分配的还要大，分配器要决定<strong>要不要把它分成两块</strong>——一块刚好满足用户的请求，剩下的留作空闲块。</li>
+</ul>
+<ol>
+<li><p>如果<strong>不分割</strong>，直接把整个空闲块都分配了，虽然简单，但<strong>会浪费空间</strong>，产生“内部碎片”（即：用户用不到的空间也被分出去了）。</p>
+</li>
+<li><p>如果<strong>分割</strong>，就能更高效利用内存，把多出来的部分留作下次分配用。</p>
+</li>
+</ol>
+<p><img src="/images/CSAPP/vmem19.png" alt="&#96;虚拟内存&#96;"></p>
+<h3 id="找不到合适的空闲块怎么办？"><a href="#找不到合适的空闲块怎么办？" class="headerlink" title="找不到合适的空闲块怎么办？"></a>找不到合适的空闲块怎么办？</h3><ul>
+<li>当程序调用 <code>malloc</code> 申请内存时，分配器会遍历所有空闲块，想找到一个<strong>足够大</strong>的来满足请求。</li>
+<li>如果<strong>没有任何一个空闲块能满足</strong>分配请求（比如所有空闲块都太小，或根本没有空闲块）：</li>
+</ul>
+<p><strong>第一步：尝试合并相邻空闲块（合并算法）</strong></p>
+<ul>
+<li>如果有些空闲块在物理内存上是相邻的，可以把它们<strong>合并</strong>成一个更大的空闲块（这样有可能凑出足够大的空间）。</li>
+<li>合并的方法叫“<strong>块合并&#x2F;块归并（coalescing）</strong>”。</li>
+</ul>
+<p><strong>第二步：还是不够怎么办？</strong></p>
+<ul>
+<li>如果合并之后<strong>还是没有足够大的空闲块</strong>，或者本来就没什么空闲块了，怎么办？</li>
+</ul>
+<p><strong>第三步：向内核要新内存</strong></p>
+<ul>
+<li>分配器会调用操作系统的系统调用（ <strong><code>sbrk</code> 或 <code>mmap</code></strong>），</li>
+<li>让<strong>操作系统分配一块新的堆内存</strong>（把进程的堆往上扩大一块）。</li>
+<li>分配器把新获得的这块大内存当作一个新的“大空闲块”，放入自己的空闲块链表中。</li>
+<li>然后在这块新内存里，分出一块满足请求的空间，剩下的还作为空闲块继续管理</li>
+</ul>
+<h3 id="合并空闲块"><a href="#合并空闲块" class="headerlink" title="合并空闲块"></a>合并空闲块</h3><ul>
+<li><strong>合并</strong>就是把相邻的空闲块合成一个更大的空闲块，这样可以减少碎片。</li>
+<li>什么时候合并，有两种策略：</li>
+</ul>
+<p>a) <strong>立即合并（Immediate Coalescing）</strong></p>
+<ul>
+<li>每次释放内存时，<strong>立刻检查相邻块，如果它们是空闲的，就直接合并</strong>。</li>
+<li>优点：简单，效率高，始终保持碎片最少。</li>
+<li>缺点：有时会导致“合并-分割-合并-分割”来回抖动（比如一直分配&#x2F;释放相邻的小块时）。</li>
+</ul>
+<p>b) <strong>推迟合并（Deferred Coalescing）</strong></p>
+<ul>
+<li>释放内存时<strong>不立即合并</strong>，而是等到某些条件触发时（比如分配失败时），再把所有空闲块扫描并合并一次。</li>
+<li>优点：减少不必要的合并&#x2F;分割操作，提高某些场景下的性能。</li>
+<li>缺点：在推迟期间会出现假碎片，直到触发合并操作。</li>
+</ul>
+<h3 id="带边界标记的合井"><a href="#带边界标记的合井" class="headerlink" title="带边界标记的合井"></a>带边界标记的合井</h3><ul>
+<li><p>当前块释放时，可以<strong>直接看下一个块的头部</strong>，判断它是不是空闲。</p>
+</li>
+<li><p>如果是，就可以把<strong>下一个块的大小合并到当前块</strong>，这一步是常数时间 O(1) 的。</p>
+</li>
+<li><p>如果要合并<strong>前一个空闲块</strong>，问题在于：<strong>你不知道前一个块的起始位置</strong>（因为你的指针是指向当前块的）。</p>
+</li>
+<li><p>如果用“隐式空闲链表”（即每个块只有头部，没有其他指针），那就<strong>只能从堆头顺着头部一直找</strong>，直到找到前一个块——这就是线性时间 O(n)，很慢。</p>
+</li>
+</ul>
+<p><strong>边界标记法（boundary tag）</strong></p>
+<ul>
+<li><strong>每个块除了头部外，还在结尾加一个“脚部”（footer，也叫边界标记）。</strong></li>
+<li>脚部就是头部的一个副本，记录块的大小和是否已分配。</li>
+<li>这样你拿到当前块后，可以<strong>直接看当前块前面“一个字”位置的脚部</strong>，得到前一个块的信息（它的大小和起始地址）。</li>
+<li>所以，<strong>释放当前块时，可以在常数时间找到前一个块，并判断要不要合并。</strong></li>
+</ul>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98/" rel="tag"># 虚拟内存</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/07/01/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98%EF%BC%88%E4%B8%89%EF%BC%89/" rel="prev" title="虚拟内存（三）">
+      <i class="fa fa-chevron-left"></i> 虚拟内存（三）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#malloc"><span class="nav-number">1.</span> <span class="nav-text">malloc()</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%A2%8E%E7%89%87"><span class="nav-number">1.1.</span> <span class="nav-text">碎片</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%86%85%E9%83%A8%E7%A2%8E"><span class="nav-number">1.1.1.</span> <span class="nav-text">内部碎</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%A4%96%E9%83%A8%E7%A2%8E%E7%89%87"><span class="nav-number">1.1.2.</span> <span class="nav-text">外部碎片</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%88%86%E9%85%8D%E5%99%A8%E7%9A%84%E5%AE%9E%E7%8E%B0%E9%9A%BE%E7%82%B9%EF%BC%9A"><span class="nav-number">1.2.</span> <span class="nav-text">分配器的实现难点：</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%EF%BC%881%EF%BC%89%E7%A9%BA%E9%97%B2%E5%9D%97%E5%A6%82%E4%BD%95%E7%BB%84%E7%BB%87%EF%BC%9F"><span class="nav-number">1.3.</span> <span class="nav-text">（1）空闲块如何组织？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%EF%BC%882%EF%BC%89%E6%94%BE%E7%BD%AE%E7%AD%96%E7%95%A5"><span class="nav-number">1.4.</span> <span class="nav-text">（2）放置策略</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%EF%BC%883%EF%BC%89%E5%88%86%E5%89%B2%E7%AD%96%E7%95%A5"><span class="nav-number">1.5.</span> <span class="nav-text">（3）分割策略</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%EF%BC%884%EF%BC%89%E5%90%88%E5%B9%B6%E7%AD%96%E7%95%A5"><span class="nav-number">1.6.</span> <span class="nav-text">（4）合并策略</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%9A%90%E5%BC%8F%E7%A9%BA%E9%97%B2%E9%93%BE%E8%A1%A8"><span class="nav-number">1.7.</span> <span class="nav-text">隐式空闲链表</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9C%89%E6%95%88%E8%BD%BD%E8%8D%B7%EF%BC%88Payload%EF%BC%89"><span class="nav-number">1.8.</span> <span class="nav-text">有效载荷（Payload）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A1%AB%E5%85%85%EF%BC%88Padding%EF%BC%8C%E5%8F%AF%E9%80%89%EF%BC%89"><span class="nav-number">1.9.</span> <span class="nav-text">填充（Padding，可选）</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%86%85%E5%AD%98%E5%88%86%E9%85%8D%E6%97%B6%EF%BC%8C%E6%80%8E%E4%B9%88%E6%89%BE%E2%80%9C%E7%A9%BA%E9%97%B2%E5%9D%97%E2%80%9D"><span class="nav-number">1.9.1.</span> <span class="nav-text">内存分配时，怎么找“空闲块”</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%88%86%E5%89%B2%E7%A9%BA%E9%97%B2%E5%9D%97-%E2%80%9C%E7%94%A8%E5%A4%9A%E5%B0%91%E2%80%9D"><span class="nav-number">1.9.2.</span> <span class="nav-text">分割空闲块 “用多少”</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%89%BE%E4%B8%8D%E5%88%B0%E5%90%88%E9%80%82%E7%9A%84%E7%A9%BA%E9%97%B2%E5%9D%97%E6%80%8E%E4%B9%88%E5%8A%9E%EF%BC%9F"><span class="nav-number">1.10.</span> <span class="nav-text">找不到合适的空闲块怎么办？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%90%88%E5%B9%B6%E7%A9%BA%E9%97%B2%E5%9D%97"><span class="nav-number">1.11.</span> <span class="nav-text">合并空闲块</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%B8%A6%E8%BE%B9%E7%95%8C%E6%A0%87%E8%AE%B0%E7%9A%84%E5%90%88%E4%BA%95"><span class="nav-number">1.12.</span> <span class="nav-text">带边界标记的合井</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">27</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">11</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "评论秒回复，你试试",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
