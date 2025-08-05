@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="__tcp_retransmit_skb当TCP的超时重传定时器到期后，会调用tcp_retransmit_skb进行重传。 123456void tcp_retransmit_timer(struct sock *sk)&#123;	...	if (tcp_retransmit_skb(sk, tcp_rtx_queue_head(sk), 1) &gt; 0) &#123;	...&#125;">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TCP重传__tcp_retransmit_skb">
+<meta property="og:url" content="http://example.com/2025/08/05/tcp%E6%95%B0%E6%8D%AE%E5%8C%85%E9%87%8D%E4%BC%A0/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="__tcp_retransmit_skb当TCP的超时重传定时器到期后，会调用tcp_retransmit_skb进行重传。 123456void tcp_retransmit_timer(struct sock *sk)&#123;	...	if (tcp_retransmit_skb(sk, tcp_rtx_queue_head(sk), 1) &gt; 0) &#123;	...&#125;">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-08-05T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-08-05T16:10:43.855Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP定时器">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/08/05/tcp%E6%95%B0%E6%8D%AE%E5%8C%85%E9%87%8D%E4%BC%A0/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TCP重传__tcp_retransmit_skb | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/08/05/tcp%E6%95%B0%E6%8D%AE%E5%8C%85%E9%87%8D%E4%BC%A0/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TCP重传__tcp_retransmit_skb
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-08-05 22:00:00" itemprop="dateCreated datePublished" datetime="2025-08-05T22:00:00+08:00">2025-08-05</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-08-06 00:10:43" itemprop="dateModified" datetime="2025-08-06T00:10:43+08:00">2025-08-06</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/08/05/tcp%E6%95%B0%E6%8D%AE%E5%8C%85%E9%87%8D%E4%BC%A0/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/08/05/tcp%E6%95%B0%E6%8D%AE%E5%8C%85%E9%87%8D%E4%BC%A0/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="tcp-retransmit-skb"><a href="#tcp-retransmit-skb" class="headerlink" title="__tcp_retransmit_skb"></a>__tcp_retransmit_skb</h2><p>当TCP的超时重传定时器到期后，会调用<code>tcp_retransmit_skb</code>进行重传。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_retransmit_timer</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	...</span><br><span class="line">	<span class="keyword">if</span> (tcp_retransmit_skb(sk, tcp_rtx_queue_head(sk), <span class="number">1</span>) &gt; <span class="number">0</span>) &#123;</span><br><span class="line">	...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_retransmit_skb</code>中会调用<code>__tcp_retransmit_skb</code>完成真正的重传，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">tcp_retransmit_skb</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb, <span class="type">int</span> segs)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="type">int</span> err = __tcp_retransmit_skb(sk, skb, segs);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (err == <span class="number">0</span>) &#123;</span><br><span class="line"><span class="meta">#<span class="keyword">if</span> FASTRETRANS_DEBUG &gt; 0</span></span><br><span class="line">		<span class="keyword">if</span> (TCP_SKB_CB(skb)-&gt;sacked &amp; TCPCB_SACKED_RETRANS) &#123;</span><br><span class="line">			net_dbg_ratelimited(<span class="string">&quot;retrans_out leaked\n&quot;</span>);</span><br><span class="line">		&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">		TCP_SKB_CB(skb)-&gt;sacked |= TCPCB_RETRANS;</span><br><span class="line">		<span class="comment">//更新重传出去数量，tcp_ack中会减</span></span><br><span class="line">		tp-&gt;retrans_out += tcp_skb_pcount(skb);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Save stamp of the first (attempted) retransmit. */</span></span><br><span class="line">	<span class="comment">//记录首次的重传时间</span></span><br><span class="line">	<span class="keyword">if</span> (!tp-&gt;retrans_stamp)</span><br><span class="line">		tp-&gt;retrans_stamp = tcp_skb_timestamp(skb);</span><br><span class="line">	<span class="comment">//初始化的是是-1 用于拥塞欻港口</span></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;undo_retrans &lt; <span class="number">0</span>)</span><br><span class="line">		tp-&gt;undo_retrans = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//记录重传的段数</span></span><br><span class="line">	tp-&gt;undo_retrans += tcp_skb_pcount(skb);</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>由上述可知<code>tcp_retransmit_skb</code>仅仅是调用了<code>__tcp_retransmit_skb</code>然后后更新了<code>tcp_sock</code>部分字段。真正的关键的操作在<code>__tcp_retransmit_skb</code>中</p>
+<p><code>__tcp_retransmit_skb</code>的关键逻辑为，首先通过<code>fclone</code>标志来判断当前重传的数据包是否已经在本机的队列中，因为重传的时候会设置clone标志位，而重传的数据包可以直接使用<code>fclone</code>出来的结构体，所以说可以通过这个标志位来判断数据包是否已经重传。</p>
+<p>然后根据数据包的序列号对这个数据包进行处理，如果当前数据包的序列号已经被部分确认了，那就需要裁剪这个<code>skb</code>了。（裁剪这个<code>skb</code>的时候会调用<code>tcp</code>管理内存的相关接口）</p>
+<p>然后查看路由是否有效（即<code>dst</code>是否存在）在超过retry1，后可能会进行黑洞检测，这时候的<code>dst</code>可能就被<code>rst</code>了</p>
+<p>重新计算当前的<code>mss</code>，然后计算当前可用发送窗口的大小和当前可以发送的<code>len</code>（使用segs和<code>mss</code>的乘机计算）。这里分为两种情况，如果<code>skb</code>的<code>len</code>大于计算的得到<code>len</code>，在这里就需要执行分段了，否则的话（也就是小于的情况）会尝试合并数据包。</p>
+<p>最后设置<code>tp_sock</code>的一些统计字段，调用<code>tcp_transmit_skb</code>完成数据包的发送，注意这里设置了clone标志位。</p>
+<p>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __tcp_retransmit_skb(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb, <span class="type">int</span> segs)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> cur_mss;</span><br><span class="line">	<span class="type">int</span> diff, len, err;</span><br><span class="line">	<span class="type">int</span> avail_wnd;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Inconclusive MTU probe */</span></span><br><span class="line">	<span class="keyword">if</span> (icsk-&gt;icsk_mtup.probe_size)</span><br><span class="line">		icsk-&gt;icsk_mtup.probe_size = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//通过fclone标志判断这个数据包是否在本机的队列中，</span></span><br><span class="line">	<span class="comment">//因为重传的数据包是从红黑树管理的数据包fclone出来的(调用tcp发包函数的时会设置clone标志位)，所以说如果有这个标志位</span></span><br><span class="line">	<span class="comment">//表示fastclone的数据包一定在本机队列中，所以就可以return -1 </span></span><br><span class="line">	<span class="keyword">if</span> (skb_still_in_host_queue(sk, skb))</span><br><span class="line">		<span class="keyword">return</span> -EBUSY;</span><br><span class="line">	<span class="comment">//如果重传数据包的seq 的小于已经确认的序列号 则表示部分确认了，那肯定需要裁剪这个skb了</span></span><br><span class="line">	<span class="keyword">if</span> (before(TCP_SKB_CB(skb)-&gt;seq, tp-&gt;snd_una)) &#123;</span><br><span class="line">		<span class="comment">//如果这个数据包都被确认过了 那就不应该出现在重传队列中，需要直接返回</span></span><br><span class="line">		<span class="keyword">if</span> (unlikely(before(TCP_SKB_CB(skb)-&gt;end_seq, tp-&gt;snd_una))) &#123;</span><br><span class="line">			WARN_ON_ONCE(<span class="number">1</span>);</span><br><span class="line">			<span class="keyword">return</span> -EINVAL;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//裁剪掉已经确认的部分，因此里面也会减少skb的truesize 以及调整内存相关的使用参数</span></span><br><span class="line">		<span class="keyword">if</span> (tcp_trim_head(sk, skb, tp-&gt;snd_una - TCP_SKB_CB(skb)-&gt;seq))</span><br><span class="line">			<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//看看路由是否有效，如果无效了，会调用查路由的接口，然后将结果关联到sk上</span></span><br><span class="line">	<span class="keyword">if</span> (inet_csk(sk)-&gt;icsk_af_ops-&gt;rebuild_header(sk))</span><br><span class="line">		<span class="keyword">return</span> -EHOSTUNREACH; <span class="comment">/* Routing failure or similar. */</span></span><br><span class="line">	<span class="comment">//根据tcp的选项长度，以及mtu是否变化来计算新的mss</span></span><br><span class="line">	cur_mss = tcp_current_mss(sk);</span><br><span class="line">	<span class="comment">//这里计算了窗口右边界和数据包seq的差值，其实就是在计算可用的窗口大小有多少</span></span><br><span class="line">	avail_wnd = tcp_wnd_end(tp) - TCP_SKB_CB(skb)-&gt;seq;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* If receiver has shrunk his window, and skb is out of</span></span><br><span class="line"><span class="comment">	 * new window, do not retransmit it. The exception is the</span></span><br><span class="line"><span class="comment">	 * case, when window is shrunk to zero. In this case</span></span><br><span class="line"><span class="comment">	 * our retransmit of one segment serves as a zero window probe.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//如果没有可用的窗口大小</span></span><br><span class="line">	<span class="keyword">if</span> (avail_wnd &lt;= <span class="number">0</span>) &#123;</span><br><span class="line">		<span class="comment">//不是最早未确认的包，直接返回，什么场景呢？？？？</span></span><br><span class="line">		<span class="keyword">if</span> (TCP_SKB_CB(skb)-&gt;seq != tp-&gt;snd_una)</span><br><span class="line">			<span class="keyword">return</span> -EAGAIN;</span><br><span class="line">		<span class="comment">//这里应该叫做强制设置一个大小？？ 因为走到这里表示没有可用的空间了</span></span><br><span class="line">		<span class="comment">//然而这是地一个没被确认的数据包，必须要强制发送？？？</span></span><br><span class="line">		avail_wnd = cur_mss;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//计算一个mss和一个段的乘积，也就是重传数据包的大小，貌似重传的数据包只能是一个段</span></span><br><span class="line">	len = cur_mss * segs;</span><br><span class="line">	<span class="comment">//当前空间够用的情况</span></span><br><span class="line">	<span class="keyword">if</span> (len &gt; avail_wnd) &#123;</span><br><span class="line">		<span class="comment">//向下取整</span></span><br><span class="line">		len = rounddown(avail_wnd, cur_mss);</span><br><span class="line">		<span class="keyword">if</span> (!len)</span><br><span class="line">			len = avail_wnd;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//问题：下面大概率走哪个分支呢？？？？？</span></span><br><span class="line">	<span class="comment">//如果这个数据包len 大于上面计算len 那就需要分段了 大概率走这个分支吧</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;len &gt; len) &#123;</span><br><span class="line">		<span class="keyword">if</span> (tcp_fragment(sk, TCP_FRAG_IN_RTX_QUEUE, skb, len,</span><br><span class="line">				 cur_mss, GFP_ATOMIC))</span><br><span class="line">			<span class="keyword">return</span> -ENOMEM; <span class="comment">/* We&#x27;ll try again later. */</span></span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="comment">//当前空间够的情况！</span></span><br><span class="line">		<span class="comment">//检查是否被clone？？？？</span></span><br><span class="line">		<span class="keyword">if</span> (skb_unclone_keeptruesize(skb, GFP_ATOMIC))</span><br><span class="line">			<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">		<span class="comment">//获取分段的数量，这里应该大概率就是1吧</span></span><br><span class="line">		diff = tcp_skb_pcount(skb);</span><br><span class="line">		<span class="comment">//重新计算分段数量，大概率也是1吧</span></span><br><span class="line">		tcp_set_skb_tso_segs(skb, cur_mss);</span><br><span class="line">		diff -= tcp_skb_pcount(skb); <span class="comment">//这里的diff是变化值</span></span><br><span class="line">		<span class="keyword">if</span> (diff)<span class="comment">//大概率不会进入这个分支</span></span><br><span class="line">			tcp_adjust_pcount(sk, skb, diff);</span><br><span class="line">		<span class="comment">//取mss和窗口的最小值</span></span><br><span class="line">		avail_wnd = <span class="type">min_t</span>(<span class="type">int</span>, avail_wnd, cur_mss);</span><br><span class="line">		<span class="comment">//如果数据包的大小，小于上面的最小值，则尝试合并小包</span></span><br><span class="line">		<span class="keyword">if</span> (skb-&gt;len &lt; avail_wnd)</span><br><span class="line">			tcp_retrans_try_collapse(sk, skb, avail_wnd);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* RFC3168, section 6.1.1.1. ECN fallback */</span></span><br><span class="line">	<span class="comment">//如果是syn包 不容许有ecn标志？？？</span></span><br><span class="line">	<span class="keyword">if</span> ((TCP_SKB_CB(skb)-&gt;tcp_flags &amp; TCPHDR_SYN_ECN) == TCPHDR_SYN_ECN)</span><br><span class="line">		tcp_ecn_clear_syn(sk, skb);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Update global and local TCP statistics. */</span></span><br><span class="line">	<span class="comment">//更新tcp的统计字段</span></span><br><span class="line">	segs = tcp_skb_pcount(skb);</span><br><span class="line">	TCP_ADD_STATS(sock_net(sk), TCP_MIB_RETRANSSEGS, segs);</span><br><span class="line">	<span class="keyword">if</span> (TCP_SKB_CB(skb)-&gt;tcp_flags &amp; TCPHDR_SYN)</span><br><span class="line">		__NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPSYNRETRANS);</span><br><span class="line">	tp-&gt;total_retrans += segs;</span><br><span class="line">	tp-&gt;bytes_retrans += skb-&gt;len;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* make sure skb-&gt;data is aligned on arches that require it</span></span><br><span class="line"><span class="comment">	 * and check if ack-trimming &amp; collapsing extended the headroom</span></span><br><span class="line"><span class="comment">	 * beyond what csum_start can cover.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//headroom 大于64k?? 不可能把</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely((NET_IP_ALIGN &amp;&amp; ((<span class="type">unsigned</span> <span class="type">long</span>)skb-&gt;data &amp; <span class="number">3</span>)) ||</span><br><span class="line">		     skb_headroom(skb) &gt;= <span class="number">0xFFFF</span>)) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">nskb</span>;</span></span><br><span class="line"></span><br><span class="line">		tcp_skb_tsorted_save(skb) &#123;</span><br><span class="line">			nskb = __pskb_copy(skb, MAX_TCP_HEADER, GFP_ATOMIC);</span><br><span class="line">			<span class="keyword">if</span> (nskb) &#123;</span><br><span class="line">				nskb-&gt;dev = <span class="literal">NULL</span>;</span><br><span class="line">				err = tcp_transmit_skb(sk, nskb, <span class="number">0</span>, GFP_ATOMIC);</span><br><span class="line">			&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">				err = -ENOBUFS;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125; tcp_skb_tsorted_restore(skb);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (!err) &#123;</span><br><span class="line">			tcp_update_skb_after_send(sk, skb, tp-&gt;tcp_wstamp_ns);</span><br><span class="line">			tcp_rate_skb_sent(sk, skb);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="comment">//设置了clone标志位</span></span><br><span class="line">		err = tcp_transmit_skb(sk, skb, <span class="number">1</span>, GFP_ATOMIC);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* To avoid taking spuriously low RTT samples based on a timestamp</span></span><br><span class="line"><span class="comment">	 * for a transmit that never happened, always mark EVER_RETRANS</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//这里设置skb 了曾经重传过的标志</span></span><br><span class="line">	TCP_SKB_CB(skb)-&gt;sacked |= TCPCB_EVER_RETRANS;</span><br><span class="line">	<span class="comment">//bpf钩子</span></span><br><span class="line">	<span class="keyword">if</span> (BPF_SOCK_OPS_TEST_FLAG(tp, BPF_SOCK_OPS_RETRANS_CB_FLAG))</span><br><span class="line">		tcp_call_bpf_3arg(sk, BPF_SOCK_OPS_RETRANS_CB,</span><br><span class="line">				  TCP_SKB_CB(skb)-&gt;seq, segs, err);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (likely(!err)) &#123;</span><br><span class="line">		<span class="comment">//tracepoint</span></span><br><span class="line">		trace_tcp_retransmit_skb(sk, skb);</span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (err != -EBUSY) &#123;</span><br><span class="line">		NET_ADD_STATS(sock_net(sk), LINUX_MIB_TCPRETRANSFAIL, segs);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述代码中如果需要处理序列号已经被部分确认的情况，则会调用<code>tcp_trim_head</code>完成数据包的裁剪，具体代码如下</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Remove acked data from a packet in the transmit queue. */</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">tcp_trim_head</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb, u32 len)</span></span><br><span class="line">&#123;</span><br><span class="line">	u32 delta_truesize;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (skb_unclone_keeptruesize(skb, GFP_ATOMIC))</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">	<span class="comment">// 和__pskb_pull_tail()几乎一样</span></span><br><span class="line">	delta_truesize = __pskb_trim_head(skb, len);</span><br><span class="line"></span><br><span class="line">	TCP_SKB_CB(skb)-&gt;seq += len;</span><br><span class="line">	<span class="comment">//更新skb的turesize</span></span><br><span class="line">	skb-&gt;truesize	   -= delta_truesize;</span><br><span class="line">	<span class="comment">//更新sk-&gt;sk_wmem_queued（tcp层管理使用内存量的大小）</span></span><br><span class="line">	sk_wmem_queued_add(sk, -delta_truesize);</span><br><span class="line">	<span class="keyword">if</span> (!skb_zcopy_pure(skb))</span><br><span class="line">		<span class="comment">//内存回收</span></span><br><span class="line">		sk_mem_uncharge(sk, delta_truesize);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Any change of skb-&gt;len requires recalculation of tso factor. */</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_skb_pcount(skb) &gt; <span class="number">1</span>)</span><br><span class="line">		<span class="comment">//根据mss更新数据包的gso_size</span></span><br><span class="line">		tcp_set_skb_tso_segs(skb, tcp_skb_mss(skb));</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码<code>__pskb_trim_head</code> 完成数据包裁剪后，调用<code>sk_wmem_queued_add</code>修改了sk-&gt;<code>sk_wmem_queued</code>（相当于<code>tcp</code>层管理内存的变量）</p>
+<p>然后会调用<code>sk_mem_uncharge</code>进行内存回收（也就是会影响<code>tcp</code>内存的三个阈值）。<code>sk_mem_uncharge</code>开始后的具体调用栈如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">sk_mem_uncharge</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">int</span> size)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">if</span> (!sk_has_account(sk))</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//先更新（增加）sk-&gt;sk_forward_alloc的值这个值的单位是字节</span></span><br><span class="line">	sk_forward_alloc_add(sk, size);</span><br><span class="line">	<span class="comment">//真正的页面回收，这里如果达到了了回收的标准，还会在减少sk_forward_alloc</span></span><br><span class="line">	sk_mem_reclaim(sk);</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">sk_forward_alloc_add</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">int</span> val)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/* Paired with lockless reads of sk-&gt;sk_forward_alloc */</span></span><br><span class="line">	WRITE_ONCE(sk-&gt;sk_forward_alloc, sk-&gt;sk_forward_alloc + val);</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">sk_mem_reclaim</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> reclaimable;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!sk_has_account(sk))</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//如果用户没有配置保留的内存sk_unused_reserved_mem 就是0 ，reclaimable 则等于sk_forward_alloc</span></span><br><span class="line">	reclaimable = sk-&gt;sk_forward_alloc - sk_unused_reserved_mem(sk);</span><br><span class="line">	<span class="comment">//字节多少大于一个页大小的时候触发回收</span></span><br><span class="line">	<span class="keyword">if</span> (reclaimable &gt;= (<span class="type">int</span>)PAGE_SIZE)</span><br><span class="line">	<span class="comment">//调用回收的逻辑</span></span><br><span class="line">		__sk_mem_reclaim(sk, reclaimable);</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">void</span> __sk_mem_reclaim(<span class="keyword">struct</span> sock *sk, <span class="type">int</span> amount)</span><br><span class="line">&#123;</span><br><span class="line">	amount &gt;&gt;= PAGE_SHIFT;</span><br><span class="line">	<span class="comment">//这里的amount的单位为页数！  这里面又减去了sk_forward_alloc 的值</span></span><br><span class="line">	sk_forward_alloc_add(sk, -(amount &lt;&lt; PAGE_SHIFT));</span><br><span class="line">	__sk_mem_reduce_allocated(sk, amount);</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">sk_forward_alloc_add</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">int</span> val)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/* Paired with lockless reads of sk-&gt;sk_forward_alloc */</span></span><br><span class="line">	WRITE_ONCE(sk-&gt;sk_forward_alloc, sk-&gt;sk_forward_alloc + val);</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">void</span> __sk_mem_reduce_allocated(<span class="keyword">struct</span> sock *sk, <span class="type">int</span> amount)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//修改tcp_memory_allocated的值</span></span><br><span class="line">	sk_memory_allocated_sub(sk, amount);</span><br><span class="line">	<span class="comment">//cgroup相关</span></span><br><span class="line">	<span class="keyword">if</span> (mem_cgroup_sockets_enabled &amp;&amp; sk-&gt;sk_memcg)</span><br><span class="line">		mem_cgroup_uncharge_skmem(sk-&gt;sk_memcg, amount);</span><br><span class="line">	<span class="comment">//更新内存压力</span></span><br><span class="line">	<span class="keyword">if</span> (sk_under_global_memory_pressure(sk) &amp;&amp;</span><br><span class="line">	    (sk_memory_allocated(sk) &lt; sk_prot_mem_limits(sk, <span class="number">0</span>)))</span><br><span class="line">		sk_leave_memory_pressure(sk);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述就是裁剪数据包的全部逻辑，之后的逻辑为调用<code>inet_csk(sk)-&gt;icsk_af_ops-&gt;rebuild_header(sk)</code>判断路由是否有效，具体的函数如下所示(是在初始化tcp套接字的时候注册的)。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//超时重传的时候会调用到</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">inet_sk_rebuild_header</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_sock</span> *<span class="title">inet</span> =</span> inet_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rtable</span> *<span class="title">rt</span> =</span> (<span class="keyword">struct</span> rtable *)__sk_dst_check(sk, <span class="number">0</span>);</span><br><span class="line">	__be32 daddr;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_options_rcu</span> *<span class="title">inet_opt</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">flowi4</span> *<span class="title">fl4</span>;</span></span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Route is OK, nothing to do. */</span></span><br><span class="line">	<span class="comment">//如果路由条目存在，那直接返回就ok，</span></span><br><span class="line">	<span class="comment">//什么时候会继续走？ 重传超过retry1，黑洞检测的时候不是就不能直接返回了？</span></span><br><span class="line">	<span class="keyword">if</span> (rt)</span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Reroute. */</span></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	<span class="comment">//拿到ip选项</span></span><br><span class="line">	inet_opt = rcu_dereference(inet-&gt;inet_opt);</span><br><span class="line">	<span class="comment">//拿到目的地址</span></span><br><span class="line">	daddr = inet-&gt;inet_daddr;</span><br><span class="line">	<span class="comment">//如果有ip选项，且有ip源路由选项，那就用选项的daddr，通常不会走这</span></span><br><span class="line">	<span class="keyword">if</span> (inet_opt &amp;&amp; inet_opt-&gt;opt.srr)</span><br><span class="line">		daddr = inet_opt-&gt;opt.faddr;</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">	<span class="comment">//拿到一个流的信息，</span></span><br><span class="line">	fl4 = &amp;inet-&gt;cork.fl.u.ip4;</span><br><span class="line">	<span class="comment">//调用查路由的接口</span></span><br><span class="line">	rt = ip_route_output_ports(sock_net(sk), fl4, sk, daddr, inet-&gt;inet_saddr,</span><br><span class="line">				   inet-&gt;inet_dport, inet-&gt;inet_sport,</span><br><span class="line">				   sk-&gt;sk_protocol, RT_CONN_FLAGS(sk),</span><br><span class="line">				   sk-&gt;sk_bound_dev_if);</span><br><span class="line">	<span class="keyword">if</span> (!IS_ERR(rt)) &#123;</span><br><span class="line">		err = <span class="number">0</span>;</span><br><span class="line">		<span class="comment">//这里关联了sk和dst</span></span><br><span class="line">		sk_setup_caps(sk, &amp;rt-&gt;dst);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		err = PTR_ERR(rt);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Routing failed... */</span></span><br><span class="line">		sk-&gt;sk_route_caps = <span class="number">0</span>;</span><br><span class="line">		<span class="comment">/*</span></span><br><span class="line"><span class="comment">		 * Other protocols have to map its equivalent state to TCP_SYN_SENT.</span></span><br><span class="line"><span class="comment">		 * DCCP maps its DCCP_REQUESTING state to TCP_SYN_SENT. -acme</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//走到这里肯定是上面查找路由失败了，如果准备换一个源ip地址继续查路由，前提是开启这个选项，且不是建立连接阶段</span></span><br><span class="line">		<span class="comment">//就换个ip地址继续查，如果失败了，就返回err</span></span><br><span class="line">		<span class="keyword">if</span> (!READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_ip_dynaddr) ||</span><br><span class="line">		    sk-&gt;sk_state != TCP_SYN_SENT ||</span><br><span class="line">		    (sk-&gt;sk_userlocks &amp; SOCK_BINDADDR_LOCK) ||</span><br><span class="line">		    (err = inet_sk_reselect_saddr(sk)) != <span class="number">0</span>)</span><br><span class="line">			WRITE_ONCE(sk-&gt;sk_err_soft, -err);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码其实就是做了一件事情，就是判断<code>sk</code>的<code>dst</code>是否存在，如果不存在，则调用路由查找接口，然后为<code>sk</code>关联新的<code>dst</code></p>
+<p>之后<code>__tcp_retransmit_skb</code>会调用<code>tcp_current_mss</code>来计算当前的<code>mss</code>具体代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">unsigned</span> <span class="type">int</span> <span class="title function_">tcp_current_mss</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">dst_entry</span> *<span class="title">dst</span> =</span> __sk_dst_get(sk);</span><br><span class="line">	u32 mss_now;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> header_len;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_out_options</span> <span class="title">opts</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_md5sig_key</span> *<span class="title">md5</span>;</span></span><br><span class="line">	<span class="comment">//这个可以理解为最新的mss，本质上是上次的在某些地方更新的mss</span></span><br><span class="line">	mss_now = tp-&gt;mss_cache;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (dst) &#123;</span><br><span class="line">		<span class="comment">//这里返回了路由表或者设备的mtu</span></span><br><span class="line">		u32 mtu = dst_mtu(dst);</span><br><span class="line">		<span class="keyword">if</span> (mtu != inet_csk(sk)-&gt;icsk_pmtu_cookie)<span class="comment">//这个值是调用tcp_sync_mss 用来计算mss的参数 如果没变化，不会进入这个分支</span></span><br><span class="line">			<span class="comment">//重新根据这个值在计算一次mtu ， 这个传入的mtu会被保存到icsk_pmtu_cookie 中 其实也就是因为mtu变化了，所以要重新计算mss 合理</span></span><br><span class="line">			mss_now = tcp_sync_mss(sk, mtu); </span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//计算tcp选项的长度</span></span><br><span class="line">	header_len = tcp_established_options(sk, <span class="literal">NULL</span>, &amp;opts, &amp;md5) +</span><br><span class="line">		     <span class="keyword">sizeof</span>(<span class="keyword">struct</span> tcphdr);</span><br><span class="line">	<span class="comment">/* The mss_cache is sized based on tp-&gt;tcp_header_len, which assumes</span></span><br><span class="line"><span class="comment">	 * some common options. If this is an odd packet (because we have SACK</span></span><br><span class="line"><span class="comment">	 * blocks etc) then our calculated header_len will be different, and</span></span><br><span class="line"><span class="comment">	 * we have to adjust mss_now correspondingly */</span></span><br><span class="line">	<span class="comment">//如果长度变化了，重新调整mss</span></span><br><span class="line">	<span class="keyword">if</span> (header_len != tp-&gt;tcp_header_len) &#123;</span><br><span class="line">		<span class="type">int</span> delta = (<span class="type">int</span>) header_len - tp-&gt;tcp_header_len;</span><br><span class="line">		mss_now -= delta;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> mss_now;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_current_mss</code>中首先拿到上一次的<code>mss</code>，然后在获取当前的<code>mtu</code>，因为<code>mtu</code>可能会变化，所以根据新的<code>mtu</code>算出一个新的<code>mss</code></p>
+<p>继续往下，如果当前数据包的<code>len</code>小于一个<code>mss</code>的大小，则会尝试调用<code>tcp_retrans_try_collapse</code>合并重传队列中的数据包，否则的话会调用分段的处理函数。，合并重传队列中数据包的代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">tcp_retrans_try_collapse</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *to,</span></span><br><span class="line"><span class="params">				     <span class="type">int</span> space)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span> =</span> to, *tmp;</span><br><span class="line">	<span class="type">bool</span> first = <span class="literal">true</span>;</span><br><span class="line">	<span class="comment">//是否开启合并，默认是开启的</span></span><br><span class="line">	<span class="keyword">if</span> (!READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_retrans_collapse))</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//syn包不能合并，但是会有重传队列中除了syn包还有其他包的情况吗？？？</span></span><br><span class="line">	<span class="keyword">if</span> (TCP_SKB_CB(skb)-&gt;tcp_flags &amp; TCPHDR_SYN)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//遍历重传队列</span></span><br><span class="line">	skb_rbtree_walk_from_safe(skb, tmp) &#123;</span><br><span class="line">		<span class="comment">//判断下一个包能否合并</span></span><br><span class="line">		<span class="keyword">if</span> (!tcp_can_collapse(sk, skb))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="comment">//再次进行判断，如果是zc就无法合并</span></span><br><span class="line">		<span class="keyword">if</span> (!tcp_skb_can_collapse(to, skb))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="comment">//可用的空间大小，减去被合并的大小</span></span><br><span class="line">		space -= skb-&gt;len;</span><br><span class="line">		<span class="comment">//第一个包，也就是to吧 所以直接continue了</span></span><br><span class="line">		<span class="keyword">if</span> (first) &#123;</span><br><span class="line">			first = <span class="literal">false</span>;</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (space &lt; <span class="number">0</span>)</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="comment">//数据包的seq超出了窗口i的右边界，直接返回</span></span><br><span class="line">		<span class="keyword">if</span> (after(TCP_SKB_CB(skb)-&gt;end_seq, tcp_wnd_end(tp)))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (!tcp_collapse_retrans(sk, to))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_retrans_try_collapse</code>遍历重传队列，调用<code>tcp_can_collapse</code>判断重传队列中的数据包能否合并（<code>fclone</code>过，或者<code>segs</code>不为1则无法合并），然后调用<code>tcp_collapse_retrans</code>完成真正的合并。具体代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Check if coalescing SKBs is legal. */</span></span><br><span class="line"><span class="type">static</span> <span class="type">bool</span> <span class="title function_">tcp_can_collapse</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> sock *sk, <span class="type">const</span> <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//如果数据包有多个段，不能合并，为什么？</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_skb_pcount(skb) &gt; <span class="number">1</span>)</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	<span class="comment">//如果被clone过这不能合并</span></span><br><span class="line">	<span class="keyword">if</span> (skb_cloned(skb))</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	<span class="comment">/* Some heuristics for collapsing over SACK&#x27;d could be invented */</span></span><br><span class="line">	<span class="comment">//是sack过的数据包 不能合并</span></span><br><span class="line">	<span class="keyword">if</span> (TCP_SKB_CB(skb)-&gt;sacked &amp; TCPCB_SACKED_ACKED)</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Collapses two adjacent SKB&#x27;s during retransmission. */</span></span><br><span class="line"><span class="type">static</span> <span class="type">bool</span> <span class="title function_">tcp_collapse_retrans</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">next_skb</span> =</span> skb_rb_next(skb);</span><br><span class="line">	<span class="type">int</span> next_skb_size;</span><br><span class="line">	<span class="comment">//重传队列合并下一个数据包的size</span></span><br><span class="line">	next_skb_size = next_skb-&gt;len;</span><br><span class="line">	<span class="comment">//必须只有一个段</span></span><br><span class="line">	BUG_ON(tcp_skb_pcount(skb) != <span class="number">1</span> || tcp_skb_pcount(next_skb) != <span class="number">1</span>);</span><br><span class="line">	<span class="comment">//这里调用tcp_skb_shift 完成了连个数据包的合并，但是只有数据仅有非线性部分的数据才能合并成功， 会有仅有非线性部分的数据吗？</span></span><br><span class="line">	<span class="keyword">if</span> (next_skb_size &amp;&amp; !tcp_skb_shift(skb, next_skb, <span class="number">1</span>, next_skb_size))</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	<span class="comment">//处理highest_sack字段指向第一个skb</span></span><br><span class="line">	tcp_highest_sack_replace(sk, next_skb, skb);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Update sequence range on original skb. */</span></span><br><span class="line">	<span class="comment">//更新第一个skb的序列号</span></span><br><span class="line">	TCP_SKB_CB(skb)-&gt;end_seq = TCP_SKB_CB(next_skb)-&gt;end_seq;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Merge over control information. This moves PSH/FIN etc. over */</span></span><br><span class="line">	<span class="comment">//设置tcp标志位</span></span><br><span class="line">	TCP_SKB_CB(skb)-&gt;tcp_flags |= TCP_SKB_CB(next_skb)-&gt;tcp_flags;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* All done, get rid of second SKB and account for it so</span></span><br><span class="line"><span class="comment">	 * packet counting does not break.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//设置重传过的标志(如果有的话) 这个标志是在外面设置的</span></span><br><span class="line">	TCP_SKB_CB(skb)-&gt;sacked |= TCP_SKB_CB(next_skb)-&gt;sacked &amp; TCPCB_EVER_RETRANS;</span><br><span class="line">	TCP_SKB_CB(skb)-&gt;eor = TCP_SKB_CB(next_skb)-&gt;eor;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* changed transmit queue under us so clear hints */</span></span><br><span class="line">	<span class="comment">//将tp-&gt;lost_skb_hint 置为空，因为tcp ack中会用到这个值，这里已经处理重传队列了，所以要重新赋值</span></span><br><span class="line">	tcp_clear_retrans_hints_partial(tp);</span><br><span class="line">	<span class="comment">//设置下一个要重传的skb的指针</span></span><br><span class="line">	<span class="keyword">if</span> (next_skb == tp-&gt;retransmit_skb_hint)</span><br><span class="line">		tp-&gt;retransmit_skb_hint = skb;</span><br><span class="line">	<span class="comment">//因为合并了数据包要修改一些 *out字段，因为表示已经发送出去还没确认的数量，因为合并了 所以需要修改</span></span><br><span class="line">	tcp_adjust_pcount(sk, next_skb, tcp_skb_pcount(next_skb));</span><br><span class="line">	<span class="comment">//处理时间戳</span></span><br><span class="line">	tcp_skb_collapse_tstamp(skb, next_skb);</span><br><span class="line">	<span class="comment">//unlink数据包，调用调整内存的相关接口</span></span><br><span class="line">	tcp_rtx_queue_unlink_and_free(next_skb, sk);</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_collapse_retrans</code> 中调用<code>tcp_skb_shift</code>完成真实的合并操作，之后设置一些其他地方会用到的字段，比如数据包的序列号，<code>tcp</code>的标志位，时间戳等，然后将被合并的数据包从重传队列中移除，同时调用内存释放相关接口函数</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">tcp_rtx_queue_unlink_and_free</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	list_del(&amp;skb-&gt;tcp_tsorted_anchor);</span><br><span class="line">	<span class="comment">//从重传队列中unlink</span></span><br><span class="line">	tcp_rtx_queue_unlink(skb, sk);</span><br><span class="line">	<span class="comment">//freeskb 修改wmem_queue</span></span><br><span class="line">	tcp_wmem_free_skb(sk, skb);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">tcp_wmem_free_skb</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	sk_wmem_queued_add(sk, -skb-&gt;truesize);</span><br><span class="line">	<span class="keyword">if</span> (!skb_zcopy_pure(skb))</span><br><span class="line">		sk_mem_uncharge(sk, skb-&gt;truesize);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		sk_mem_uncharge(sk, SKB_TRUESIZE(skb_end_offset(skb)));</span><br><span class="line">	__kfree_skb(skb);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E5%AE%9A%E6%97%B6%E5%99%A8/" rel="tag"># TCP定时器</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/08/03/TCP%E5%AE%9A%E6%97%B6%E5%99%A8-%E8%B6%85%E6%97%B6%E9%87%8D%E4%BC%A0%E5%AE%9A%E6%97%B6%E5%99%A8/" rel="prev" title="TCP超时重传定时器">
+      <i class="fa fa-chevron-left"></i> TCP超时重传定时器
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#tcp-retransmit-skb"><span class="nav-number">1.</span> <span class="nav-text">__tcp_retransmit_skb</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">34</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">13</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "评论秒回复，你试试",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
