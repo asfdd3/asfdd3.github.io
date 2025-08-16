@@ -193,6 +193,211 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/17/skb%E7%9A%84%E7%AE%A1%E7%90%86%E5%87%BD%E6%95%B0%E4%BA%8C/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/06/17/skb%E7%9A%84%E7%AE%A1%E7%90%86%E5%87%BD%E6%95%B0%E4%BA%8C/" class="post-title-link" itemprop="url">skb操作函数(二)</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-06-17 22:00:00" itemprop="dateCreated datePublished" datetime="2025-06-17T22:00:00+08:00">2025-06-17</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-06-19 22:55:45" itemprop="dateModified" datetime="2025-06-19T22:55:45+08:00">2025-06-19</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/06/17/skb%E7%9A%84%E7%AE%A1%E7%90%86%E5%87%BD%E6%95%B0%E4%BA%8C/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/06/17/skb%E7%9A%84%E7%AE%A1%E7%90%86%E5%87%BD%E6%95%B0%E4%BA%8C/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h3 id="删除skb尾部数据"><a href="#删除skb尾部数据" class="headerlink" title="删除skb尾部数据"></a>删除skb尾部数据</h3><h4 id="skb-trim"><a href="#skb-trim" class="headerlink" title="skb_trim()"></a><strong>skb_trim()</strong></h4><p><code>skb_trim()</code> 是 Linux 内核中一个用于<strong>截断数据包长度</strong>的函数，主要用于收缩 <code>skb</code> 的数据长度（通常是<strong>从尾部</strong>截断）</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">skb_trim</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="type">unsigned</span> <span class="type">int</span> len)</span>;</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">skb_trim</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="type">unsigned</span> <span class="type">int</span> len)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;len &gt; len)</span><br><span class="line">		__skb_trim(skb, len);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> __skb_trim(<span class="keyword">struct</span> sk_buff *skb, <span class="type">unsigned</span> <span class="type">int</span> len)</span><br><span class="line">&#123;</span><br><span class="line">	__skb_set_length(skb, len);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> __skb_set_length(<span class="keyword">struct</span> sk_buff *skb, <span class="type">unsigned</span> <span class="type">int</span> len)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">if</span> (WARN_ON(skb_is_nonlinear(skb)))</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	skb-&gt;len = len;</span><br><span class="line">	skb_set_tail_pointer(skb, len);</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">skb_set_tail_pointer</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="type">const</span> <span class="type">int</span> offset)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//注意这里是先将tail指向data，然后在偏移offset</span></span><br><span class="line">	skb_reset_tail_pointer(skb);</span><br><span class="line">	skb-&gt;tail += offset;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>skb_trim</code>操作前后如下图所示：</p>
+<p><img src="/images/skb/skbtrim.jpeg" alt="&#96;skb_reserve()&#96;"></p>
+<h4 id="pskb-trim"><a href="#pskb-trim" class="headerlink" title="pskb_trim()"></a><strong>pskb_trim()</strong></h4><p><code>pskb_trim()</code> 是 Linux 内核中用于“<strong>安全地裁剪 skb 长度</strong>”的函数，类似于 <code>skb_trim()</code>，但它<strong>支持非线性（分页）skb</strong>，是一个更强大、更通用的版本。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> <span class="title function_">pskb_trim</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="type">unsigned</span> <span class="type">int</span> len)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span> (len &lt; skb-&gt;len) ? __pskb_trim(skb, len) : <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> __pskb_trim(<span class="keyword">struct</span> sk_buff *skb, <span class="type">unsigned</span> <span class="type">int</span> len)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//这里判断了是否存在了非线性部分的数据</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;data_len)</span><br><span class="line">		<span class="keyword">return</span> ___pskb_trim(skb, len);</span><br><span class="line">	__skb_trim(skb, len);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* Trims skb to length len. It can change skb pointers.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"></span><br><span class="line"><span class="type">int</span> ___pskb_trim(<span class="keyword">struct</span> sk_buff *skb, <span class="type">unsigned</span> <span class="type">int</span> len)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> **<span class="title">fragp</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">frag</span>;</span></span><br><span class="line">	<span class="type">int</span> offset = skb_headlen(skb); <span class="comment">//线性的长度</span></span><br><span class="line">	<span class="type">int</span> nfrags = skb_shinfo(skb)-&gt;nr_frags; <span class="comment">//有几个页</span></span><br><span class="line">	<span class="type">int</span> i;</span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="comment">//如果有别人在使用这个skb 调用pskb_expand_head 复制skb</span></span><br><span class="line">	<span class="keyword">if</span> (skb_cloned(skb) &amp;&amp;</span><br><span class="line">	    unlikely((err = pskb_expand_head(skb, <span class="number">0</span>, <span class="number">0</span>, GFP_ATOMIC))))</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line"></span><br><span class="line">	i = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//线性长度大于要阶段的部分，那就直接drop page就可以了</span></span><br><span class="line">	<span class="keyword">if</span> (offset &gt;= len)</span><br><span class="line">		<span class="keyword">goto</span> drop_pages;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> (; i &lt; nfrags; i++) &#123;</span><br><span class="line">		<span class="type">int</span> end = offset + skb_frag_size(&amp;skb_shinfo(skb)-&gt;frags[i]);</span><br><span class="line">		<span class="comment">//没到na&#x27;gepage就continue</span></span><br><span class="line">		<span class="keyword">if</span> (end &lt; len) &#123;</span><br><span class="line">			offset = end;</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		skb_frag_size_set(&amp;skb_shinfo(skb)-&gt;frags[i++], len - offset);</span><br><span class="line"></span><br><span class="line">drop_pages:</span><br><span class="line">		skb_shinfo(skb)-&gt;nr_frags = i;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">for</span> (; i &lt; nfrags; i++)</span><br><span class="line">			skb_frag_unref(skb, i);</span><br><span class="line">		<span class="comment">//如果有fraglist非线性部分，释放fraglist</span></span><br><span class="line">		<span class="keyword">if</span> (skb_has_frag_list(skb))</span><br><span class="line">			skb_drop_fraglist(skb);</span><br><span class="line">		<span class="keyword">goto</span> done;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//处理没有page只有fraglist的情况</span></span><br><span class="line">	<span class="keyword">for</span> (fragp = &amp;skb_shinfo(skb)-&gt;frag_list; (frag = *fragp);</span><br><span class="line">	     fragp = &amp;frag-&gt;next) &#123;</span><br><span class="line">		<span class="type">int</span> end = offset + frag-&gt;len;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (skb_shared(frag)) &#123;</span><br><span class="line">			<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">nfrag</span>;</span></span><br><span class="line"></span><br><span class="line">			nfrag = skb_clone(frag, GFP_ATOMIC);</span><br><span class="line">			<span class="keyword">if</span> (unlikely(!nfrag))</span><br><span class="line">				<span class="keyword">return</span> -ENOMEM;</span><br><span class="line"></span><br><span class="line">			nfrag-&gt;next = frag-&gt;next;</span><br><span class="line">			consume_skb(frag);</span><br><span class="line">			frag = nfrag;</span><br><span class="line">			*fragp = frag;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (end &lt; len) &#123;</span><br><span class="line">			offset = end;</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (end &gt; len &amp;&amp;</span><br><span class="line">		    unlikely((err = pskb_trim(frag, len - offset))))</span><br><span class="line">			<span class="keyword">return</span> err;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (frag-&gt;next)</span><br><span class="line">			skb_drop_list(&amp;frag-&gt;next);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">done:</span><br><span class="line"><span class="comment">//设置skb的len相关的字段</span></span><br><span class="line">	<span class="keyword">if</span> (len &gt; skb_headlen(skb)) &#123;</span><br><span class="line">		skb-&gt;data_len -= skb-&gt;len - len;</span><br><span class="line">		skb-&gt;len       = len;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		skb-&gt;len       = len;</span><br><span class="line">		skb-&gt;data_len  = <span class="number">0</span>;</span><br><span class="line">		skb_set_tail_pointer(skb, len);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!skb-&gt;sk || skb-&gt;destructor == sock_edemux)</span><br><span class="line">		skb_condense(skb);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/06/17/skb%E7%9A%84%E7%AE%A1%E7%90%86%E5%87%BD%E6%95%B0%E4%BA%8C/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/15/skb%E7%9A%84%E7%AE%A1%E7%90%86%E5%87%BD%E6%95%B0/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/06/15/skb%E7%9A%84%E7%AE%A1%E7%90%86%E5%87%BD%E6%95%B0/" class="post-title-link" itemprop="url">skb操作函数(一)</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-06-15 22:00:00" itemprop="dateCreated datePublished" datetime="2025-06-15T22:00:00+08:00">2025-06-15</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-06-16 21:34:41" itemprop="dateModified" datetime="2025-06-16T21:34:41+08:00">2025-06-16</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/06/15/skb%E7%9A%84%E7%AE%A1%E7%90%86%E5%87%BD%E6%95%B0/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/06/15/skb%E7%9A%84%E7%AE%A1%E7%90%86%E5%87%BD%E6%95%B0/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="skb预留和对齐"><a href="#skb预留和对齐" class="headerlink" title="skb预留和对齐"></a>skb预留和对齐</h2><p>数据的预留和对齐主要<code>skb_reserve(),skb_put(),skb_push(),skb_pull</code>这个几个函数来完成</p>
+<h3 id="skb-reserve"><a href="#skb-reserve" class="headerlink" title="skb_reserve()"></a><code>skb_reserve()</code></h3><p><code>skb_reserve()</code> 是用于预留头部空间（headroom）的函数，它的作用是在 <code>sk_buff</code> 结构中提前空出一部分头部空间或者为了对齐，以便后续协议栈可以在这个位置添加协议头（如 MAC&#x2F;IP&#x2F;TCP 头）。</p>
+<p><strong>注意<code>skb_reserve()</code>只能用于空的<code>SKB</code>，通常在分配<code>SKB</code>之后就会调用这个函数，注意此时的data和tail指针指向最初的位置。当<code>skb</code>在协议栈中向下传递的时候，data指针是向上移动的，然后复制需要封装的协议头部，最后更新<code>skb</code>的<code>len</code>字段，具体如下图：</strong></p>
+<p><img src="/images/skb/reserve.jpeg" alt="&#96;skb_reserve()&#96;"></p>
+<p><code>skb_reserve()</code> 函数实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">skb_reserve</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="type">int</span> len)</span></span><br><span class="line">&#123;</span><br><span class="line">	skb-&gt;data += len;</span><br><span class="line">	skb-&gt;tail += len;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h3 id="skb-push"><a href="#skb-push" class="headerlink" title="skb_push()"></a><code>skb_push()</code></h3><p>将数据指针 <code>skb-&gt;data</code> 向前移动（减少），为报文头腾出空间，并返回新位置的指针</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/06/15/skb%E7%9A%84%E7%AE%A1%E7%90%86%E5%87%BD%E6%95%B0/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/11/sockbuff%E7%BB%93%E6%9E%84/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1394,199 +1599,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/" class="post-title-link" itemprop="url">x86汇编学习(一)</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2025-05-27 22:00:00 / 修改时间：22:55:58" itemprop="dateCreated datePublished" datetime="2025-05-27T22:00:00+08:00">2025-05-27</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h1 id="汇编语言"><a href="#汇编语言" class="headerlink" title="汇编语言"></a>汇编语言</h1><p>GCC（C语言编译器）可以将程序编译为汇编代码的形式进行输出。汇编语言是机器指令的文本表示形式，它详细地列出了程序中每一条指令。然后GCC 会调用汇编器（assembler）和链接器（linker），根据这些汇编代码生成最终的可执行机器代码。</p>
-<p>本文基于x86-64架构,	 它是现在最常见处理器的机器语言，也是驱动大型数据中心和超级计算机的最常见处理器的机器语言。这种语言的历史悠久，开始 于 Intel 公司 1978 年的第一个 16 位处理器，然后扩展为 32 位，最近又扩展到 64 位。</p>
-<h2 id="1-x86的发展过程"><a href="#1-x86的发展过程" class="headerlink" title="1.x86的发展过程"></a>1.<strong>x86的发展过程</strong></h2><p><strong>8086</strong>(1978 年， 29K 个晶体管）。它是第一代单芯片、 16 位微处理器之一。 </p>
-<p><strong>i386</strong>(1985 年， 275K 个晶体管）。将体系结构扩展到 32 位。这是 Intel 系列中第一台全面支持 Unix操作系统的机器。</p>
-<p><strong>Pentium</strong> 4E(2004 年， 125M 个品体管）。增加了超线程(hyperthreading) , 这种技术可以在一个处理器上同时运行两个程序；还增加了 EM64T, 它是 Intel 对AMD提出的对 IA32 的 64 位扩展的实现，我们称之为 x86-64。</p>
-<h2 id="2-程序编码"><a href="#2-程序编码" class="headerlink" title="2.程序编码"></a>2.程序编码</h2><p>假设一个C程序，有两个文件<code>p1.c</code> 和 <code>p2.c</code> 我们用 Unix命令行编译这些代码：</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">linux&gt; gcc -Og -o p p1.c p2.c </span><br></pre></td></tr></table></figure>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/05/27/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%B8%80%EF%BC%89/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/26/socket%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/05/26/socket%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/" class="post-title-link" itemprop="url">socket文件系统</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2025-05-26 21:00:00 / 修改时间：21:39:52" itemprop="dateCreated datePublished" datetime="2025-05-26T21:00:00+08:00">2025-05-26</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/05/26/socket%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/26/socket%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="1-套接字与文件系统"><a href="#1-套接字与文件系统" class="headerlink" title="1.套接字与文件系统"></a>1.套接字与文件系统</h2><p>每一种文件都有各自的文件类型，例如设备文件包括字符设备文件和块设备文件等，而与套接字关联的文件类型为套接字文件。</p>
-<h3 id="1-1套接字文件系统的注册"><a href="#1-1套接字文件系统的注册" class="headerlink" title="1.1套接字文件系统的注册"></a>1.1套接字文件系统的注册</h3><p>为了能够让套接字与文件描述符相关联，并支持特殊套接字曾的节点分配和释放，系统中增加了<code>sockfs</code>文件系统类型<code>sock_fs_type</code>,具体定义如下：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="class"><span class="keyword">struct</span> <span class="title">file_system_type</span> <span class="title">sock_fs_type</span> =</span> &#123;</span><br><span class="line">	.name =		<span class="string">&quot;sockfs&quot;</span>, <span class="comment">//文件系统名字</span></span><br><span class="line">	<span class="comment">//挂载的时候会被调用，在kern_mount()被调用</span></span><br><span class="line">	.init_fs_context = sockfs_init_fs_context,<span class="comment">//初始化文件系统的回调函数，</span></span><br><span class="line">	.kill_sb =	kill_anon_super,<span class="comment">//卸载文件系统</span></span><br><span class="line">&#125;;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-<p><code>sock_fs_type</code>类型的文件系统注册发生在<code>sock_init()</code>在<code>start_kernel</code>中经过一些列调用会被调到.</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//start_kernel会调用到它</span></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> __init <span class="title function_">sock_init</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line"></span><br><span class="line">    ...</span><br><span class="line">	<span class="comment">//注册socket类型的文件系统</span></span><br><span class="line">	err = register_filesystem(&amp;sock_fs_type);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">    <span class="comment">//挂载这个文件系统，返回一个超级块</span></span><br><span class="line">	sock_mnt = kern_mount(&amp;sock_fs_type);</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR(sock_mnt)) &#123;</span><br><span class="line">		err = PTR_ERR(sock_mnt);</span><br><span class="line">		<span class="keyword">goto</span> out_mount;</span><br><span class="line">	&#125;</span><br><span class="line">    ....</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<p>在上述代码中首先调用<code>register_filesystem(&amp;sock_fs_type);</code>来注册socket文件系统，主要工作判断是否有相同名字文件系统并插入到链表中。然后调用<code>kern_mount</code>完成挂载操作并返回一个超级块，在创建socket的时候创建inode就是用的这个超级块的alloc_node回调函数。<br><code>kern_mount</code>函数定义如下</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> vfsmount *<span class="title function_">kern_mount</span><span class="params">(<span class="keyword">struct</span> file_system_type *type)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfsmount</span> *<span class="title">mnt</span>;</span></span><br><span class="line">	<span class="comment">//实际的挂载操作</span></span><br><span class="line">	mnt = vfs_kern_mount(type, SB_KERNMOUNT, type-&gt;name, <span class="literal">NULL</span>);</span><br><span class="line">	<span class="keyword">if</span> (!IS_ERR(mnt)) &#123;</span><br><span class="line">		<span class="comment">/*</span></span><br><span class="line"><span class="comment">		 * it is a longterm mount, don&#x27;t release mnt until</span></span><br><span class="line"><span class="comment">		 * we unmount before file sys is unregistered</span></span><br><span class="line"><span class="comment">		*/</span></span><br><span class="line">		real_mount(mnt)-&gt;mnt_ns = MNT_NS_INTERNAL;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> mnt;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<p>上述代码调用<code>vfs_kern_mount</code>中调用了<code>vfs_kern_mount</code>完成实际的挂载，返回的为一个挂载点，其中<code>SB_KERNMOUNT</code>表示表示该挂载属于内核内部命名空间。</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/05/26/socket%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1656,7 +1668,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">37</span>
+          <span class="site-state-item-count">39</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
