@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="RACK定时器背景传统 TCP 的重传主要靠 RTO（超时重传）和 DupACK（快速重传）：  RTO：基于 RTT 的超时，触发比较慢； DupACK：需要多个重复 ACK 才能触发，对乱序&#x2F;丢包检测不灵敏。  RACK 的核心思想 基本原则：只要某个数据段比“最近被确认的段”更早发送出去，但至今还没有被确认，就可以认为它可能丢失。 使用 发送时间戳 来比较，而不是依赖 DupACK">
+<meta property="og:type" content="article">
+<meta property="og:title" content="RACK定时器">
+<meta property="og:url" content="http://example.com/2025/08/22/RACK%E5%AE%9A%E6%97%B6%E5%99%A8/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="RACK定时器背景传统 TCP 的重传主要靠 RTO（超时重传）和 DupACK（快速重传）：  RTO：基于 RTT 的超时，触发比较慢； DupACK：需要多个重复 ACK 才能触发，对乱序&#x2F;丢包检测不灵敏。  RACK 的核心思想 基本原则：只要某个数据段比“最近被确认的段”更早发送出去，但至今还没有被确认，就可以认为它可能丢失。 使用 发送时间戳 来比较，而不是依赖 DupACK">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-08-22T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-08-23T11:14:24.851Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP定时器">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/08/22/RACK%E5%AE%9A%E6%97%B6%E5%99%A8/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>RACK定时器 | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/08/22/RACK%E5%AE%9A%E6%97%B6%E5%99%A8/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          RACK定时器
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-08-22 22:00:00" itemprop="dateCreated datePublished" datetime="2025-08-22T22:00:00+08:00">2025-08-22</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-08-23 19:14:24" itemprop="dateModified" datetime="2025-08-23T19:14:24+08:00">2025-08-23</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/08/22/RACK%E5%AE%9A%E6%97%B6%E5%99%A8/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/08/22/RACK%E5%AE%9A%E6%97%B6%E5%99%A8/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="RACK定时器"><a href="#RACK定时器" class="headerlink" title="RACK定时器"></a>RACK定时器</h2><h3 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h3><p>传统 TCP 的重传主要靠 <strong>RTO</strong>（超时重传）和 <strong>DupACK</strong>（快速重传）：</p>
+<ul>
+<li><strong>RTO</strong>：基于 RTT 的超时，触发比较慢；</li>
+<li><strong>DupACK</strong>：需要多个重复 ACK 才能触发，对乱序&#x2F;丢包检测不灵敏。</li>
+</ul>
+<h3 id="RACK-的核心思想"><a href="#RACK-的核心思想" class="headerlink" title="RACK 的核心思想"></a>RACK 的核心思想</h3><ul>
+<li><strong>基本原则</strong>：只要某个数据段比“最近被确认的段”更早发送出去，但至今还没有被确认，就可以认为它<strong>可能丢失</strong>。</li>
+<li>使用 <strong>发送时间戳</strong> 来比较，而不是依赖 DupACK 计数。</li>
+</ul>
+<p>例如：</p>
+<ul>
+<li>S1, S2, S3, S4 四个包按顺序发送；</li>
+<li>假如收到 ACK 确认了 S4，但 S2 还没确认；</li>
+<li>那么 RACK 就能推断：S2 可能丢了（因为比 S4 更早发出，按理说应该早就确认了）。</li>
+</ul>
+<p>RACK与TLP等定时器类似，与重传共用一个定时器，定时器到期的回调函数如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_rack_reo_timeout</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	u32 timeout, prior_inflight;</span><br><span class="line">	u32 lost = tp-&gt;lost;</span><br><span class="line">	<span class="comment">//计算在网络中飞行的包的数量</span></span><br><span class="line">	prior_inflight = tcp_packets_in_flight(tp);</span><br><span class="line">	<span class="comment">//遍历按时间排序的数据包队列，根据时间戳，会将数据包标记为loss</span></span><br><span class="line">	tcp_rack_detect_loss(sk, &amp;timeout);</span><br><span class="line">	<span class="comment">//如果现在这两个值不相等了，则证明认为有包丢失了，如果此时不再快速恢复状态则恩据到快速恢复状态，并调用注册的拥塞算法的钩子</span></span><br><span class="line">	<span class="keyword">if</span> (prior_inflight != tcp_packets_in_flight(tp)) &#123;</span><br><span class="line">		<span class="keyword">if</span> (inet_csk(sk)-&gt;icsk_ca_state != TCP_CA_Recovery) &#123;</span><br><span class="line">			tcp_enter_recovery(sk, <span class="literal">false</span>);</span><br><span class="line">			<span class="keyword">if</span> (!inet_csk(sk)-&gt;icsk_ca_ops-&gt;cong_control)</span><br><span class="line">				tcp_cwnd_reduction(sk, <span class="number">1</span>, tp-&gt;lost - lost, <span class="number">0</span>);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//重传数据包</span></span><br><span class="line">		tcp_xmit_retransmit_queue(sk);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//设置了重传定时器，用来兜底？</span></span><br><span class="line">	<span class="keyword">if</span> (inet_csk(sk)-&gt;icsk_pending != ICSK_TIME_RETRANS)</span><br><span class="line">		tcp_rearm_rto(sk);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码首先先计算在网络中’‘飞行的数据包的数量’‘，然后遍历按时间排序的数据包队列（发包的时候会放入这个队列中），然后根据时间戳标记可能丢失的数据包，然后重新计算网络中飞行的数据包数量，如果不相等了（因为有数据包被认为丢失了），就进入重传逻辑。</p>
+<p>标记可能丢失的逻辑<code>tcp_rack_detect_loss</code>如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span>  <span class="title function_">tcp_rack_detect_loss</span><span class="params">(<span class="keyword">struct</span> sock *sk, u32 *reo_timeout)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>, *<span class="title">n</span>;</span></span><br><span class="line">	u32 reo_wnd;</span><br><span class="line"></span><br><span class="line">	*reo_timeout = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//reo_wnd的单位为时间，返回0或者根据rtt算一个值，取决于统计乱续数据包的字段</span></span><br><span class="line">	reo_wnd = tcp_rack_reo_wnd(sk);</span><br><span class="line">	<span class="comment">//遍历已经发送按按时间排序的数据包队列</span></span><br><span class="line">	list_for_each_entry_safe(skb, n, &amp;tp-&gt;tsorted_sent_queue,</span><br><span class="line">				 tcp_tsorted_anchor) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">tcp_skb_cb</span> *<span class="title">scb</span> =</span> TCP_SKB_CB(skb);</span><br><span class="line">		s32 remaining;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Skip ones marked lost but not yet retransmitted */</span></span><br><span class="line">		<span class="comment">//跳过已经标记丢失的数据包</span></span><br><span class="line">		<span class="keyword">if</span> ((scb-&gt;sacked &amp; TCPCB_LOST) &amp;&amp;</span><br><span class="line">		    !(scb-&gt;sacked &amp; TCPCB_SACKED_RETRANS))</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="comment">//返回false的条件是，当前数据包的时间戳在当前rack时间戳的前面。。。，表示没问题。所以直接beak 合理</span></span><br><span class="line">		<span class="keyword">if</span> (!tcp_skb_sent_after(tp-&gt;rack.mstamp,</span><br><span class="line">					tcp_skb_timestamp_us(skb),</span><br><span class="line">					tp-&gt;rack.end_seq, scb-&gt;end_seq))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* A packet is lost if it has not been s/acked beyond</span></span><br><span class="line"><span class="comment">		 * the recent RTT plus the reordering window.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//内部根据rtt和上面算出来到窗口时间 减去这个数据包已经发出取得时间得到一个超时时间</span></span><br><span class="line">		remaining = tcp_rack_skb_timeout(tp, skb, reo_wnd);</span><br><span class="line">		<span class="keyword">if</span> (remaining &lt;= <span class="number">0</span>) &#123;</span><br><span class="line">			<span class="comment">//没有剩余时间了，直接标记为丢失数据包</span></span><br><span class="line">			tcp_mark_skb_lost(sk, skb);</span><br><span class="line">			<span class="comment">//这里把数据包从按时间排序的队列中移除了？？？，那需要重传的包在哪拿到呢？貌似是重传队列</span></span><br><span class="line">			list_del_init(&amp;skb-&gt;tcp_tsorted_anchor);</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			<span class="comment">/* Record maximum wait time */</span></span><br><span class="line">			<span class="comment">//传入传出这个timeout</span></span><br><span class="line">			*reo_timeout = <span class="type">max_t</span>(u32, *reo_timeout, remaining);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码为检测是否有丢失的逻辑，首先调用<code>tcp_rack_reo_wnd</code>获取一个时间窗口，这个时间窗口就是用来计算下面超时时间，会因为是否存在数据包乱序影响计算结果，如果不存在乱序，就直接返回0了（返回0表示数据包更有可能被标记为丢失），否则返回根据<code>rtt</code>计算得到的时间。</p>
+<p><code>tcp_rack_reo_wnd</code> 具体逻辑如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> u32 <span class="title function_">tcp_rack_reo_wnd</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="comment">//是否存在乱续，由tcp_check_sack_reordering设置</span></span><br><span class="line">	<span class="keyword">if</span> (!tp-&gt;reord_seen) &#123;</span><br><span class="line">		<span class="comment">/* If reordering has not been observed, be aggressive during</span></span><br><span class="line"><span class="comment">		 * the recovery or starting the recovery by DUPACK threshold.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//快恢复或者是loss，直接返回0 表示乱续容忍时间窗口是0</span></span><br><span class="line">		<span class="keyword">if</span> (inet_csk(sk)-&gt;icsk_ca_state &gt;= TCP_CA_Recovery)</span><br><span class="line">			<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">		<span class="comment">//sack确认的数量比乱需容忍的值要大  同时没有禁用重复ack 直接返回0 </span></span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;sacked_out &gt;= tp-&gt;reordering &amp;&amp;</span><br><span class="line">		    !(READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_recovery) &amp;</span><br><span class="line">		      TCP_RACK_NO_DUPTHRESH))</span><br><span class="line">			<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* To be more reordering resilient, allow min_rtt/4 settling delay.</span></span><br><span class="line"><span class="comment">	 * Use min_rtt instead of the smoothed RTT because reordering is</span></span><br><span class="line"><span class="comment">	 * often a path property and less related to queuing or delayed ACKs.</span></span><br><span class="line"><span class="comment">	 * Upon receiving DSACKs, linearly increase the window up to the</span></span><br><span class="line"><span class="comment">	 * smoothed RTT.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">return</span> min((tcp_min_rtt(tp) &gt;&gt; <span class="number">2</span>) * tp-&gt;rack.reo_wnd_steps,</span><br><span class="line">		   tp-&gt;srtt_us &gt;&gt; <span class="number">3</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>进入上述代码逻辑的条件是<code>reord_seen</code>为0 而更新这个字段的函数为<code>tcp_check_sack_reordering</code>在拥塞控制，sack处理，ack处理中会调用这个函数。具体代码如下所示，主要逻辑就是用来检测是否数据包乱序，如果存在乱序数据包，会更新<code>reord_seen</code>这个字段，同时更新统计信息：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">tcp_check_sack_reordering</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">const</span> u32 low_seq,</span></span><br><span class="line"><span class="params">				      <span class="type">const</span> <span class="type">int</span> ts)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="type">const</span> u32 mss = tp-&gt;mss_cache;</span><br><span class="line">	u32 fack, metric;</span><br><span class="line">	<span class="comment">//fack 为当前选择确认中最大的序列号</span></span><br><span class="line">	fack = tcp_highest_sack_seq(tp);</span><br><span class="line">	<span class="comment">//如果待检查的序列号已经在选择确认最高的后面，则直接返回</span></span><br><span class="line">	<span class="keyword">if</span> (!before(low_seq, fack))</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//可能丢包的范围？</span></span><br><span class="line">	metric = fack - low_seq;</span><br><span class="line">	<span class="keyword">if</span> ((metric &gt; tp-&gt;reordering * mss) &amp;&amp; mss) &#123;</span><br><span class="line"><span class="meta">#<span class="keyword">if</span> FASTRETRANS_DEBUG &gt; 1</span></span><br><span class="line">		pr_debug(<span class="string">&quot;Disorder%d %d %u f%u s%u rr%d\n&quot;</span>,</span><br><span class="line">			 tp-&gt;rx_opt.sack_ok, inet_csk(sk)-&gt;icsk_ca</span><br><span class="line">			 _state,</span><br><span class="line">			 tp-&gt;reordering,</span><br><span class="line">			 <span class="number">0</span>,</span><br><span class="line">			 tp-&gt;sacked_out,</span><br><span class="line">			 tp-&gt;undo_marker ? tp-&gt;undo_retrans : <span class="number">0</span>);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">		<span class="comment">//算一下有几个mss和默认值300取一个最小值，reordering的单位为最大乱续包的数量，会决定收到几个ack快速重传吗？</span></span><br><span class="line">		tp-&gt;reordering = <span class="type">min_t</span>(u32, (metric + mss - <span class="number">1</span>) / mss,</span><br><span class="line">				       READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_max_reordering));</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* This exciting event is worth to be remembered. 8) */</span></span><br><span class="line">	<span class="comment">//乱续事件计数</span></span><br><span class="line">	tp-&gt;reord_seen++;</span><br><span class="line">	NET_INC_STATS(sock_net(sk),</span><br><span class="line">		      ts ? LINUX_MIB_TCPTSREORDER : LINUX_MIB_TCPSACKREORDER);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>回到上面计算时间窗口的逻辑，计算完成后，会遍历按时排序的数据包队列，如果当前遍历到的数据包，如果当前的<code>rtt</code>加上计算出来的时间窗口（也叫做容忍时间吧）减去，这个数据包发给的时间，如果小于等于0直接调用<code>tcp_mark_skb_lost</code>标记为丢失，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//标记skb为丢失，并且更新相关字段 enterloss中会调用，tcp超时重传中会调用，rack中会调用</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">tcp_mark_skb_lost</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//拿到sack的标志位</span></span><br><span class="line">	__u8 sacked = TCP_SKB_CB(skb)-&gt;sacked;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="comment">//如果数据包已经被确认了，直接返回不用标记丢失</span></span><br><span class="line">	<span class="keyword">if</span> (sacked &amp; TCPCB_SACKED_ACKED)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">	tcp_verify_retransmit_hint(tp, skb);</span><br><span class="line">	<span class="comment">//这个包已经丢过一次了</span></span><br><span class="line">	<span class="keyword">if</span> (sacked &amp; TCPCB_LOST) &#123;</span><br><span class="line">		<span class="comment">//是否重传过一次了</span></span><br><span class="line">		<span class="keyword">if</span> (sacked &amp; TCPCB_SACKED_RETRANS) &#123;</span><br><span class="line">			<span class="comment">/* Account for retransmits that are lost again */</span></span><br><span class="line">			<span class="comment">//需要重新重传了，清除掉重传标志</span></span><br><span class="line">			TCP_SKB_CB(skb)-&gt;sacked &amp;= ~TCPCB_SACKED_RETRANS;</span><br><span class="line">			<span class="comment">//减少重重的统计激素</span></span><br><span class="line">			tp-&gt;retrans_out -= tcp_skb_pcount(skb);</span><br><span class="line">			<span class="comment">//增加统计计数 这个表示重传后又丢包的数量</span></span><br><span class="line">			NET_ADD_STATS(sock_net(sk), LINUX_MIB_TCPLOSTRETRANSMIT,</span><br><span class="line">				      tcp_skb_pcount(skb));</span><br><span class="line">			<span class="comment">//更新历史丢包总数</span></span><br><span class="line">			tcp_notify_skb_loss_event(tp, skb);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="comment">//增加 当前待重传的丢包数</span></span><br><span class="line">		tp-&gt;lost_out += tcp_skb_pcount(skb);</span><br><span class="line">		<span class="comment">//设置丢包标志</span></span><br><span class="line">		TCP_SKB_CB(skb)-&gt;sacked |= TCPCB_LOST;</span><br><span class="line">		<span class="comment">//更新历史丢包总数</span></span><br><span class="line">		tcp_notify_skb_loss_event(tp, skb);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>回到上面最初的定时器到期的回调函数中，也就是遍历按时间排序的数据包队列，标记可能loss的数据包后，如果重新计算飞行的书包的数量，如果不相等了就遍历重传队列发送标记重传的数据包，注意：这里不像超时重传一样，而是只重传被标记为loss的数据包，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_rack_reo_timeout</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">...</span><br><span class="line">	<span class="keyword">if</span> (prior_inflight != tcp_packets_in_flight(tp)) &#123;</span><br><span class="line">...</span><br><span class="line">		<span class="comment">//重传数据包</span></span><br><span class="line">		tcp_xmit_retransmit_queue(sk);</span><br><span class="line">	&#125;</span><br><span class="line">...</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">//注意： 这个函数貌似只重传丢失的数据包。</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">tcp_xmit_retransmit_queue</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>, *<span class="title">rtx_head</span>, *<span class="title">hole</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="type">bool</span> rearm_timer = <span class="literal">false</span>;</span><br><span class="line">	u32 max_segs;</span><br><span class="line">	<span class="type">int</span> mib_idx;</span><br><span class="line">	<span class="comment">//没有未确认的数据包，直接返回</span></span><br><span class="line">	<span class="keyword">if</span> (!tp-&gt;packets_out)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//拿到重传队列的头</span></span><br><span class="line">	rtx_head = tcp_rtx_queue_head(sk);</span><br><span class="line">	<span class="comment">//是否有能够快速定位的能重传的数据包，比如说在rack的重传逻辑中就会设置</span></span><br><span class="line">	skb = tp-&gt;retransmit_skb_hint ?: rtx_head;</span><br><span class="line">	<span class="comment">//计算一个最大的段数</span></span><br><span class="line">	max_segs = tcp_tso_segs(sk, tcp_current_mss(sk));</span><br><span class="line">	<span class="comment">//从上面拿到的skb开始遍历重传队列</span></span><br><span class="line">	skb_rbtree_walk_from(skb) &#123;</span><br><span class="line">		__u8 sacked;</span><br><span class="line">		<span class="type">int</span> segs;</span><br><span class="line">		<span class="comment">//pacing相关， 是否需要直接break，tcp_write_xmit也会调用</span></span><br><span class="line">		<span class="keyword">if</span> (tcp_pacing_check(sk))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* we could do better than to assign each time */</span></span><br><span class="line">		<span class="comment">//用来避免每次都从开始遍历这个重传队列</span></span><br><span class="line">		<span class="keyword">if</span> (!hole)</span><br><span class="line">			tp-&gt;retransmit_skb_hint = skb;</span><br><span class="line">		<span class="comment">//地一个单位是段，第二个是包吧，这里相减得到的还是段？</span></span><br><span class="line">		segs = tcp_snd_cwnd(tp) - tcp_packets_in_flight(tp);</span><br><span class="line">		<span class="keyword">if</span> (segs &lt;= <span class="number">0</span>)</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		sacked = TCP_SKB_CB(skb)-&gt;sacked;</span><br><span class="line">		<span class="comment">/* In case tcp_shift_skb_data() have aggregated large skbs,</span></span><br><span class="line"><span class="comment">		 * we need to make sure not sending too bigs TSO packets</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//取一个最小值，不要超过tso的最大段数</span></span><br><span class="line">		segs = <span class="type">min_t</span>(<span class="type">int</span>, segs, max_segs);</span><br><span class="line">		<span class="comment">//已经重传的包数都超过了待重传的包数，那就直接break了</span></span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;retrans_out &gt;= tp-&gt;lost_out) &#123;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="comment">//如果未标记为丢失，这里直接continue</span></span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> (!(sacked &amp; TCPCB_LOST)) &#123;</span><br><span class="line">			<span class="keyword">if</span> (!hole &amp;&amp; !(sacked &amp; (TCPCB_SACKED_RETRANS|TCPCB_SACKED_ACKED)))</span><br><span class="line">				hole = skb;</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="comment">//设置需要更新哪个统计计数</span></span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			<span class="keyword">if</span> (icsk-&gt;icsk_ca_state != TCP_CA_Loss)</span><br><span class="line">				mib_idx = LINUX_MIB_TCPFASTRETRANS;</span><br><span class="line">			<span class="keyword">else</span></span><br><span class="line">				mib_idx = LINUX_MIB_TCPSLOWSTARTRETRANS;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//如果已经被sack了，或者已经重传过了 直接continue</span></span><br><span class="line">		<span class="keyword">if</span> (sacked &amp; (TCPCB_SACKED_ACKED|TCPCB_SACKED_RETRANS))</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="comment">//tsq相关，tcp_write_xmit中也会调用</span></span><br><span class="line">		<span class="keyword">if</span> (tcp_small_queue_check(sk, skb, <span class="number">1</span>))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="comment">//真正调用发包函数，重传多少个段</span></span><br><span class="line">		<span class="keyword">if</span> (tcp_retransmit_skb(sk, skb, segs))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">		NET_ADD_STATS(sock_net(sk), mib_idx, tcp_skb_pcount(skb));</span><br><span class="line">		<span class="comment">//快恢复状态返回true，这里的快恢复状态应该是外面设置</span></span><br><span class="line">		<span class="keyword">if</span> (tcp_in_cwnd_reduction(sk))</span><br><span class="line">			tp-&gt;prr_out += tcp_skb_pcount(skb);</span><br><span class="line">		<span class="comment">//如果当前数据包是重传队列的地一个数据包，表示丢包概率比较大？</span></span><br><span class="line">		<span class="comment">//同时如果没有设置rack定时器？，就要设置超时重传？</span></span><br><span class="line">		<span class="keyword">if</span> (skb == rtx_head &amp;&amp;</span><br><span class="line">		    icsk-&gt;icsk_pending != ICSK_TIME_REO_TIMEOUT)</span><br><span class="line">			rearm_timer = <span class="literal">true</span>;</span><br><span class="line"></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> (rearm_timer)</span><br><span class="line">		tcp_reset_xmit_timer(sk, ICSK_TIME_RETRANS,</span><br><span class="line">				     inet_csk(sk)-&gt;icsk_rto,</span><br><span class="line">				     TCP_RTO_MAX);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_xmit_retransmit_queue</code>中首先遍历重传队列，会首先检查pacing，<code>tsq</code>机制，或重传出去的数据包是否已经超过待重传的数据包，如果满足条件按，则直接就break了，如果当前数据包没有被标记为需要重传，则直接<code>continue</code>，否则直接调用<code>tcp_retransmit_skb</code>重传数据包。如果重传的数据包是第一个数据包，则还需要启动重传定时器，因为第一个包就要重传？表示很有可能大概率丢包？</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E5%AE%9A%E6%97%B6%E5%99%A8/" rel="tag"># TCP定时器</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/08/18/FIN_WAIT2%E5%AE%9A%E6%97%B6%E5%99%A8/" rel="prev" title="TCP FIN_WATI2定时器">
+      <i class="fa fa-chevron-left"></i> TCP FIN_WATI2定时器
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#RACK%E5%AE%9A%E6%97%B6%E5%99%A8"><span class="nav-number">1.</span> <span class="nav-text">RACK定时器</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%83%8C%E6%99%AF"><span class="nav-number">1.1.</span> <span class="nav-text">背景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#RACK-%E7%9A%84%E6%A0%B8%E5%BF%83%E6%80%9D%E6%83%B3"><span class="nav-number">1.2.</span> <span class="nav-text">RACK 的核心思想</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">40</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">13</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "评论秒回复，你试试",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
