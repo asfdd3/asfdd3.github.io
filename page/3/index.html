@@ -193,6 +193,123 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/25/%E9%93%BE%E6%8E%A5(%E4%BA%8C)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/06/25/%E9%93%BE%E6%8E%A5(%E4%BA%8C)/" class="post-title-link" itemprop="url">链接(二)</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-06-25 22:00:00 / 修改时间：23:50:53" itemprop="dateCreated datePublished" datetime="2025-06-25T22:00:00+08:00">2025-06-25</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/06/25/%E9%93%BE%E6%8E%A5(%E4%BA%8C)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/06/25/%E9%93%BE%E6%8E%A5(%E4%BA%8C)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="符号解析"><a href="#符号解析" class="headerlink" title="符号解析"></a>符号解析</h2><p><strong>符号解析</strong>就是链接器将“引用的符号”与“定义的符号”进行匹配的过程。</p>
+<h3 id="链接器如何解析多重定义的全局符号"><a href="#链接器如何解析多重定义的全局符号" class="headerlink" title="链接器如何解析多重定义的全局符号"></a>链接器如何解析多重定义的全局符号</h3><p>链接器处理多个 <strong>可重定位目标文件（.o 文件）</strong>。</p>
+<p>每个模块中可能会定义同名的全局符号（如变量、函数）。</p>
+<p>符号分为两类：</p>
+<ul>
+<li><strong>强符号（strong）</strong>：函数、已初始化的全局变量（如 <code>int x = 1;</code>）</li>
+<li><strong>弱符号（weak）</strong>：未初始化的全局变量（如 <code>int x;</code>）</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>规则编号</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>规则 1</strong></td>
+<td><strong>多个强符号同名 → 报错</strong>，链接失败（冲突无法解决）。</td>
+</tr>
+<tr>
+<td><strong>规则 2</strong></td>
+<td><strong>强符号 vs 弱符号同名 → 选择强符号</strong>，忽略弱的。</td>
+</tr>
+<tr>
+<td><strong>规则 3</strong></td>
+<td><strong>多个弱符号同名 → 任意选择一个</strong>（通常选择第一个出现的）。</td>
+</tr>
+</tbody></table>
+<h2 id="静态库"><a href="#静态库" class="headerlink" title="静态库"></a>静态库</h2><p><strong>静态库（static library）</strong>：是由多个<strong>可重定位目标文件（.o）打包</strong>成的一个 <code>.a</code> 文件，供链接器使用。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/06/25/%E9%93%BE%E6%8E%A5(%E4%BA%8C)/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/23/%E9%93%BE%E6%8E%A5(%E4%B8%80)/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1406,134 +1523,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/" class="post-title-link" itemprop="url">socket I/O</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2025-06-03 22:00:00 / 修改时间：23:28:42" itemprop="dateCreated datePublished" datetime="2025-06-03T22:00:00+08:00">2025-06-03</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h1 id="socket-I-O"><a href="#socket-I-O" class="headerlink" title="socket I&#x2F;O"></a>socket I&#x2F;O</h1><h2 id="输出系统调用"><a href="#输出系统调用" class="headerlink" title="输出系统调用"></a>输出系统调用</h2><p><code>send、sendto 和 sendmsg</code> 都是用于发送数据的系统调用，面向连接的协议通常使用<code>send</code>(例如tcp或者已经connect的udp)，而无连接的协议通常使用<code>send_to</code>而<code>sendmsg</code>支持发送时设置多个缓存区，也就是说一次调用可以发送多个数据包。</p>
-<h3 id="send系统调用"><a href="#send系统调用" class="headerlink" title="send系统调用"></a><code>send</code>系统调用</h3><p><strong>用户态调用<code>send</code>的函数原型</strong></p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;sys/socket.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="type">ssize_t</span> <span class="title function_">send</span><span class="params">(<span class="type">int</span> sockfd, <span class="type">const</span> <span class="type">void</span> *buf, <span class="type">size_t</span> len, <span class="type">int</span> flags)</span>;</span><br></pre></td></tr></table></figure>
-<p>上述参数解释如下：</p>
-<table>
-<thead>
-<tr>
-<th>参数名</th>
-<th>类型</th>
-<th>描述</th>
-<th>注意事项</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><code>sockfd</code></td>
-<td><code>int</code></td>
-<td>已连接的 socket 文件描述符</td>
-<td>必须是通过 <code>connect()</code> 建立连接的 TCP socket 或已连接的 UDP socket</td>
-</tr>
-<tr>
-<td><code>buf</code></td>
-<td><code>const void *</code></td>
-<td>待发送数据的缓冲区地址</td>
-<td>用户态指针，指向要发送的数据（如字符串、二进制数据等）</td>
-</tr>
-<tr>
-<td><code>len</code></td>
-<td><code>size_t</code></td>
-<td>要发送的数据长度（字节数）</td>
-<td>实际发送的数据量可能小于此值（需检查返回值）</td>
-</tr>
-<tr>
-<td><code>flags</code></td>
-<td><code>int</code></td>
-<td>控制发送行为的标志位</td>
-<td>多个标志可通过按位或 <code>|</code> 组合（如 <code>MSG_DONTWAIT | MSG_NOSIGNAL</code>）</td>
-</tr>
-</tbody></table>
-<p><strong><code>send</code>系统调用内核实现</strong></p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">SYSCALL_DEFINE4(send, <span class="type">int</span>, fd, <span class="type">void</span> __user *, buff, <span class="type">size_t</span>, len,</span><br><span class="line">		<span class="type">unsigned</span> <span class="type">int</span>, flags)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span> __sys_sendto(fd, buff, len, flags, <span class="literal">NULL</span>, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/06/03/%E5%A5%97%E6%8E%A5%E5%AD%97IO/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1603,7 +1592,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">42</span>
+          <span class="site-state-item-count">43</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>

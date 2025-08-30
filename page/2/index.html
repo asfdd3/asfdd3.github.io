@@ -193,6 +193,109 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/08/03/TCP%E5%AE%9A%E6%97%B6%E5%99%A8-%E8%B6%85%E6%97%B6%E9%87%8D%E4%BC%A0%E5%AE%9A%E6%97%B6%E5%99%A8/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/08/03/TCP%E5%AE%9A%E6%97%B6%E5%99%A8-%E8%B6%85%E6%97%B6%E9%87%8D%E4%BC%A0%E5%AE%9A%E6%97%B6%E5%99%A8/" class="post-title-link" itemprop="url">TCP超时重传定时器</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-08-03 22:00:00" itemprop="dateCreated datePublished" datetime="2025-08-03T22:00:00+08:00">2025-08-03</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-08-04 22:13:26" itemprop="dateModified" datetime="2025-08-04T22:13:26+08:00">2025-08-04</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/08/03/TCP%E5%AE%9A%E6%97%B6%E5%99%A8-%E8%B6%85%E6%97%B6%E9%87%8D%E4%BC%A0%E5%AE%9A%E6%97%B6%E5%99%A8/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/08/03/TCP%E5%AE%9A%E6%97%B6%E5%99%A8-%E8%B6%85%E6%97%B6%E9%87%8D%E4%BC%A0%E5%AE%9A%E6%97%B6%E5%99%A8/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="TCP的超时重传定时器"><a href="#TCP的超时重传定时器" class="headerlink" title="TCP的超时重传定时器"></a>TCP的超时重传定时器</h2><p>TCP的超时重传定时器，是TCP最最基本，最重要的定时器。</p>
+<h3 id="TCP超时重传定时器的初始化"><a href="#TCP超时重传定时器的初始化" class="headerlink" title="TCP超时重传定时器的初始化"></a>TCP超时重传定时器的初始化</h3><p>在用户调用<code>socket()</code> 后，对于AF_INET协议族，会调用<code>inet_create</code> 而<code>inet_create</code> 中会调用具体协议的<code>init</code>函数，对于TCP来说就是<code>tcp_v4_init_sock</code> 在<code>tcp_v4_init_sock</code>最终中会调用<code>tcp_init_xmit_timers</code> 会对多个定时器进行初始化，其中管理超时重传的的定时器为icsk-&gt;<code>icsk_retransmit_timer</code>如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">inet_csk_init_xmit_timers</span><span class="params">(<span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">			       <span class="type">void</span> (*retransmit_handler)(<span class="keyword">struct</span> timer_list *t),</span></span><br><span class="line"><span class="params">			       <span class="type">void</span> (*delack_handler)(<span class="keyword">struct</span> timer_list *t),</span></span><br><span class="line"><span class="params">			       <span class="type">void</span> (*keepalive_handler)(<span class="keyword">struct</span> timer_list *t))</span></span><br><span class="line">&#123;</span><br><span class="line">	...</span><br><span class="line">	timer_setup(&amp;icsk-&gt;icsk_retransmit_timer, retransmit_handler, <span class="number">0</span>);<span class="comment">//初始化重传定时器	</span></span><br><span class="line">	...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>注意:<strong>上述其实只是注册了一个定时器并没有真正的启动</strong>，定时器对应的超时处理函数为<code>retransmit_handler</code> , <strong>该函数其实使用一个定时器实现了多个定时任务，超时重传定时器只是其中的一个定时任务</strong>。retransmit_handler<code>中最终会调用tcp_write_timer_handler</code>来处理不同的定时器任务，具体代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Called with bottom-half processing disabled.</span></span><br><span class="line"><span class="comment">   Called by tcp_write_timer() */</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">tcp_write_timer_handler</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">	<span class="type">int</span> event;</span><br><span class="line"></span><br><span class="line">	<span class="comment">//判断状态是否有效</span></span><br><span class="line">	<span class="keyword">if</span> (((<span class="number">1</span> &lt;&lt; sk-&gt;sk_state) &amp; (TCPF_CLOSE | TCPF_LISTEN)) ||</span><br><span class="line">	    !icsk-&gt;icsk_pending)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (time_after(icsk-&gt;icsk_timeout, jiffies)) &#123;</span><br><span class="line">		sk_reset_timer(sk, &amp;icsk-&gt;icsk_retransmit_timer, icsk-&gt;icsk_timeout);</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	tcp_mstamp_refresh(tcp_sk(sk));</span><br><span class="line">	event = icsk-&gt;icsk_pending;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">switch</span> (event) &#123;</span><br><span class="line">	<span class="keyword">case</span> ICSK_TIME_REO_TIMEOUT:</span><br><span class="line">		tcp_rack_reo_timeout(sk);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> ICSK_TIME_LOSS_PROBE:</span><br><span class="line">		tcp_send_loss_probe(sk);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> ICSK_TIME_RETRANS:</span><br><span class="line">		<span class="comment">/*启动重传定时器的地方1.fastopen 2.正常发送syn包 3.建连后发送数据包 4.tcp_retransmit_timer中再次调度 5.sack撤销</span></span><br><span class="line"><span class="comment">		6.tcp_xmit_retransmit_queue中 什么时候会调用tcp_xmit_retransmit_queue？ 检测到丢包或者恢复传输的时候，基本都在tcp_ack中*/</span></span><br><span class="line">		<span class="comment">//重置重传定时器的地方 tcp_ack中</span></span><br><span class="line">		icsk-&gt;icsk_pending = <span class="number">0</span>;</span><br><span class="line">		tcp_retransmit_timer(sk);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> ICSK_TIME_PROBE0:</span><br><span class="line">		icsk-&gt;icsk_pending = <span class="number">0</span>;</span><br><span class="line">		tcp_probe_timer(sk);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>由上述代码可以看到，TCP的超时重传只是其中的一个‘<code>case</code>’，当设置<code>ICSK_TIME_RETRANS</code> <code>pending</code>位的时候才会真正的处理超时重传！</p>
+<h3 id="TCP超时重传定时器的启动"><a href="#TCP超时重传定时器的启动" class="headerlink" title="TCP超时重传定时器的启动"></a>TCP超时重传定时器的启动</h3><p>启动TCP定时器定时器的地方有如下几个位置：</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/08/03/TCP%E5%AE%9A%E6%97%B6%E5%99%A8-%E8%B6%85%E6%97%B6%E9%87%8D%E4%BC%A0%E5%AE%9A%E6%97%B6%E5%99%A8/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/07/28/tcp%E5%A5%97%E6%8E%A5%E5%AD%97%E7%9A%84%E5%88%9D%E5%A7%8B%E5%8C%96/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1124,123 +1227,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/25/%E9%93%BE%E6%8E%A5(%E4%BA%8C)/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/06/25/%E9%93%BE%E6%8E%A5(%E4%BA%8C)/" class="post-title-link" itemprop="url">链接(二)</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2025-06-25 22:00:00 / 修改时间：23:50:53" itemprop="dateCreated datePublished" datetime="2025-06-25T22:00:00+08:00">2025-06-25</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/06/25/%E9%93%BE%E6%8E%A5(%E4%BA%8C)/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/06/25/%E9%93%BE%E6%8E%A5(%E4%BA%8C)/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="符号解析"><a href="#符号解析" class="headerlink" title="符号解析"></a>符号解析</h2><p><strong>符号解析</strong>就是链接器将“引用的符号”与“定义的符号”进行匹配的过程。</p>
-<h3 id="链接器如何解析多重定义的全局符号"><a href="#链接器如何解析多重定义的全局符号" class="headerlink" title="链接器如何解析多重定义的全局符号"></a>链接器如何解析多重定义的全局符号</h3><p>链接器处理多个 <strong>可重定位目标文件（.o 文件）</strong>。</p>
-<p>每个模块中可能会定义同名的全局符号（如变量、函数）。</p>
-<p>符号分为两类：</p>
-<ul>
-<li><strong>强符号（strong）</strong>：函数、已初始化的全局变量（如 <code>int x = 1;</code>）</li>
-<li><strong>弱符号（weak）</strong>：未初始化的全局变量（如 <code>int x;</code>）</li>
-</ul>
-<table>
-<thead>
-<tr>
-<th>规则编号</th>
-<th>描述</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><strong>规则 1</strong></td>
-<td><strong>多个强符号同名 → 报错</strong>，链接失败（冲突无法解决）。</td>
-</tr>
-<tr>
-<td><strong>规则 2</strong></td>
-<td><strong>强符号 vs 弱符号同名 → 选择强符号</strong>，忽略弱的。</td>
-</tr>
-<tr>
-<td><strong>规则 3</strong></td>
-<td><strong>多个弱符号同名 → 任意选择一个</strong>（通常选择第一个出现的）。</td>
-</tr>
-</tbody></table>
-<h2 id="静态库"><a href="#静态库" class="headerlink" title="静态库"></a>静态库</h2><p><strong>静态库（static library）</strong>：是由多个<strong>可重定位目标文件（.o）打包</strong>成的一个 <code>.a</code> 文件，供链接器使用。</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/06/25/%E9%93%BE%E6%8E%A5(%E4%BA%8C)/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1310,7 +1296,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">42</span>
+          <span class="site-state-item-count">43</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
