@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="TCP listenlisten 是服务端套接字进入监听状态的系统调用，它把一个通过 socket 和 bind 创建好的套接字标记为“被动套接字”，用来接受客户端的连接请求。调用时需要指定 backlog 参数，用来缓存尚未被应用层 accept() 取走的连接请求的上限。 用户态程序通过glibc调用listen系统调用后，最终会调用到内核的__sys_listen由它完成套接字与地址的绑定逻">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TCP建立连接 listen">
+<meta property="og:url" content="http://example.com/2025/09/01/tcp%20listen/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="TCP listenlisten 是服务端套接字进入监听状态的系统调用，它把一个通过 socket 和 bind 创建好的套接字标记为“被动套接字”，用来接受客户端的连接请求。调用时需要指定 backlog 参数，用来缓存尚未被应用层 accept() 取走的连接请求的上限。 用户态程序通过glibc调用listen系统调用后，最终会调用到内核的__sys_listen由它完成套接字与地址的绑定逻">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-09-01T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-09-01T14:53:45.605Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP建立连接">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/09/01/tcp%20listen/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TCP建立连接 listen | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/09/01/tcp%20listen/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TCP建立连接 listen
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-09-01 22:00:00 / 修改时间：22:53:45" itemprop="dateCreated datePublished" datetime="2025-09-01T22:00:00+08:00">2025-09-01</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/09/01/tcp%20listen/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/09/01/tcp%20listen/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="TCP-listen"><a href="#TCP-listen" class="headerlink" title="TCP listen"></a>TCP listen</h2><p><code>listen</code> 是服务端套接字进入监听状态的系统调用，它把一个通过 <code>socket</code> 和 <code>bind</code> 创建好的套接字标记为“被动套接字”，用来接受客户端的连接请求。调用时需要指定 backlog 参数，用来缓存尚未被应用层 <code>accept()</code> 取走的连接请求的上限。</p>
+<p>用户态程序通过<code>glibc</code>调用<code>listen</code>系统调用后，最终会调用到内核的<code>__sys_listen</code>由它完成套接字与地址的绑定逻辑，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//这里的backlog表示已经完成三次握手但是没有被accept的最大数量</span></span><br><span class="line"><span class="type">int</span> __sys_listen(<span class="type">int</span> fd, <span class="type">int</span> backlog)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">socket</span> *<span class="title">sock</span>;</span></span><br><span class="line">	<span class="type">int</span> err, fput_needed;</span><br><span class="line">	<span class="type">int</span> somaxconn;</span><br><span class="line">	<span class="comment">//根据fd找到对应的socket结构</span></span><br><span class="line">	sock = sockfd_lookup_light(fd, &amp;err, &amp;fput_needed);</span><br><span class="line">	<span class="keyword">if</span> (sock) &#123;</span><br><span class="line">		somaxconn = READ_ONCE(sock_net(sock-&gt;sk)-&gt;core.sysctl_somaxconn);</span><br><span class="line">		<span class="keyword">if</span> ((<span class="type">unsigned</span> <span class="type">int</span>)backlog &gt; somaxconn)</span><br><span class="line">			backlog = somaxconn;</span><br><span class="line">		<span class="comment">//安全相关的钩子</span></span><br><span class="line">		err = security_socket_listen(sock, backlog);</span><br><span class="line">		<span class="keyword">if</span> (!err)</span><br><span class="line">		<span class="comment">//调用套接字层的listen回调</span></span><br><span class="line">			err = READ_ONCE(sock-&gt;ops)-&gt;listen(sock, backlog);</span><br><span class="line">		<span class="comment">//释放引用计数</span></span><br><span class="line">		fput_light(sock-&gt;file, fput_needed);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码通过文件描述符获取<code>socket</code>结构体，之后从内核参数 <code>sysctl_somaxconn</code> 里读出系统允许的最大 backlog 值，如果用户传的 backlog 比它大，就缩小到 <code>somaxconn</code> ，然后调用了套接字层的<code>listen</code>，对应的具体实现如下所示:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">inet_listen</span><span class="params">(<span class="keyword">struct</span> socket *sock, <span class="type">int</span> backlog)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span> =</span> sock-&gt;sk;</span><br><span class="line">	<span class="type">int</span> err = -EINVAL;</span><br><span class="line"></span><br><span class="line">	lock_sock(sk);</span><br><span class="line">	<span class="comment">//检查当前socket状态和到接子的类型</span></span><br><span class="line">	<span class="keyword">if</span> (sock-&gt;state != SS_UNCONNECTED || sock-&gt;type != SOCK_STREAM)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	err = __inet_listen_sk(sk, backlog);</span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">	release_sock(sk);</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p> <code>inet_listen</code> 首先获取套接字对应的 <code>struct sock</code>随后检查当前 socket 是否处于未连接状态且类型为 <code>SOCK_STREAM</code>，只有符合条件的 TCP 流式套接字才能进入监听；若条件不满足直接返回错误，否则调用内部函数 <code>__inet_listen_sk</code> 去完成具体的监听初始化工作。具体代码如下所示:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __inet_listen_sk(<span class="keyword">struct</span> sock *sk, <span class="type">int</span> backlog)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span> old_state = sk-&gt;sk_state;</span><br><span class="line">	<span class="type">int</span> err, tcp_fastopen;</span><br><span class="line">	<span class="comment">//必须是close或者listen状态</span></span><br><span class="line">	<span class="keyword">if</span> (!((<span class="number">1</span> &lt;&lt; old_state) &amp; (TCPF_CLOSE | TCPF_LISTEN)))</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line">	<span class="comment">//这里设置了全连接队列的大小	</span></span><br><span class="line">	WRITE_ONCE(sk-&gt;sk_max_ack_backlog, backlog);</span><br><span class="line">	<span class="comment">/* Really, if the socket is already in listen state</span></span><br><span class="line"><span class="comment">	 * we can only allow the backlog to be adjusted.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//close状态就进入这分支</span></span><br><span class="line">	<span class="keyword">if</span> (old_state != TCP_LISTEN) &#123;</span><br><span class="line">		<span class="comment">/* Enable TFO w/o requiring TCP_FASTOPEN socket option.</span></span><br><span class="line"><span class="comment">		 * Note that only TCP sockets (SOCK_STREAM) will reach here.</span></span><br><span class="line"><span class="comment">		 * Also fastopen backlog may already been set via the option</span></span><br><span class="line"><span class="comment">		 * because the socket was in TCP_LISTEN state previously but</span></span><br><span class="line"><span class="comment">		 * was shutdown() rather than close().</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//初始化TFO相关，系统参数默认是1 表示客户端开启</span></span><br><span class="line">		tcp_fastopen = READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_fastopen);</span><br><span class="line">		<span class="comment">//默认应该不会进入这个分支</span></span><br><span class="line">		<span class="keyword">if</span> ((tcp_fastopen &amp; TFO_SERVER_WO_SOCKOPT1) &amp;&amp;</span><br><span class="line">		    (tcp_fastopen &amp; TFO_SERVER_ENABLE) &amp;&amp;</span><br><span class="line">		    !inet_csk(sk)-&gt;icsk_accept_queue.fastopenq.max_qlen) &#123;</span><br><span class="line">			fastopen_queue_tune(sk, backlog);</span><br><span class="line">			tcp_fastopen_init_key_once(sock_net(sk));</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		err = inet_csk_listen_start(sk);</span><br><span class="line">		<span class="keyword">if</span> (err)</span><br><span class="line">			<span class="keyword">return</span> err;</span><br><span class="line">		<span class="comment">//bpf钩子</span></span><br><span class="line">		tcp_call_bpf(sk, BPF_SOCK_OPS_TCP_LISTEN_CB, <span class="number">0</span>, <span class="literal">NULL</span>);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这段代码是内核里将 TCP 套接字切换到监听状态的核心路径：首先校验当前状态必须是 <code>CLOSE</code> 或 <code>LISTEN</code>，然后把传入的 <code>backlog</code> 写入 <code>sk-&gt;sk_max_ack_backlog</code> 作为<strong>全连接队列上限</strong>，随后调用 <code>inet_csk_listen_start(sk)</code> 真正把 socket 放入监听哈希表。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//tcplisten调进来osk为空</span></span><br><span class="line"><span class="type">int</span> __inet_hash(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sock *osk)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_hashinfo</span> *<span class="title">hashinfo</span> =</span> tcp_or_dccp_get_hashinfo(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_listen_hashbucket</span> *<span class="title">ilb2</span>;</span></span><br><span class="line">	<span class="type">int</span> err = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//处理非监听状态的套接子，直接加入ehash中</span></span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_state != TCP_LISTEN) &#123;</span><br><span class="line">		local_bh_disable();</span><br><span class="line">		inet_ehash_nolisten(sk, osk, <span class="literal">NULL</span>);</span><br><span class="line">		local_bh_enable();</span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	WARN_ON(!sk_unhashed(sk));</span><br><span class="line">	<span class="comment">//这里根据ip和端口找到listenhash桶（注意这里桶下面直接挂的是socket）</span></span><br><span class="line">	ilb2 = inet_lhash2_bucket_sk(hashinfo, sk);</span><br><span class="line"></span><br><span class="line">	spin_lock(&amp;ilb2-&gt;lock);</span><br><span class="line">	<span class="comment">//套接字是否启用了reuseport</span></span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_reuseport) &#123;</span><br><span class="line">		<span class="comment">//将当前的套接字加入端口重用组</span></span><br><span class="line">		err = inet_reuseport_add_sock(sk, ilb2);</span><br><span class="line">		<span class="keyword">if</span> (err)</span><br><span class="line">			<span class="keyword">goto</span> unlock;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//将套接字插入listenhash表</span></span><br><span class="line">	<span class="keyword">if</span> (IS_ENABLED(CONFIG_IPV6) &amp;&amp; sk-&gt;sk_reuseport &amp;&amp;</span><br><span class="line">		sk-&gt;sk_family == AF_INET6)</span><br><span class="line">		__sk_nulls_add_node_tail_rcu(sk, &amp;ilb2-&gt;nulls_head);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		__sk_nulls_add_node_rcu(sk, &amp;ilb2-&gt;nulls_head);</span><br><span class="line">	sock_set_flag(sk, SOCK_RCU_FREE);</span><br><span class="line">	sock_prot_inuse_add(sock_net(sk), sk-&gt;sk_prot, <span class="number">1</span>);</span><br><span class="line">unlock:</span><br><span class="line">	spin_unlock(&amp;ilb2-&gt;lock);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码的核心逻辑就是把当前套接字加<code>listen hash</code>表中(如果不是<code>listen</code>状态就直接加入<code>ehash</code>)，如果当前启用了<code>reuseport</code>选项的话，还会调用<code>inet_reuseport_add_sock</code>将当前套接字加入一个端口重用组（收包的时候做负载均衡貌似会用到），加入端口重用组的代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">inet_reuseport_add_sock</span><span class="params">(<span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">				   <span class="keyword">struct</span> inet_listen_hashbucket *ilb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_bind_bucket</span> *<span class="title">tb</span> =</span> inet_csk(sk)-&gt;icsk_bind_hash;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">hlist_nulls_node</span> *<span class="title">node</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk2</span>;</span></span><br><span class="line">	<span class="type">kuid_t</span> uid = sock_i_uid(sk);</span><br><span class="line">	<span class="comment">//便利hash桶下面挂的所有socket，看是否有与当前套接字相匹配的reuseport组加入，但是必须同时满足下面一系列条件</span></span><br><span class="line">	sk_nulls_for_each_rcu(sk2, node, &amp;ilb-&gt;nulls_head) &#123;</span><br><span class="line">		<span class="keyword">if</span> (sk2 != sk &amp;&amp; <span class="comment">//非自身</span></span><br><span class="line">		    sk2-&gt;sk_family == sk-&gt;sk_family &amp;&amp;<span class="comment">//协议族一致</span></span><br><span class="line">		    ipv6_only_sock(sk2) == ipv6_only_sock(sk) &amp;&amp;</span><br><span class="line">		    sk2-&gt;sk_bound_dev_if == sk-&gt;sk_bound_dev_if &amp;&amp; <span class="comment">//同一个网口</span></span><br><span class="line">		    inet_csk(sk2)-&gt;icsk_bind_hash == tb &amp;&amp; <span class="comment">//绑定的端口相同</span></span><br><span class="line">		    sk2-&gt;sk_reuseport &amp;&amp; uid_eq(uid, sock_i_uid(sk2)) &amp;&amp; <span class="comment">//启用了reuseport</span></span><br><span class="line">		    inet_rcv_saddr_equal(sk, sk2, <span class="literal">false</span>))   <span class="comment">//地址完全相同</span></span><br><span class="line">			<span class="keyword">return</span> reuseport_add_sock(sk, sk2, 	<span class="comment">//这里是将当前的sk加入到sk2中</span></span><br><span class="line">						  inet_rcv_saddr_any(sk));</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//没有直接可以加入的组，自己创建一个</span></span><br><span class="line">	<span class="keyword">return</span> reuseport_alloc(sk, inet_rcv_saddr_any(sk));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>当启用了 <code>SO_REUSEPORT</code> 时，会尝试把它加入到已有的端口复用组中。函数会遍历 listen hash 桶里已经存在的 socket，逐个检查它们是否和当前 socket 在协议族、绑定网口、端口号、地址、<code>reuseport</code> 标志以及所属用户 ID 上都一致；如果找到匹配的，就调用 <code>reuseport_add_sock</code> 把当前 socket 加入那个组；如果没有找到合适的组，则调用 <code>reuseport_alloc</code> 新建一个复用组，把自己作为第一个成员放进去。加入其他<code>sock</code>端口组的代码<code>reuseport_add_sock</code>逻辑如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">reuseport_add_sock</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sock *sk2, <span class="type">bool</span> bind_inany)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock_reuseport</span> *<span class="title">old_reuse</span>, *<span class="title">reuse</span>;</span></span><br><span class="line">	<span class="comment">//这里判断sk2是否有对应的reuseprot的组，如果没有，这里会新建一个</span></span><br><span class="line">	<span class="keyword">if</span> (!rcu_access_pointer(sk2-&gt;sk_reuseport_cb)) &#123;</span><br><span class="line">		<span class="comment">//创建一个管理reuseport 的组结构，并进行初始化</span></span><br><span class="line">		<span class="type">int</span> err = reuseport_alloc(sk2, bind_inany);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (err)</span><br><span class="line">			<span class="keyword">return</span> err;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	spin_lock_bh(&amp;reuseport_lock);</span><br><span class="line">	reuse = rcu_dereference_protected(sk2-&gt;sk_reuseport_cb,</span><br><span class="line">					  lockdep_is_held(&amp;reuseport_lock));</span><br><span class="line">	<span class="comment">//这里的old_reuse大概率为空吧</span></span><br><span class="line">	old_reuse = rcu_dereference_protected(sk-&gt;sk_reuseport_cb,</span><br><span class="line">					      lockdep_is_held(&amp;reuseport_lock));</span><br><span class="line">	<span class="comment">//如果当前的套接字已经有所属的组了，并且该组中还有已经关闭的套接字，则将当前套接字加入到新组中然后直接返回了，通常不会走这个分支吧</span></span><br><span class="line">	<span class="keyword">if</span> (old_reuse &amp;&amp; old_reuse-&gt;num_closed_socks) &#123;</span><br><span class="line">		<span class="comment">/* sk was shutdown()ed before */</span></span><br><span class="line">		<span class="type">int</span> err = reuseport_resurrect(sk, old_reuse, reuse, reuse-&gt;bind_inany);</span><br><span class="line"></span><br><span class="line">		spin_unlock_bh(&amp;reuseport_lock);</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//旧的里面还有其他套接字，不能在往下走了，不能让一个套接字属于多个组</span></span><br><span class="line">	<span class="keyword">if</span> (old_reuse &amp;&amp; old_reuse-&gt;num_socks != <span class="number">1</span>) &#123;</span><br><span class="line">		spin_unlock_bh(&amp;reuseport_lock);</span><br><span class="line">		<span class="keyword">return</span> -EBUSY;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//如果满了，则需要扩容</span></span><br><span class="line">	<span class="keyword">if</span> (reuse-&gt;num_socks + reuse-&gt;num_closed_socks == reuse-&gt;max_socks) &#123;</span><br><span class="line">		reuse = reuseport_grow(reuse);</span><br><span class="line">		<span class="keyword">if</span> (!reuse) &#123;</span><br><span class="line">			spin_unlock_bh(&amp;reuseport_lock);</span><br><span class="line">			<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//将新套接字加入到组中</span></span><br><span class="line">	__reuseport_add_sock(sk, reuse);</span><br><span class="line">	rcu_assign_pointer(sk-&gt;sk_reuseport_cb, reuse);</span><br><span class="line"></span><br><span class="line">	spin_unlock_bh(&amp;reuseport_lock);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (old_reuse)</span><br><span class="line">		call_rcu(&amp;old_reuse-&gt;rcu, reuseport_free_rcu);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> __reuseport_add_sock(<span class="keyword">struct</span> sock *sk,</span><br><span class="line">				 <span class="keyword">struct</span> sock_reuseport *reuse)</span><br><span class="line">&#123;</span><br><span class="line">	reuse-&gt;socks[reuse-&gt;num_socks] = sk;</span><br><span class="line">	<span class="comment">/* paired with smp_rmb() in reuseport_(select|migrate)_sock() */</span></span><br><span class="line">	smp_wmb();</span><br><span class="line">	reuse-&gt;num_socks++;</span><br><span class="line">	reuseport_get_incoming_cpu(sk, reuse);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码的逻辑为 如果 <code>sk2</code> 还没有组，就先新建一个(问题是会有这种情况吗？)；然后检查是否存在“复活旧组”的情况，或者防止一个 socket 同时属于多个组；如果当前组容量满了就扩容；最后调用<code>__reuseport_add_sock</code>把新 socket 加进组里，并把它的 <code>sk_reuseport_cb</code> 指针指向这个组。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E5%BB%BA%E7%AB%8B%E8%BF%9E%E6%8E%A5/" rel="tag"># TCP建立连接</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/08/30/TCP%20BIND2/" rel="prev" title="TCP建立连接bind(二)">
+      <i class="fa fa-chevron-left"></i> TCP建立连接bind(二)
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#TCP-listen"><span class="nav-number">1.</span> <span class="nav-text">TCP listen</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">44</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">14</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "评论秒回复，你试试",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
