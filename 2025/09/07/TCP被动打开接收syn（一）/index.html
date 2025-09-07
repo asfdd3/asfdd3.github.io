@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="本节内容分析TCP三次握手被动打开，即接收syn包的的处理流程，具体来说，当协议栈IP层收到数据包后，在ip_local_deliver_finish中会根据不同的protocol类型分发给不同的处理函数，对于TCP报文，则全都会调用tcp_v4_rcv进一步处理，tcp_v4_rcv则是在inet_init中注册的。 下面看一下tcp_v4_rcv针对syn包的处理，下面省略了其他状态的处理，只">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TCP三次握手-接收syn段 (一)">
+<meta property="og:url" content="http://example.com/2025/09/07/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6syn%EF%BC%88%E4%B8%80%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="本节内容分析TCP三次握手被动打开，即接收syn包的的处理流程，具体来说，当协议栈IP层收到数据包后，在ip_local_deliver_finish中会根据不同的protocol类型分发给不同的处理函数，对于TCP报文，则全都会调用tcp_v4_rcv进一步处理，tcp_v4_rcv则是在inet_init中注册的。 下面看一下tcp_v4_rcv针对syn包的处理，下面省略了其他状态的处理，只">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-09-07T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-09-07T13:57:09.709Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP建立连接">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/09/07/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6syn%EF%BC%88%E4%B8%80%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TCP三次握手-接收syn段 (一) | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/09/07/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6syn%EF%BC%88%E4%B8%80%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TCP三次握手-接收syn段 (一)
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-09-07 22:00:00 / 修改时间：21:57:09" itemprop="dateCreated datePublished" datetime="2025-09-07T22:00:00+08:00">2025-09-07</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/09/07/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6syn%EF%BC%88%E4%B8%80%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/09/07/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6syn%EF%BC%88%E4%B8%80%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>本节内容分析TCP三次握手被动打开，即接收syn包的的处理流程，具体来说，当协议栈<code>IP</code>层收到数据包后，在<code>ip_local_deliver_finish</code>中会根据不同的<code>protocol</code>类型分发给不同的处理函数，对于<code>TCP</code>报文，则全都会调用<code>tcp_v4_rcv</code>进一步处理，<code>tcp_v4_rcv</code>则是在<code>inet_init</code>中注册的。</p>
+<p>下面看一下<code>tcp_v4_rcv</code>针对<code>syn</code>包的处理，下面省略了其他状态的处理，只展示接收<code>syn</code>包相关的处理逻辑，具体代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">tcp_v4_rcv</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> dev_net(skb-&gt;dev);</span><br><span class="line">	<span class="class"><span class="keyword">enum</span> <span class="title">skb_drop_reason</span> <span class="title">drop_reason</span>;</span></span><br><span class="line">	<span class="type">int</span> sdif = inet_sdif(skb);</span><br><span class="line">	<span class="type">int</span> dif = inet_iif(skb);</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">iphdr</span> *<span class="title">iph</span>;</span></span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">tcphdr</span> *<span class="title">th</span>;</span></span><br><span class="line">	<span class="type">bool</span> refcounted;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span>;</span></span><br><span class="line">	<span class="type">int</span> ret;</span><br><span class="line"></span><br><span class="line">	drop_reason = SKB_DROP_REASON_NOT_SPECIFIED;</span><br><span class="line">	<span class="comment">//不是发给本机的包，直接丢</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;pkt_type != PACKET_HOST)</span><br><span class="line">		<span class="keyword">goto</span> discard_it;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Count it even if it&#x27;s bad */</span></span><br><span class="line">	__TCP_INC_STATS(net, TCP_MIB_INSEGS);</span><br><span class="line">	<span class="comment">//拉一下tcp头，确保线性部分至少有TCP头</span></span><br><span class="line">	<span class="keyword">if</span> (!pskb_may_pull(skb, <span class="keyword">sizeof</span>(<span class="keyword">struct</span> tcphdr)))</span><br><span class="line">		<span class="keyword">goto</span> discard_it;</span><br><span class="line"></span><br><span class="line">	th = (<span class="type">const</span> <span class="keyword">struct</span> tcphdr *)skb-&gt;data;</span><br><span class="line">	<span class="comment">//坏包</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(th-&gt;doff &lt; <span class="keyword">sizeof</span>(<span class="keyword">struct</span> tcphdr) / <span class="number">4</span>)) &#123;</span><br><span class="line">		drop_reason = SKB_DROP_REASON_PKT_TOO_SMALL;</span><br><span class="line">		<span class="keyword">goto</span> bad_packet;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//把选项部分也拉到线性部分</span></span><br><span class="line">	<span class="keyword">if</span> (!pskb_may_pull(skb, th-&gt;doff * <span class="number">4</span>))</span><br><span class="line">		<span class="keyword">goto</span> discard_it;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* An explanation is required here, I think.</span></span><br><span class="line"><span class="comment">	 * Packet length and doff are validated by header prediction,</span></span><br><span class="line"><span class="comment">	 * provided case of th-&gt;doff==0 is eliminated.</span></span><br><span class="line"><span class="comment">	 * So, we defer the checks. */</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (skb_checksum_init(skb, IPPROTO_TCP, inet_compute_pseudo))</span><br><span class="line">		<span class="keyword">goto</span> csum_error;</span><br><span class="line"></span><br><span class="line">	th = (<span class="type">const</span> <span class="keyword">struct</span> tcphdr *)skb-&gt;data;</span><br><span class="line">	iph = ip_hdr(skb);</span><br><span class="line">lookup:</span><br><span class="line">	<span class="comment">//查找数据包所属的sock</span></span><br><span class="line">	sk = __inet_lookup_skb(net-&gt;ipv4.tcp_death_row.hashinfo,</span><br><span class="line">			       skb, __tcp_hdrlen(th), th-&gt;source,</span><br><span class="line">			       th-&gt;dest, sdif, &amp;refcounted);</span><br><span class="line">	<span class="keyword">if</span> (!sk)</span><br><span class="line">		<span class="keyword">goto</span> no_tcp_socket;</span><br><span class="line"></span><br><span class="line">process:</span><br><span class="line">	...</span><br><span class="line"></span><br><span class="line">	<span class="comment">//处理三次握手被动打开接收syn段</span></span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_state == TCP_LISTEN) &#123;</span><br><span class="line">		ret = tcp_v4_do_rcv(sk, skb);</span><br><span class="line">		<span class="keyword">goto</span> put_and_return;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	...</span><br><span class="line"></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码中，涉及到接收到<code>syn</code>包的处理，主要就两个地方，<strong>一是调用<code>__inet_lookup_skb</code>来查找数据包所关联的<code>sock</code></strong>，由于处理<code>syn</code>包自然找到的是监听的<code>sock</code>。<strong>二是调用<code>tcp_v4_do_rcv</code>进行进一步处理</strong>。下面看一下<code>__inet_lookup_skb</code>是如何找到<code>sock</code>的，具体代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *__<span class="title">inet_lookup_skb</span>(<span class="keyword">struct</span> <span class="title">inet_hashinfo</span> *<span class="title">hashinfo</span>,</span></span><br><span class="line"><span class="class">					     <span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>,</span></span><br><span class="line"><span class="class">					     <span class="title">int</span> <span class="title">doff</span>,</span></span><br><span class="line"><span class="class">					     <span class="title">const</span> __<span class="title">be16</span> <span class="title">sport</span>,</span></span><br><span class="line"><span class="class">					     <span class="title">const</span> __<span class="title">be16</span> <span class="title">dport</span>,</span></span><br><span class="line"><span class="class">					     <span class="title">const</span> <span class="title">int</span> <span class="title">sdif</span>,</span></span><br><span class="line"><span class="class">					     <span class="title">bool</span> *<span class="title">refcounted</span>)</span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> dev_net(skb_dst(skb)-&gt;dev);</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">iphdr</span> *<span class="title">iph</span> =</span> ip_hdr(skb);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span>;</span></span><br><span class="line">	<span class="comment">//相当于一个快速路径，先看看skb有没有已经关联了一个sk(ip_rcvfinish中会设置)</span></span><br><span class="line">	sk = inet_steal_sock(net, skb, doff, iph-&gt;saddr, sport, iph-&gt;daddr, dport,</span><br><span class="line">			     refcounted, inet_ehashfn);</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR(sk))</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="keyword">if</span> (sk)</span><br><span class="line">		<span class="keyword">return</span> sk;</span><br><span class="line">	<span class="comment">//传入源ip目的ip源port目的port 注意：这里的hash表其实隐含了协议类型</span></span><br><span class="line">	<span class="comment">//所以通常说是五元组找sk？？？？？</span></span><br><span class="line">	<span class="keyword">return</span> __inet_lookup(net, hashinfo, skb,</span><br><span class="line">			     doff, iph-&gt;saddr, sport,</span><br><span class="line">			     iph-&gt;daddr, dport, inet_iif(skb), sdif,</span><br><span class="line">			     refcounted);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>__inet_lookup_skb</code>中首先调用<code>inet_steal_sock</code>来尝试从<code>skb</code>的结构体中直接拿到<code>sock</code>（相当于一个快速路径），如果找到了，就直接返回了。注意：这里的<code>sock</code>和<code>skb</code>是查路由的时候关联上的，但是第一个syn包能不能走这个快速路径不知道，<code>inet_steal_sock</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> sock *<span class="title function_">inet_steal_sock</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sk_buff *skb, <span class="type">int</span> doff,</span></span><br><span class="line"><span class="params">			     <span class="type">const</span> __be32 saddr, <span class="type">const</span> __be16 sport,</span></span><br><span class="line"><span class="params">			     <span class="type">const</span> __be32 daddr, <span class="type">const</span> __be16 dport,</span></span><br><span class="line"><span class="params">			     <span class="type">bool</span> *refcounted, <span class="type">inet_ehashfn_t</span> *ehashfn)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span>, *<span class="title">reuse_sk</span>;</span></span><br><span class="line">	<span class="type">bool</span> prefetched;</span><br><span class="line">	<span class="comment">//尝试从skb中获取sk，是不是ip层查路由时候拿到的？</span></span><br><span class="line">	sk = skb_steal_sock(skb, refcounted, &amp;prefetched);</span><br><span class="line">	<span class="keyword">if</span> (!sk)</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="comment">//这里大概率走这个分支吧，因为prefetched 为false？</span></span><br><span class="line">	<span class="keyword">if</span> (!prefetched || !sk_fullsock(sk))</span><br><span class="line">		<span class="keyword">return</span> sk;</span><br><span class="line">	<span class="comment">//TCP非listen状态的处理</span></span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_protocol == IPPROTO_TCP) &#123;</span><br><span class="line">		<span class="keyword">if</span> (sk-&gt;sk_state != TCP_LISTEN)</span><br><span class="line">			<span class="keyword">return</span> sk;</span><br><span class="line">	<span class="comment">//UDP处理</span></span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (sk-&gt;sk_protocol == IPPROTO_UDP) &#123;</span><br><span class="line">		<span class="keyword">if</span> (sk-&gt;sk_state != TCP_CLOSE)</span><br><span class="line">			<span class="keyword">return</span> sk;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> sk;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	reuse_sk = inet_lookup_reuseport(net, sk, skb, doff,</span><br><span class="line">					 saddr, sport, daddr, ntohs(dport),</span><br><span class="line">					 ehashfn);</span><br><span class="line">	<span class="keyword">if</span> (!reuse_sk)</span><br><span class="line">		<span class="keyword">return</span> sk;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* We&#x27;ve chosen a new reuseport sock which is never refcounted. This</span></span><br><span class="line"><span class="comment">	 * implies that sk also isn&#x27;t refcounted.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	WARN_ON_ONCE(*refcounted);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> reuse_sk;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>inet_steal_sock</code>中的主要逻辑为调用<code>skb_steal_sock</code>尝试从 <code>skb</code> 里直接“偷”出一个已经绑定的 socket。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="keyword">struct</span> sock *</span><br><span class="line"><span class="title function_">skb_steal_sock</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="type">bool</span> *refcounted, <span class="type">bool</span> *prefetched)</span></span><br><span class="line">&#123;	</span><br><span class="line">	<span class="comment">//当前的skb是否挂了sk</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;sk) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span> =</span> skb-&gt;sk;</span><br><span class="line"></span><br><span class="line">		*refcounted = <span class="literal">true</span>;</span><br><span class="line">		<span class="comment">//是否预取的，bpf可能会预取？，否则应该是false</span></span><br><span class="line">		*prefetched = skb_sk_is_prefetched(skb);</span><br><span class="line">		<span class="keyword">if</span> (*prefetched)</span><br><span class="line">		<span class="comment">//根据sk的状态返回是否需要引用计数，只有完整的状态会返回true(非timewait和new_syn_recv)</span></span><br><span class="line">			*refcounted = sk_is_refcounted(sk);</span><br><span class="line">		skb-&gt;destructor = <span class="literal">NULL</span>; <span class="comment">//怕里面有清掉sock的操作？</span></span><br><span class="line">		skb-&gt;sk = <span class="literal">NULL</span>; <span class="comment">//因为这个sock已经被偷走了？所以不能关联这个skb了？</span></span><br><span class="line">		<span class="keyword">return</span> sk;</span><br><span class="line">	&#125;</span><br><span class="line">	*prefetched = <span class="literal">false</span>;</span><br><span class="line">	*refcounted = <span class="literal">false</span>;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>skb_steal_sock</code>做的事情很简单，其实就是根据<code>skb</code>获取一个<code>sock</code>，注意获取<code>sock</code>后，解除了<code>skb</code>和这个<code>sock</code>的关联。</p>
+<p>如果上述快速路径没有获取到<code>sock</code>的话，则在<code>__inet_lookup_skb</code>中会调用<code>__inet_lookup</code>继续查找<code>sock</code>（根据源<code>ip</code>，目的<code>ip</code>，源<code>port</code>，目的<code>port</code>）。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *__<span class="title">inet_lookup</span>(<span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span>,</span></span><br><span class="line"><span class="class">					 <span class="keyword">struct</span> <span class="title">inet_hashinfo</span> *<span class="title">hashinfo</span>,</span></span><br><span class="line"><span class="class">					 <span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>, <span class="title">int</span> <span class="title">doff</span>,</span></span><br><span class="line"><span class="class">					 <span class="title">const</span> __<span class="title">be32</span> <span class="title">saddr</span>, <span class="title">const</span> __<span class="title">be16</span> <span class="title">sport</span>,</span></span><br><span class="line"><span class="class">					 <span class="title">const</span> __<span class="title">be32</span> <span class="title">daddr</span>, <span class="title">const</span> __<span class="title">be16</span> <span class="title">dport</span>,</span></span><br><span class="line"><span class="class">					 <span class="title">const</span> <span class="title">int</span> <span class="title">dif</span>, <span class="title">const</span> <span class="title">int</span> <span class="title">sdif</span>,</span></span><br><span class="line"><span class="class">					 <span class="title">bool</span> *<span class="title">refcounted</span>)</span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">	u16 hnum = ntohs(dport);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span>;</span></span><br><span class="line">	<span class="comment">//查找ehash</span></span><br><span class="line">	sk = __inet_lookup_established(net, hashinfo, saddr, sport,</span><br><span class="line">				       daddr, hnum, dif, sdif);</span><br><span class="line">	*refcounted = <span class="literal">true</span>;</span><br><span class="line">	<span class="keyword">if</span> (sk)</span><br><span class="line">		<span class="keyword">return</span> sk;</span><br><span class="line">	*refcounted = <span class="literal">false</span>;</span><br><span class="line">	<span class="comment">//如果上面ehash中没有找到，那就找listenhash</span></span><br><span class="line">	<span class="keyword">return</span> __inet_lookup_listener(net, hashinfo, skb, doff, saddr,</span><br><span class="line">				      sport, daddr, hnum, dif, sdif);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>__inet_lookup</code>中首先会在已建立连接的<code>hash</code>表中查找<code>sock</code>如果没有找到，则在监听<code>hash</code>表中继续查找，因为是三次握手处理<code>syn</code>包，则在已建立的<code>hash</code>表中一定找不到<code>sock</code>所以需要调用<code>__inet_lookup_listener</code>进一步查找，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *__<span class="title">inet_lookup_listener</span>(<span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span>,</span></span><br><span class="line"><span class="class">				    <span class="keyword">struct</span> <span class="title">inet_hashinfo</span> *<span class="title">hashinfo</span>,</span></span><br><span class="line"><span class="class">				    <span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>, <span class="title">int</span> <span class="title">doff</span>,</span></span><br><span class="line"><span class="class">				    <span class="title">const</span> __<span class="title">be32</span> <span class="title">saddr</span>, __<span class="title">be16</span> <span class="title">sport</span>,</span></span><br><span class="line"><span class="class">				    <span class="title">const</span> __<span class="title">be32</span> <span class="title">daddr</span>, <span class="title">const</span> <span class="title">unsigned</span> <span class="title">short</span> <span class="title">hnum</span>,</span></span><br><span class="line"><span class="class">				    <span class="title">const</span> <span class="title">int</span> <span class="title">dif</span>, <span class="title">const</span> <span class="title">int</span> <span class="title">sdif</span>)</span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_listen_hashbucket</span> *<span class="title">ilb2</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">result</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> hash2;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Lookup redirect from BPF */</span></span><br><span class="line">	<span class="comment">//bpf相关使用bpf的程序找sk?</span></span><br><span class="line">	<span class="keyword">if</span> (static_branch_unlikely(&amp;bpf_sk_lookup_enabled) &amp;&amp;</span><br><span class="line">	    hashinfo == net-&gt;ipv4.tcp_death_row.hashinfo) &#123;</span><br><span class="line">		result = inet_lookup_run_sk_lookup(net, IPPROTO_TCP, skb, doff,</span><br><span class="line">						   saddr, sport, daddr, hnum, dif,</span><br><span class="line">						   inet_ehashfn);</span><br><span class="line">		<span class="keyword">if</span> (result)</span><br><span class="line">			<span class="keyword">goto</span> done;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//根据目的ip目的port计算一个hash值</span></span><br><span class="line">	hash2 = ipv4_portaddr_hash(net, daddr, hnum);</span><br><span class="line">	<span class="comment">//找到对应的hash桶</span></span><br><span class="line">	ilb2 = inet_lhash2_bucket(hashinfo, hash2);</span><br><span class="line">	<span class="comment">//注意： 这里是精确查找，区分和下面的anyaddr</span></span><br><span class="line">	result = inet_lhash2_lookup(net, ilb2, skb, doff,</span><br><span class="line">				    saddr, sport, daddr, hnum,</span><br><span class="line">				    dif, sdif);</span><br><span class="line">	<span class="keyword">if</span> (result)</span><br><span class="line">		<span class="keyword">goto</span> done;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Lookup lhash2 with INADDR_ANY */</span></span><br><span class="line">	<span class="comment">//和上面一样只不过这次找的是anyaddr</span></span><br><span class="line">	hash2 = ipv4_portaddr_hash(net, htonl(INADDR_ANY), hnum);</span><br><span class="line">	ilb2 = inet_lhash2_bucket(hashinfo, hash2);</span><br><span class="line">	<span class="comment">//这里anyaddr + port</span></span><br><span class="line">	result = inet_lhash2_lookup(net, ilb2, skb, doff,</span><br><span class="line">				    saddr, sport, htonl(INADDR_ANY), hnum,</span><br><span class="line">				    dif, sdif);</span><br><span class="line">done:</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR(result))</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="keyword">return</span> result;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码主要的目的是根据传入的参数，也就是<code>ip</code>和<code>port</code>来找到<code>sock</code>，上述找的过程可以分为两步，第一步是精确找到，即根据数据包的目的<code>ip</code>和目的<code>port</code>去到<code>listen``hash</code>表中是否有匹配的<code>sock</code>，如果没找到则执行第二步，根据<code>anyaddr</code>和<code>port</code>去找到一个桶，然后看这个桶中是否有匹配的sock。**查找并返回结果的代码<code>inet_lhash2_lookup</code>**如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* called with rcu_read_lock() : No refcount taken on the socket */</span></span><br><span class="line"><span class="type">static</span> <span class="keyword">struct</span> sock *<span class="title function_">inet_lhash2_lookup</span><span class="params">(<span class="keyword">struct</span> net *net,</span></span><br><span class="line"><span class="params">				<span class="keyword">struct</span> inet_listen_hashbucket *ilb2,</span></span><br><span class="line"><span class="params">				<span class="keyword">struct</span> sk_buff *skb, <span class="type">int</span> doff,</span></span><br><span class="line"><span class="params">				<span class="type">const</span> __be32 saddr, __be16 sport,</span></span><br><span class="line"><span class="params">				<span class="type">const</span> __be32 daddr, <span class="type">const</span> <span class="type">unsigned</span> <span class="type">short</span> hnum,</span></span><br><span class="line"><span class="params">				<span class="type">const</span> <span class="type">int</span> dif, <span class="type">const</span> <span class="type">int</span> sdif)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span>, *<span class="title">result</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">hlist_nulls_node</span> *<span class="title">node</span>;</span></span><br><span class="line">	<span class="type">int</span> score, hiscore = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//遍历桶下挂的每个sock，为每个套接字计算得分</span></span><br><span class="line">	sk_nulls_for_each_rcu(sk, node, &amp;ilb2-&gt;nulls_head) &#123;</span><br><span class="line">		<span class="comment">//为每个套接字计算得分</span></span><br><span class="line">		score = compute_score(sk, net, hnum, daddr, dif, sdif);</span><br><span class="line">		<span class="keyword">if</span> (score &gt; hiscore) &#123;</span><br><span class="line">			<span class="comment">//处理reuseport 的情况，如果开启了reuseport则优先返回reuseport的sock</span></span><br><span class="line">			result = inet_lookup_reuseport(net, sk, skb, doff,</span><br><span class="line">						       saddr, sport, daddr, hnum, inet_ehashfn);</span><br><span class="line">			<span class="keyword">if</span> (result)</span><br><span class="line">				<span class="keyword">return</span> result;</span><br><span class="line">			<span class="comment">//没开启reuseport的情况，则遍历所有的之后返回一个得分最高的</span></span><br><span class="line">			result = sk;</span><br><span class="line">			hiscore = score;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> result;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>inet_lhash2_lookup</code>主要做的工作就是遍历<code>hash</code>桶下挂的所有<code>sock</code>为每一个<code>sock</code>根据传入的<code>ip</code>和<code>port</code>信息来计算得分，然后返回得分最高的一个（得分根据<code>cpu</code>亲和性，绑定的设备等进行加分），如果某个<code>sock</code>加入了端口重用组的话，则会进一步进行处理，从端口重用组根据<code>hash</code>选一个合适的<code>sock</code>，上述计算得分的<code>compute_score</code>逻辑如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> <span class="title function_">compute_score</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> net *net,</span></span><br><span class="line"><span class="params">				<span class="type">const</span> <span class="type">unsigned</span> <span class="type">short</span> hnum, <span class="type">const</span> __be32 daddr,</span></span><br><span class="line"><span class="params">				<span class="type">const</span> <span class="type">int</span> dif, <span class="type">const</span> <span class="type">int</span> sdif)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> score = <span class="number">-1</span>;</span><br><span class="line">	<span class="comment">//前提是网络命令空间，和端口号必须相同是</span></span><br><span class="line">	<span class="keyword">if</span> (net_eq(sock_net(sk), net) &amp;&amp; sk-&gt;sk_num == hnum &amp;&amp;</span><br><span class="line">			!ipv6_only_sock(sk)) &#123;</span><br><span class="line">		<span class="comment">//如果ip地址不同这里直就返回了</span></span><br><span class="line">		<span class="keyword">if</span> (sk-&gt;sk_rcv_saddr != daddr)</span><br><span class="line">			<span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line">		<span class="comment">//检查接口是否匹配比如绑定的接口和接收的接口不一致就直接返回-1</span></span><br><span class="line">		<span class="keyword">if</span> (!inet_sk_bound_dev_eq(net, sk-&gt;sk_bound_dev_if, dif, sdif))</span><br><span class="line">			<span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line">		score =  sk-&gt;sk_bound_dev_if ? <span class="number">2</span> : <span class="number">1</span>;<span class="comment">//如果指定了特定的接口，加2分，否则1分</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (sk-&gt;sk_family == PF_INET)</span><br><span class="line">			score++;</span><br><span class="line">		<span class="comment">//当前的cpuip和收包的cpuid在同一个加分</span></span><br><span class="line">		<span class="keyword">if</span> (READ_ONCE(sk-&gt;sk_incoming_cpu) == raw_smp_processor_id())</span><br><span class="line">			score++;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> score;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>compute_score</code>中，如果<code>ip</code>地址不同则直接返回了，如果绑定了网口，但是网口不一致，也直接返回不匹配。如果指定了特定的接口则加2分，如果在同一个<code>cpu</code>上加一分。</p>
+<p>计算得分后，会进一步处理<code>reuseport</code>的情况，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"> */</span><br><span class="line"><span class="keyword">struct</span> sock *<span class="title function_">inet_lookup_reuseport</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">				   <span class="keyword">struct</span> sk_buff *skb, <span class="type">int</span> doff,</span></span><br><span class="line"><span class="params">				   __be32 saddr, __be16 sport,</span></span><br><span class="line"><span class="params">				   __be32 daddr, <span class="type">unsigned</span> <span class="type">short</span> hnum,</span></span><br><span class="line"><span class="params">				   <span class="type">inet_ehashfn_t</span> *ehashfn)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">reuse_sk</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line">	u32 phash;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_reuseport) &#123;</span><br><span class="line">		<span class="comment">//根据源ip目的ip 源端口 目的端口计算出一个hash值</span></span><br><span class="line">		phash = INDIRECT_CALL_2(ehashfn, udp_ehashfn, inet_ehashfn,</span><br><span class="line">					net, daddr, hnum, saddr, sport);</span><br><span class="line">		reuse_sk = reuseport_select_sock(sk, phash, skb, doff);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> reuse_sk;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>如果当前的<code>sk</code>没有关联的端口重用组，则不走<code>reuseport</code>相关的逻辑，否则的话计算一个<code>hash</code>值，然后调用<code>reuseport_select_sock</code>从端口重用组中选择一个合适的<code>sk</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> sock *<span class="title function_">reuseport_select_sock</span><span class="params">(<span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">				   u32 hash,</span></span><br><span class="line"><span class="params">				   <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">				   <span class="type">int</span> hdr_len)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock_reuseport</span> *<span class="title">reuse</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bpf_prog</span> *<span class="title">prog</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk2</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line">	u16 socks;</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	<span class="comment">//这个是listen时候更新的端口重用组，里面挂的都是reuseport的sock</span></span><br><span class="line">	reuse = rcu_dereference(sk-&gt;sk_reuseport_cb);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* if memory allocation failed or add call is not yet complete */</span></span><br><span class="line">	<span class="keyword">if</span> (!reuse)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	prog = rcu_dereference(reuse-&gt;prog);</span><br><span class="line">	<span class="comment">////当前端口重用组有多少个sock</span></span><br><span class="line">	socks = READ_ONCE(reuse-&gt;num_socks);</span><br><span class="line">	<span class="keyword">if</span> (likely(socks)) &#123;</span><br><span class="line">		<span class="comment">/* paired with smp_wmb() in __reuseport_add_sock() */</span></span><br><span class="line">		smp_rmb();<span class="comment">//内存屏障</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (!prog || !skb)</span><br><span class="line">			<span class="keyword">goto</span> select_by_hash;</span><br><span class="line">		<span class="comment">//bpf相关，根据bpf程序选择sk</span></span><br><span class="line">		<span class="keyword">if</span> (prog-&gt;type == BPF_PROG_TYPE_SK_REUSEPORT)</span><br><span class="line">			sk2 = bpf_run_sk_reuseport(reuse, sk, prog, skb, <span class="literal">NULL</span>, hash);</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			sk2 = run_bpf_filter(reuse, socks, prog, skb, hdr_len);</span><br><span class="line"></span><br><span class="line">select_by_hash:</span><br><span class="line">		<span class="comment">/* no bpf or invalid bpf result: fall back to hash usage */</span></span><br><span class="line">		<span class="keyword">if</span> (!sk2)</span><br><span class="line">		<span class="comment">//根据哈希从多个重用端口的套接字中选择一个</span></span><br><span class="line">			sk2 = reuseport_select_sock_by_hash(reuse, hash, socks);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">	<span class="keyword">return</span> sk2;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>注意:上述提到的端口重用组是在<code>listen</code>系统调用中处理的。</strong></p>
+<p><code>reuseport_select_sock</code>中调用<code>reuseport_select_sock_by_hash</code>完成进一步工作，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">struct</span> sock *<span class="title function_">reuseport_select_sock_by_hash</span><span class="params">(<span class="keyword">struct</span> sock_reuseport *reuse,</span></span><br><span class="line"><span class="params">						  u32 hash, u16 num_socks)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">first_valid_sk</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="type">int</span> i, j;</span><br><span class="line">	<span class="comment">//根据hash值映射一个索引</span></span><br><span class="line">	i = j = reciprocal_scale(hash, num_socks);</span><br><span class="line">	<span class="keyword">do</span> &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span> =</span> reuse-&gt;socks[i];</span><br><span class="line">		<span class="comment">//如果端口重用组的sock已经是建立连接了那肯定就直接continue了</span></span><br><span class="line">		<span class="keyword">if</span> (sk-&gt;sk_state != TCP_ESTABLISHED) &#123;</span><br><span class="line">			<span class="comment">/* Paired with WRITE_ONCE() in __reuseport_(get|put)_incoming_cpu(). */</span></span><br><span class="line">			<span class="comment">//如果整个端口重用组没有记录cpu则就用当前的</span></span><br><span class="line">			<span class="keyword">if</span> (!READ_ONCE(reuse-&gt;incoming_cpu))</span><br><span class="line">				<span class="keyword">return</span> sk;</span><br><span class="line">			<span class="comment">//如果当前的cpu和sk的cpu是同一个cpu则直接返回</span></span><br><span class="line">			<span class="comment">/* Paired with WRITE_ONCE() in reuseport_update_incoming_cpu(). */</span></span><br><span class="line">			<span class="keyword">if</span> (READ_ONCE(sk-&gt;sk_incoming_cpu) == raw_smp_processor_id())</span><br><span class="line">				<span class="keyword">return</span> sk;</span><br><span class="line">			<span class="comment">//这个sk用来兜底返回</span></span><br><span class="line">			<span class="keyword">if</span> (!first_valid_sk)</span><br><span class="line">				first_valid_sk = sk;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		i++;</span><br><span class="line">		<span class="keyword">if</span> (i &gt;= num_socks)</span><br><span class="line">			i = <span class="number">0</span>;</span><br><span class="line">	&#125; <span class="keyword">while</span> (i != j);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> first_valid_sk;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>reuseport_select_sock_by_hash</code>中的逻辑就是更具<code>hash</code>确定端口重用组中的一个索引，从这索引开始遍历端口重用组，然后可以说是根据<code>cpu</code>的亲和性选择一个<code>sock</code>返回，至此查找<code>sock</code>的工作就完成了。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E5%BB%BA%E7%AB%8B%E8%BF%9E%E6%8E%A5/" rel="tag"># TCP建立连接</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/09/03/TCP%20ACCEPT/" rel="prev" title="TCP建立连接-accept">
+      <i class="fa fa-chevron-left"></i> TCP建立连接-accept
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">46</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">14</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "评论秒回复，你试试",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
