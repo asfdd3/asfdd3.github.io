@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="在 Linux 内核中，服务端在LISTEN状态收到客户端的 SYN 报文时才会发送SYN+ACK 作为响应，具体的发送位置为收到客户端发来的syn包，创建req结构后会调用req的ops 来发送synack具体代码如下: 12345678910int tcp_conn_request(struct request_sock_ops *rsk_ops,		     const struct tcp">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TCP三次握手-发送synack">
+<meta property="og:url" content="http://example.com/2025/09/16/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6synack/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="在 Linux 内核中，服务端在LISTEN状态收到客户端的 SYN 报文时才会发送SYN+ACK 作为响应，具体的发送位置为收到客户端发来的syn包，创建req结构后会调用req的ops 来发送synack具体代码如下: 12345678910int tcp_conn_request(struct request_sock_ops *rsk_ops,		     const struct tcp">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-09-16T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-09-16T15:20:36.400Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP建连">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/09/16/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6synack/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TCP三次握手-发送synack | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/09/16/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6synack/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TCP三次握手-发送synack
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-09-16 22:00:00 / 修改时间：23:20:36" itemprop="dateCreated datePublished" datetime="2025-09-16T22:00:00+08:00">2025-09-16</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/09/16/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6synack/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/09/16/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6synack/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>在 <code>Linux</code> 内核中，服务端在LISTEN状态收到客户端的 SYN 报文时才会发送<code>SYN</code>+<code>ACK</code> 作为响应，具体的发送位置为收到客户端发来的<code>syn</code>包，创建<code>req</code>结构后会调用<code>req</code>的<code>ops</code> 来发送<code>synack</code>具体代码如下:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">tcp_conn_request</span><span class="params">(<span class="keyword">struct</span> request_sock_ops *rsk_ops,</span></span><br><span class="line"><span class="params">		     <span class="type">const</span> <span class="keyword">struct</span> tcp_request_sock_ops *af_ops,</span></span><br><span class="line"><span class="params">		     <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">...</span><br><span class="line">		<span class="comment">//发送syn_ack tcp_v4_send_synack</span></span><br><span class="line">		af_ops-&gt;send_synack(sk, dst, &amp;fl, req, &amp;foc,</span><br><span class="line">...</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述<code>send_synack</code> IPv4 来说，调用的是 <code>tcp_v4_send_synack()</code> 具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">tcp_v4_send_synack</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> dst_entry *dst,</span></span><br><span class="line"><span class="params">			      <span class="keyword">struct</span> flowi *fl,</span></span><br><span class="line"><span class="params">			      <span class="keyword">struct</span> request_sock *req,</span></span><br><span class="line"><span class="params">			      <span class="keyword">struct</span> tcp_fastopen_cookie *foc,</span></span><br><span class="line"><span class="params">			      <span class="keyword">enum</span> tcp_synack_type synack_type,</span></span><br><span class="line"><span class="params">			      <span class="keyword">struct</span> sk_buff *syn_skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">inet_request_sock</span> *<span class="title">ireq</span> =</span> inet_rsk(req);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">flowi4</span> <span class="title">fl4</span>;</span></span><br><span class="line">	<span class="type">int</span> err = <span class="number">-1</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>;</span></span><br><span class="line">	u8 tos;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* First, grab a route. */</span></span><br><span class="line">	<span class="comment">//是否有路由信息，没有的话调用查路由的接口</span></span><br><span class="line">	<span class="keyword">if</span> (!dst &amp;&amp; (dst = inet_csk_route_req(sk, &amp;fl4, req)) == <span class="literal">NULL</span>)</span><br><span class="line">		<span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line">	<span class="comment">//构造synack报文，这里传入了req，synack的类型（正常，cookie，TFO），和收到的syn包</span></span><br><span class="line">	skb = tcp_make_synack(sk, dst, req, foc, synack_type, syn_skb);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (skb) &#123;</span><br><span class="line">		__tcp_v4_send_check(skb, ireq-&gt;ir_loc_addr, ireq-&gt;ir_rmt_addr);</span><br><span class="line"></span><br><span class="line">		tos = READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_reflect_tos) ?<span class="comment">//叫做反射tos? 默认是不启用的</span></span><br><span class="line">				(tcp_rsk(req)-&gt;syn_tos &amp; ~INET_ECN_MASK) |</span><br><span class="line">				(inet_sk(sk)-&gt;tos &amp; INET_ECN_MASK) :</span><br><span class="line">				inet_sk(sk)-&gt;tos; <span class="comment">//直接使用服务器端的 TOS 值</span></span><br><span class="line">		<span class="comment">//bpf相关</span></span><br><span class="line">		<span class="keyword">if</span> (!INET_ECN_is_capable(tos) &amp;&amp;</span><br><span class="line">		    tcp_bpf_ca_needs_ecn((<span class="keyword">struct</span> sock *)req))</span><br><span class="line">			tos |= INET_ECN_ECT_0;</span><br><span class="line"></span><br><span class="line">		rcu_read_lock();</span><br><span class="line">		err = ip_build_and_send_pkt(skb, sk, ireq-&gt;ir_loc_addr,</span><br><span class="line">					    ireq-&gt;ir_rmt_addr,</span><br><span class="line">					    rcu_dereference(ireq-&gt;ireq_opt),<span class="comment">//ip_option</span></span><br><span class="line">					    tos);</span><br><span class="line">		rcu_read_unlock();</span><br><span class="line">		err = net_xmit_eval(err);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_v4_send_synack()</code> 的逻辑很简单，先根据请求块 <code>req</code> 查找或确认路由信息，然后调用 <code>tcp_make_synack()</code> 构造一个 SYN+ACK 报文，接着计算校验和、确定 <code>TOS</code>&#x2F;<code>ECN</code> 设置，最后通过 <code>ip_build_and_send_pkt()</code> 把这个报文发出去</p>
+<p>构造<code>synack</code>报文的逻辑如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> sk_buff *<span class="title function_">tcp_make_synack</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> dst_entry *dst,</span></span><br><span class="line"><span class="params">				<span class="keyword">struct</span> request_sock *req,</span></span><br><span class="line"><span class="params">				<span class="keyword">struct</span> tcp_fastopen_cookie *foc,</span></span><br><span class="line"><span class="params">				<span class="keyword">enum</span> tcp_synack_type synack_type,</span></span><br><span class="line"><span class="params">				<span class="keyword">struct</span> sk_buff *syn_skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_request_sock</span> *<span class="title">ireq</span> =</span> inet_rsk(req);</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_md5sig_key</span> *<span class="title">md5</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_out_options</span> <span class="title">opts</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>;</span></span><br><span class="line">	<span class="type">int</span> tcp_header_size;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcphdr</span> *<span class="title">th</span>;</span></span><br><span class="line">	<span class="type">int</span> mss;</span><br><span class="line">	u64 now;</span><br><span class="line">	<span class="comment">//申请一个skb</span></span><br><span class="line">	skb = alloc_skb(MAX_TCP_HEADER, GFP_ATOMIC);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(!skb)) &#123;</span><br><span class="line">		dst_release(dst);</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">/* Reserve space for headers. */</span></span><br><span class="line">	<span class="comment">//留出头部空间</span></span><br><span class="line">	skb_reserve(skb, MAX_TCP_HEADER);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">switch</span> (synack_type) &#123;</span><br><span class="line">	<span class="keyword">case</span> TCP_SYNACK_NORMAL:</span><br><span class="line">		<span class="comment">//普通的三次握手，将skb和sk关联</span></span><br><span class="line">		skb_set_owner_w(skb, req_to_sk(req));</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> TCP_SYNACK_COOKIE:</span><br><span class="line">		<span class="comment">/* Under synflood, we do not attach skb to a socket,</span></span><br><span class="line"><span class="comment">		 * to avoid false sharing.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> TCP_SYNACK_FASTOPEN:</span><br><span class="line">		<span class="comment">/* sk is a const pointer, because we want to express multiple</span></span><br><span class="line"><span class="comment">		 * cpu might call us concurrently.</span></span><br><span class="line"><span class="comment">		 * sk-&gt;sk_wmem_alloc in an atomic, we can promote to rw.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		skb_set_owner_w(skb, (<span class="keyword">struct</span> sock *)sk);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//将skb与dst关联</span></span><br><span class="line">	skb_dst_set(skb, dst);</span><br><span class="line">	<span class="comment">//这里计算了本端的mss 大概率是1460</span></span><br><span class="line">	mss = tcp_mss_clamp(tp, dst_metric_advmss(dst));</span><br><span class="line">	<span class="comment">//memset tcpopt</span></span><br><span class="line">	<span class="built_in">memset</span>(&amp;opts, <span class="number">0</span>, <span class="keyword">sizeof</span>(opts));</span><br><span class="line">	<span class="comment">//获取当前时间戳</span></span><br><span class="line">	now = tcp_clock_ns();</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_SYN_COOKIES</span></span><br><span class="line">	<span class="comment">//如果是syncookies类型的ack同时启用时间戳选项,感觉永远不会走到和这个逻辑吧，syncookie会有时间戳选项吗？</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(synack_type == TCP_SYNACK_COOKIE &amp;&amp; ireq-&gt;tstamp_ok))</span><br><span class="line">		skb_set_delivery_time(skb, cookie_init_timestamp(req, now),</span><br><span class="line">				      <span class="literal">true</span>);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	&#123;</span><br><span class="line">		skb_set_delivery_time(skb, now, <span class="literal">true</span>);</span><br><span class="line">		<span class="keyword">if</span> (!tcp_rsk(req)-&gt;snt_synack) <span class="comment">/* Timestamp first SYNACK */</span> <span class="comment">//是否是第一次发送synack</span></span><br><span class="line">			tcp_rsk(req)-&gt;snt_synack = tcp_skb_timestamp_us(skb); <span class="comment">//设置时间戳</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_TCP_MD5SIG</span></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	md5 = tcp_rsk(req)-&gt;af_specific-&gt;req_md5_lookup(sk, req_to_sk(req));</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="comment">//这里又设置了一次txhash？</span></span><br><span class="line">	skb_set_hash(skb, READ_ONCE(tcp_rsk(req)-&gt;txhash), PKT_HASH_TYPE_L4);</span><br><span class="line">	<span class="comment">/* bpf program will be interested in the tcp_flags */</span></span><br><span class="line">	TCP_SKB_CB(skb)-&gt;tcp_flags = TCPHDR_SYN | TCPHDR_ACK;</span><br><span class="line">	<span class="comment">//构建和配置 TCP SYN-ACK 报文中的所有选项字段，包括 MSS、窗口缩放、时间戳、SACK 等。</span></span><br><span class="line">	tcp_header_size = tcp_synack_options(sk, req, mss, skb, &amp;opts, md5,</span><br><span class="line">					     foc, synack_type,</span><br><span class="line">					     syn_skb) + <span class="keyword">sizeof</span>(*th);<span class="comment">//这里加上了20字节</span></span><br><span class="line"></span><br><span class="line">	skb_push(skb, tcp_header_size);<span class="comment">//往前推tcp头部包括选项部分的字节数</span></span><br><span class="line">	skb_reset_transport_header(skb); <span class="comment">//指向tcp头开始</span></span><br><span class="line"></span><br><span class="line">	th = (<span class="keyword">struct</span> tcphdr *)skb-&gt;data;</span><br><span class="line">	<span class="built_in">memset</span>(th, <span class="number">0</span>, <span class="keyword">sizeof</span>(<span class="keyword">struct</span> tcphdr));</span><br><span class="line">	th-&gt;syn = <span class="number">1</span>;   <span class="comment">//syn标志位</span></span><br><span class="line">	th-&gt;ack = <span class="number">1</span>;	<span class="comment">//ack标志位</span></span><br><span class="line">	tcp_ecn_make_synack(req, th);  <span class="comment">//ecn标志位</span></span><br><span class="line">	th-&gt;source = htons(ireq-&gt;ir_num); </span><br><span class="line">	th-&gt;dest = ireq-&gt;ir_rmt_port;</span><br><span class="line">	skb-&gt;mark = ireq-&gt;ir_mark;</span><br><span class="line">	skb-&gt;ip_summed = CHECKSUM_PARTIAL; <span class="comment">//软件部分计算校验和</span></span><br><span class="line">	th-&gt;seq = htonl(tcp_rsk(req)-&gt;snt_isn); <span class="comment">//序列号，这个值是在收到syn包的时候设置的</span></span><br><span class="line">	<span class="comment">/* XXX data is queued and acked as is. No buffer/window check */</span></span><br><span class="line">	th-&gt;ack_seq = htonl(tcp_rsk(req)-&gt;rcv_nxt);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* RFC1323: The window in SYN &amp; SYN/ACK segments is never scaled. */</span></span><br><span class="line">	th-&gt;window = htons(min(req-&gt;rsk_rcv_wnd, <span class="number">65535U</span>));<span class="comment">//这里很有可能就是65535，实际抓包比这个小一点不知道为什么</span></span><br><span class="line"><span class="comment">//构造tcp的选项</span></span><br><span class="line">	tcp_options_write(th, <span class="literal">NULL</span>, &amp;opts);</span><br><span class="line">	<span class="comment">//tcp包头的长度</span></span><br><span class="line">	th-&gt;doff = (tcp_header_size &gt;&gt; <span class="number">2</span>);</span><br><span class="line">	TCP_INC_STATS(sock_net(sk), TCP_MIB_OUTSEGS);</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_TCP_MD5SIG</span></span><br><span class="line">	<span class="comment">/* Okay, we have all we need - do the md5 hash if needed */</span></span><br><span class="line">	<span class="keyword">if</span> (md5)</span><br><span class="line">		tcp_rsk(req)-&gt;af_specific-&gt;calc_md5_hash(opts.hash_location,</span><br><span class="line">					       md5, req_to_sk(req), skb);</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="comment">//bpf相关</span></span><br><span class="line">	bpf_skops_write_hdr_opt((<span class="keyword">struct</span> sock *)sk, skb, req, syn_skb,</span><br><span class="line">				synack_type, &amp;opts);</span><br><span class="line">	<span class="comment">//更新skb-&gt;tstamp </span></span><br><span class="line">	skb_set_delivery_time(skb, now, <span class="literal">true</span>);</span><br><span class="line">	tcp_add_tx_delay(skb, tp); <span class="comment">//设置了skb的时间戳，问题是这个时间戳在哪里起作用呢？重传？</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> skb;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_make_synack</code>中，首先申请一个<code>skb</code>，这个<code>skb</code>的大小就是最长数据包的头部的大小(大概是200+字节吧，会根据<code>cache</code>对齐)，然后<code>reserve</code>头部空间，将数据包关联路由查找的结果，调用<code>tcp_synack_options</code>构造选项字段(注意：这里构造哪些选项，取决于收到的<code>syn</code>和本端系统开启了哪些选项)，之后设置数据包的标志为（<code>syn+ack</code>），窗口大小，序列号，确认号等字段。</p>
+<p>回到<code>tcp_v4_send_synack</code>中，<code>tcp_make_synack</code>申请并设置数据包的部分字段后，会计算校验和和确定<code>tos</code>字段，之后调用<code>ip_build_and_send_pkt</code>完成<code>synack</code>包的发送，这里可以发现发送<code>synack</code>包和发送正常的数据包走的不是一个接口。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">ip_build_and_send_pkt</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="type">const</span> <span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">			  __be32 saddr, __be32 daddr, <span class="keyword">struct</span> ip_options_rcu *opt,</span></span><br><span class="line"><span class="params">			  u8 tos)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">inet_sock</span> *<span class="title">inet</span> =</span> inet_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rtable</span> *<span class="title">rt</span> =</span> skb_rtable(skb);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> sock_net(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">iphdr</span> *<span class="title">iph</span>;</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Build the IP header. */</span></span><br><span class="line">	<span class="comment">//往前推ip头可能需要的的长度</span></span><br><span class="line">	skb_push(skb, <span class="keyword">sizeof</span>(<span class="keyword">struct</span> iphdr) + (opt ? opt-&gt;opt.optlen : <span class="number">0</span>));</span><br><span class="line">	<span class="comment">//指向ip头的指针</span></span><br><span class="line">	skb_reset_network_header(skb);</span><br><span class="line">	iph = ip_hdr(skb);</span><br><span class="line">	iph-&gt;version  = <span class="number">4</span>;</span><br><span class="line">	iph-&gt;ihl      = <span class="number">5</span>;</span><br><span class="line">	iph-&gt;tos      = tos;<span class="comment">//外面确定的，就是接收syn包的tos</span></span><br><span class="line">	iph-&gt;ttl      = ip_select_ttl(inet, &amp;rt-&gt;dst);</span><br><span class="line">	iph-&gt;daddr    = (opt &amp;&amp; opt-&gt;opt.srr ? opt-&gt;opt.faddr : daddr);</span><br><span class="line">	iph-&gt;saddr    = saddr;</span><br><span class="line">	iph-&gt;protocol = sk-&gt;sk_protocol;</span><br><span class="line">	<span class="comment">/* Do not bother generating IPID for small packets (eg SYNACK) */</span></span><br><span class="line">	<span class="comment">//小于68字节（这里为啥是68呢？）或者不允许分片，ipid就设置为0</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;len &lt;= IPV4_MIN_MTU || ip_dont_fragment(sk, &amp;rt-&gt;dst)) &#123;</span><br><span class="line">		iph-&gt;frag_off = htons(IP_DF);</span><br><span class="line">		iph-&gt;id = <span class="number">0</span>;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		iph-&gt;frag_off = <span class="number">0</span>;</span><br><span class="line">		<span class="comment">/* TCP packets here are SYNACK with fat IPv4/TCP options.</span></span><br><span class="line"><span class="comment">		 * Avoid using the hashed IP ident generator.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//如果是tcp这里使用随机的id，其他协议会根据hash算一个id</span></span><br><span class="line">		<span class="keyword">if</span> (sk-&gt;sk_protocol == IPPROTO_TCP)</span><br><span class="line">			iph-&gt;id = (__force __be16)get_random_u16();</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			__ip_select_ident(net, iph, <span class="number">1</span>);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//将opt字段的ip选项拷贝到数据包中</span></span><br><span class="line">	<span class="keyword">if</span> (opt &amp;&amp; opt-&gt;opt.optlen) &#123;</span><br><span class="line">		iph-&gt;ihl += opt-&gt;opt.optlen&gt;&gt;<span class="number">2</span>;</span><br><span class="line">		ip_options_build(skb, &amp;opt-&gt;opt, daddr, rt);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//设置skb的优先级</span></span><br><span class="line">	skb-&gt;priority = READ_ONCE(sk-&gt;sk_priority);</span><br><span class="line">	<span class="keyword">if</span> (!skb-&gt;mark)</span><br><span class="line">		skb-&gt;mark = READ_ONCE(sk-&gt;sk_mark);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Send it out. */</span></span><br><span class="line">	<span class="comment">//调用ip层发包接口</span></span><br><span class="line">	<span class="keyword">return</span> ip_local_out(net, skb-&gt;sk, skb);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ip_build_and_send_pkt</code>中设置了<code>ip</code>所需的各个字段和选项，这里会根据数据包是否分片来确定<code>ip</code>的<code>id</code>字段，如果是不容许分片的报文，则<code>id</code>从0开始，否则对于<code>tcp</code>协议则是使用随机数生成，最后调用<code>ip_local_out</code>完成数据包的发送.</p>
+<p>这里补充一下第一次握手接收<code>syn</code>包后会计算本端的窗口大小的逻辑，上面发送<code>synack</code>的时候会告诉对端本端窗口的大小，这个大小的计算是在收到<code>syn</code>调用<code>tcp_openreq_init_rwin</code>中完成的，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_openreq_init_rwin</span><span class="params">(<span class="keyword">struct</span> request_sock *req,</span></span><br><span class="line"><span class="params">			   <span class="type">const</span> <span class="keyword">struct</span> sock *sk_listener,</span></span><br><span class="line"><span class="params">			   <span class="type">const</span> <span class="keyword">struct</span> dst_entry *dst)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_request_sock</span> *<span class="title">ireq</span> =</span> inet_rsk(req);</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk_listener);</span><br><span class="line">	<span class="comment">//这里注意 大概返回1200/4096倍的rcv_buf的大小?</span></span><br><span class="line">	<span class="type">int</span> full_space = tcp_full_space(sk_listener);</span><br><span class="line">	u32 window_clamp;</span><br><span class="line">	__u8 rcv_wscale;</span><br><span class="line">	u32 rcv_wnd;</span><br><span class="line">	<span class="type">int</span> mss;</span><br><span class="line">	<span class="comment">//用户如果有就用用户的mss，否则大概率根据mtu算一个</span></span><br><span class="line">	mss = tcp_mss_clamp(tp, dst_metric_advmss(dst));</span><br><span class="line">	<span class="comment">//这里看用户是否set吧？</span></span><br><span class="line">	window_clamp = READ_ONCE(tp-&gt;window_clamp);</span><br><span class="line">	<span class="comment">/* Set this up on the first call only */</span></span><br><span class="line">	<span class="comment">//这里大概率是0吧</span></span><br><span class="line">	req-&gt;rsk_window_clamp = window_clamp ? : dst_metric(dst, RTAX_WINDOW);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* limit the window selection if the user enforce a smaller rx buffer */</span></span><br><span class="line">	<span class="comment">//这里大概率也不会走</span></span><br><span class="line">	<span class="keyword">if</span> (sk_listener-&gt;sk_userlocks &amp; SOCK_RCVBUF_LOCK &amp;&amp;</span><br><span class="line">	    (req-&gt;rsk_window_clamp &gt; full_space || req-&gt;rsk_window_clamp == <span class="number">0</span>))</span><br><span class="line">		req-&gt;rsk_window_clamp = full_space;</span><br><span class="line">	<span class="comment">//大概率也返回0</span></span><br><span class="line">	rcv_wnd = tcp_rwnd_init_bpf((<span class="keyword">struct</span> sock *)req);</span><br><span class="line">	<span class="keyword">if</span> (rcv_wnd == <span class="number">0</span>)</span><br><span class="line">	<span class="comment">//大概率也返回0</span></span><br><span class="line">		rcv_wnd = dst_metric(dst, RTAX_INITRWND);</span><br><span class="line">	<span class="keyword">else</span> <span class="keyword">if</span> (full_space &lt; rcv_wnd * mss)</span><br><span class="line">		full_space = rcv_wnd * mss;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* tcp_full_space because it is guaranteed to be the first packet */</span></span><br><span class="line">	<span class="comment">//根据监听sk，最大可用空间大小，mss，是否开启窗口缩放，等来计算一个窗口缩放因子，这里设置了rsk_rcv_wnd</span></span><br><span class="line">	tcp_select_initial_window(sk_listener, full_space,</span><br><span class="line">		mss - (ireq-&gt;tstamp_ok ? TCPOLEN_TSTAMP_ALIGNED : <span class="number">0</span>),</span><br><span class="line">		&amp;req-&gt;rsk_rcv_wnd,</span><br><span class="line">		&amp;req-&gt;rsk_window_clamp,</span><br><span class="line">		ireq-&gt;wscale_ok,</span><br><span class="line">		&amp;rcv_wscale,</span><br><span class="line">		rcv_wnd);</span><br><span class="line">	ireq-&gt;rcv_wscale = rcv_wscale;<span class="comment">//传入传出的窗口缩放因子，会synack的时候会用到</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_openreq_init_rwin</code>其实就做三件事情，计算本端接收窗口的大小，计算窗口缩放因子，计算<code>rsk_window_clamp</code>（叫窗口钳制值？）</p>
+<p>实际计算上述三个变量的过程都在<code>tcp_select_initial_window</code>中实现，<strong>而<code>tcp_openreq_init_rwin</code>的作用是做准备工作</strong>，工作的内容是计算<code>full_space</code>(这里就是<code>sk_rcvbuf</code>的三分之一左右, 三分之一的原因是因为一个数据包实际所用空间是一个page的三分之一左右？)，计算<code>mss</code>，以及根据<code>bpf</code>或者用户配置获取<code>rcv_wnd</code> 。</p>
+<p>然后将准备工作的参数传入**<code>tcp_select_initial_window</code>中完成实际本端接收窗口的大小，窗口缩放因子，<code>rsk_window_clamp</code>的计算**, 具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_select_initial_window</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> sock *sk, <span class="type">int</span> __space, __u32 mss,</span></span><br><span class="line"><span class="params">			       __u32 *rcv_wnd, __u32 *window_clamp,</span></span><br><span class="line"><span class="params">			       <span class="type">int</span> wscale_ok, __u8 *rcv_wscale,</span></span><br><span class="line"><span class="params">			       __u32 init_rcv_wnd)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> space = (__space &lt; <span class="number">0</span> ? <span class="number">0</span> : __space);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* If no clamp set the clamp to the max possible scaled window */</span></span><br><span class="line">	<span class="keyword">if</span> (*window_clamp == <span class="number">0</span>)</span><br><span class="line">	<span class="comment">//设置为最大1G</span></span><br><span class="line">		(*window_clamp) = (U16_MAX &lt;&lt; TCP_MAX_WSCALE);</span><br><span class="line">	space = min(*window_clamp, space);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Quantize space offering to a multiple of mss if possible. */</span></span><br><span class="line">	<span class="keyword">if</span> (space &gt; mss)</span><br><span class="line">		<span class="comment">//注意这里取整mss的整数倍</span></span><br><span class="line">		space = rounddown(space, mss);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* <span class="doctag">NOTE:</span> offering an initial window larger than 32767</span></span><br><span class="line"><span class="comment">	 * will break some buggy TCP stacks. If the admin tells us</span></span><br><span class="line"><span class="comment">	 * it is likely we could be speaking with such a buggy stack</span></span><br><span class="line"><span class="comment">	 * we will truncate our initial window offering to 32K-1</span></span><br><span class="line"><span class="comment">	 * unless the remote has sent us a window scaling option,</span></span><br><span class="line"><span class="comment">	 * which we interpret as a sign the remote TCP is not</span></span><br><span class="line"><span class="comment">	 * misinterpreting the window field as a signed quantity.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_workaround_signed_windows))<span class="comment">//默认不开启</span></span><br><span class="line">		(*rcv_wnd) = min(space, MAX_TCP_WINDOW);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		(*rcv_wnd) = <span class="type">min_t</span>(u32, space, U16_MAX);<span class="comment">//65535</span></span><br><span class="line">	<span class="comment">//这里大概率是0</span></span><br><span class="line">	<span class="keyword">if</span> (init_rcv_wnd)</span><br><span class="line">		*rcv_wnd = min(*rcv_wnd, init_rcv_wnd * mss);</span><br><span class="line"></span><br><span class="line">	*rcv_wscale = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//开启窗口缩放</span></span><br><span class="line">	<span class="keyword">if</span> (wscale_ok) &#123;</span><br><span class="line">		<span class="comment">/* Set window scaling on max possible window */</span></span><br><span class="line">		space = <span class="type">max_t</span>(u32, space, READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_rmem[<span class="number">2</span>]));<span class="comment">//最小值</span></span><br><span class="line">		space = <span class="type">max_t</span>(u32, space, READ_ONCE(sysctl_rmem_max));<span class="comment">//系统级限制</span></span><br><span class="line">		space = <span class="type">min_t</span>(u32, space, *window_clamp); <span class="comment">//窗口钳制值限制</span></span><br><span class="line">		*rcv_wscale = <span class="type">clamp_t</span>(<span class="type">int</span>, ilog2(space) - <span class="number">15</span>,<span class="comment">//计算缩放银子</span></span><br><span class="line">				      <span class="number">0</span>, TCP_MAX_WSCALE);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">/* Set the clamp no higher than max representable value */</span></span><br><span class="line">	(*window_clamp) = <span class="type">min_t</span>(__u32, U16_MAX &lt;&lt; (*rcv_wscale), *window_clamp);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_select_initial_window</code>中<code>window_clamp</code>的最终大概率为<code>full_space</code>，而<code>rcv_wnd</code>最终大概率为<code>min(space, U16_MAX)</code>而<code>wscale_ok</code>最终大概率为7。</p>
+<p><strong>这里有个问题，由上面逻辑可以知道<code>full_space</code>是根据rcv_buf计算出来的，也就是rcv_buf的三分之一左右，为什么rcv_buf大小为128k的情况下，窗口大小是64k左右呢？？？？</strong></p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E5%BB%BA%E8%BF%9E/" rel="tag"># TCP建连</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/09/09/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6syn%20(%E4%B8%89)/" rel="prev" title="TCP三次握手-接收syn段 (三)">
+      <i class="fa fa-chevron-left"></i> TCP三次握手-接收syn段 (三)
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">49</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">15</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "评论秒回复，你试试",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
