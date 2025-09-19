@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="还是从tcp_v4_rcv说起，当接收到客户端发送的最后一个ack 后首先调用__inet_lookup_skb查找所属的sock，对于服务端来说，第一次握手找到的是listensock，收到客户端的ack后查找到的应该是reqsock，具体代码如下所示 12345678int tcp_v4_rcv(struct sk_buff *skb)&#123;    ...    sk &#x3D; __inet_">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TCP三次握手-接收ack (一)">
+<meta property="og:url" content="http://example.com/2025/09/18/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack%EF%BC%88%E4%B8%80%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="还是从tcp_v4_rcv说起，当接收到客户端发送的最后一个ack 后首先调用__inet_lookup_skb查找所属的sock，对于服务端来说，第一次握手找到的是listensock，收到客户端的ack后查找到的应该是reqsock，具体代码如下所示 12345678int tcp_v4_rcv(struct sk_buff *skb)&#123;    ...    sk &#x3D; __inet_">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-09-18T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-09-19T16:23:01.434Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP建连">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/09/18/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack%EF%BC%88%E4%B8%80%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TCP三次握手-接收ack (一) | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/09/18/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack%EF%BC%88%E4%B8%80%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TCP三次握手-接收ack (一)
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-09-18 22:00:00" itemprop="dateCreated datePublished" datetime="2025-09-18T22:00:00+08:00">2025-09-18</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-09-20 00:23:01" itemprop="dateModified" datetime="2025-09-20T00:23:01+08:00">2025-09-20</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/09/18/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack%EF%BC%88%E4%B8%80%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/09/18/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack%EF%BC%88%E4%B8%80%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>还是从<code>tcp_v4_rcv</code>说起，当接收到客户端发送的最后一个<code>ack</code> 后首先调用<code>__inet_lookup_skb</code>查找所属的<code>sock</code><strong>，对于服务端来说，第一次握手找到的是listensock，收到客户端的ack后查找到的应该是<code>reqsock</code></strong>，具体代码如下所示</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">tcp_v4_rcv</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">    ...</span><br><span class="line">    sk = __inet_lookup_skb(net-&gt;ipv4.tcp_death_row.hashinfo,</span><br><span class="line">                   skb, __tcp_hdrlen(th), th-&gt;source,</span><br><span class="line">                   th-&gt;dest, sdif, &amp;refcounted);</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>__inet_lookup_skb</code>第一次握手的时候也调用过，进一步会调用__inet_lookup：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *__<span class="title">inet_lookup</span>(<span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span>,</span></span><br><span class="line"><span class="class">                     <span class="keyword">struct</span> <span class="title">inet_hashinfo</span> *<span class="title">hashinfo</span>,</span></span><br><span class="line"><span class="class">                     <span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>, <span class="title">int</span> <span class="title">doff</span>,</span></span><br><span class="line"><span class="class">                     <span class="title">const</span> __<span class="title">be32</span> <span class="title">saddr</span>, <span class="title">const</span> __<span class="title">be16</span> <span class="title">sport</span>,</span></span><br><span class="line"><span class="class">                     <span class="title">const</span> __<span class="title">be32</span> <span class="title">daddr</span>, <span class="title">const</span> __<span class="title">be16</span> <span class="title">dport</span>,</span></span><br><span class="line"><span class="class">                     <span class="title">const</span> <span class="title">int</span> <span class="title">dif</span>, <span class="title">const</span> <span class="title">int</span> <span class="title">sdif</span>,</span></span><br><span class="line"><span class="class">                     <span class="title">bool</span> *<span class="title">refcounted</span>)</span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">    u16 hnum = ntohs(dport);</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span>;</span></span><br><span class="line">    <span class="comment">//查找ehash这里其实用的就是五元组加网口</span></span><br><span class="line">    sk = __inet_lookup_established(net, hashinfo, saddr, sport,</span><br><span class="line">                       daddr, hnum, dif, sdif);</span><br><span class="line">    *refcounted = <span class="literal">true</span>;</span><br><span class="line">    <span class="keyword">if</span> (sk)</span><br><span class="line">        <span class="keyword">return</span> sk;</span><br><span class="line">    *refcounted = <span class="literal">false</span>;</span><br><span class="line">    <span class="comment">//如果上面ehash中没有找到，那就找listenhash</span></span><br><span class="line">    <span class="keyword">return</span> __inet_lookup_listener(net, hashinfo, skb, doff, saddr,</span><br><span class="line">                      sport, daddr, hnum, dif, sdif);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里第三次握手是调用的<code>__inet_lookup_established</code>找到的是<code>req</code>，其实就是根据四元组计算一个hash值然后找到对应的<code>hash</code>桶，遍历这个桶，比较<code>ip</code>和<code>port</code>，如果匹配则进一步比较网口，如果<code>sk</code>指定了网口，但是不是收包的网口（如果是<code>reqsock</code>会绑定网口吗？），则也返回<code>false</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *__<span class="title">inet_lookup_established</span>(<span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span>,</span></span><br><span class="line"><span class="class">                  <span class="keyword">struct</span> <span class="title">inet_hashinfo</span> *<span class="title">hashinfo</span>,</span></span><br><span class="line"><span class="class">                  <span class="title">const</span> __<span class="title">be32</span> <span class="title">saddr</span>, <span class="title">const</span> __<span class="title">be16</span> <span class="title">sport</span>,</span></span><br><span class="line"><span class="class">                  <span class="title">const</span> __<span class="title">be32</span> <span class="title">daddr</span>, <span class="title">const</span> <span class="title">u16</span> <span class="title">hnum</span>,</span></span><br><span class="line"><span class="class">                  <span class="title">const</span> <span class="title">int</span> <span class="title">dif</span>, <span class="title">const</span> <span class="title">int</span> <span class="title">sdif</span>)</span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">    INET_ADDR_COOKIE(acookie, saddr, daddr);<span class="comment">//计算源ip目的ip的组合 比较key的时候会用到</span></span><br><span class="line">    <span class="comment">//组合源port和目的port</span></span><br><span class="line">    <span class="type">const</span> __portpair ports = INET_COMBINED_PORTS(sport, hnum);</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span>;</span></span><br><span class="line">    <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">hlist_nulls_node</span> *<span class="title">node</span>;</span></span><br><span class="line">    <span class="comment">/* Optimize here for direct hit, only listening connections can</span></span><br><span class="line"><span class="comment">     * have wildcards anyways.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="comment">//四元组计算一个hash值</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> hash = inet_ehashfn(net, daddr, hnum, saddr, sport);</span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> slot = hash &amp; hashinfo-&gt;ehash_mask;</span><br><span class="line">    <span class="comment">//找到具体的hash桶</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">inet_ehash_bucket</span> *<span class="title">head</span> =</span> &amp;hashinfo-&gt;ehash[slot];</span><br><span class="line"></span><br><span class="line">begin:</span><br><span class="line">    sk_nulls_for_each_rcu(sk, node, &amp;head-&gt;chain) &#123;</span><br><span class="line">        <span class="keyword">if</span> (sk-&gt;sk_hash != hash)</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        <span class="comment">//比较ip和port还有网口是否相同</span></span><br><span class="line">        <span class="keyword">if</span> (likely(inet_match(net, sk, acookie, ports, dif, sdif))) &#123;</span><br><span class="line">            <span class="keyword">if</span> (unlikely(!refcount_inc_not_zero(&amp;sk-&gt;sk_refcnt)))<span class="comment">//正在被释放？</span></span><br><span class="line">                <span class="keyword">goto</span> out;</span><br><span class="line">            <span class="keyword">if</span> (unlikely(!inet_match(net, sk, acookie, <span class="comment">//再次比较看是否匹配</span></span><br><span class="line">                         ports, dif, sdif))) &#123;</span><br><span class="line">                sock_gen_put(sk);</span><br><span class="line">                <span class="keyword">goto</span> begin;<span class="comment">//再找一次</span></span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">goto</span> found;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">     * if the nulls value we got at the end of this lookup is</span></span><br><span class="line"><span class="comment">     * not the expected one, we must restart lookup.</span></span><br><span class="line"><span class="comment">     * We probably met an item that was moved to another chain.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="keyword">if</span> (get_nulls_value(node) != slot)</span><br><span class="line">        <span class="keyword">goto</span> begin;</span><br><span class="line">out:</span><br><span class="line">    sk = <span class="literal">NULL</span>;</span><br><span class="line">found:</span><br><span class="line">    <span class="keyword">return</span> sk;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在<code>tcp_v4_rcv</code>中找到&#96;&#96;sock<code>之后会根据</code>sk_state<code>（此时是</code>TCP_NEW_SYN_RECV&#96;状态）进入对应的分支，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">tcp_v4_rcv</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">    ...</span><br><span class="line">    <span class="comment">//如果是正常的三次握手，服务端收到客户端的ack包就会进入这个分支</span></span><br><span class="line">    <span class="keyword">if</span> (sk-&gt;sk_state == TCP_NEW_SYN_RECV) &#123;</span><br><span class="line">        <span class="comment">//先获取管理半连接状态的结构</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">request_sock</span> *<span class="title">req</span> =</span> inet_reqsk(sk);</span><br><span class="line">        <span class="type">bool</span> req_stolen = <span class="literal">false</span>;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">nsk</span>;</span></span><br><span class="line">        <span class="comment">//这个sk是监听套接字</span></span><br><span class="line">        sk = req-&gt;rsk_listener;</span><br><span class="line">        <span class="comment">//ipsec相关</span></span><br><span class="line">        <span class="keyword">if</span> (!xfrm4_policy_check(sk, XFRM_POLICY_IN, skb))</span><br><span class="line">            drop_reason = SKB_DROP_REASON_XFRM_POLICY;</span><br><span class="line">        <span class="keyword">else</span></span><br><span class="line">            drop_reason = tcp_inbound_md5_hash(sk, skb,</span><br><span class="line">                           &amp;iph-&gt;saddr, &amp;iph-&gt;daddr,</span><br><span class="line">                           AF_INET, dif, sdif);</span><br><span class="line">        <span class="keyword">if</span> (unlikely(drop_reason)) &#123;</span><br><span class="line">            sk_drops_add(sk, skb);</span><br><span class="line">            reqsk_put(req);</span><br><span class="line">            <span class="keyword">goto</span> discard_it;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">//计算校验和，如果这里硬件计算过了，软件就不算了</span></span><br><span class="line">        <span class="keyword">if</span> (tcp_checksum_complete(skb)) &#123;</span><br><span class="line">            reqsk_put(req);</span><br><span class="line">            <span class="keyword">goto</span> csum_error;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">//这里sk是listen的sk，会不是listen状态吗？比如close了？</span></span><br><span class="line">        <span class="keyword">if</span> (unlikely(sk-&gt;sk_state != TCP_LISTEN)) &#123;</span><br><span class="line">            <span class="comment">//如果启用了端口重用看看能不找到一个可以替代的sk，然后继续，否则goto要重新查找一下</span></span><br><span class="line">            <span class="comment">//这里如果再找一便没找到是不是就直接rst了？？？</span></span><br><span class="line">            nsk = reuseport_migrate_sock(sk, req_to_sk(req), skb);</span><br><span class="line">            <span class="keyword">if</span> (!nsk) &#123;</span><br><span class="line">                inet_csk_reqsk_queue_drop_and_put(sk, req);</span><br><span class="line">                <span class="keyword">goto</span> lookup;</span><br><span class="line">            <span class="comment">//这里是找到了可以迁移的sock</span></span><br><span class="line">            sk = nsk;</span><br><span class="line">            <span class="comment">/* reuseport_migrate_sock() has already held one sk_refcnt</span></span><br><span class="line"><span class="comment">             * before returning.</span></span><br><span class="line"><span class="comment">             */</span></span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="comment">/* We own a reference on the listener, increase it again</span></span><br><span class="line"><span class="comment">             * as we might lose it too soon.</span></span><br><span class="line"><span class="comment">             */</span></span><br><span class="line">            sock_hold(sk);</span><br><span class="line">        &#125;</span><br><span class="line">        refcounted = <span class="literal">true</span>;</span><br><span class="line">        nsk = <span class="literal">NULL</span>;</span><br><span class="line">        <span class="comment">//bfp相关的过滤钩子，返回0表示被接收</span></span><br><span class="line">        <span class="keyword">if</span> (!tcp_filter(sk, skb)) &#123;</span><br><span class="line">            th = (<span class="type">const</span> <span class="keyword">struct</span> tcphdr *)skb-&gt;data;</span><br><span class="line">            iph = ip_hdr(skb);</span><br><span class="line">            <span class="comment">//根据数据包字段填充私有控制结构</span></span><br><span class="line">            tcp_v4_fill_cb(skb, iph, th);</span><br><span class="line">            <span class="comment">//创建新的sock，这里可能返回监听sk，肯那</span></span><br><span class="line">            nsk = tcp_check_req(sk, skb, req, <span class="literal">false</span>, &amp;req_stolen);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            drop_reason = SKB_DROP_REASON_SOCKET_FILTER;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (!nsk) &#123;<span class="comment">//如果返回空则表示收到的报文可能不合法，打概率默默丢弃了</span></span><br><span class="line">            reqsk_put(req);</span><br><span class="line">            <span class="keyword">if</span> (req_stolen) &#123;</span><br><span class="line">                <span class="comment">/* Another cpu got exclusive access to req</span></span><br><span class="line"><span class="comment">                 * and created a full blown socket.</span></span><br><span class="line"><span class="comment">                 * Try to feed this packet to this socket</span></span><br><span class="line"><span class="comment">                 * instead of discarding it.</span></span><br><span class="line"><span class="comment">                 */</span></span><br><span class="line">                tcp_v4_restore_cb(skb);</span><br><span class="line">                sock_put(sk);</span><br><span class="line">                <span class="keyword">goto</span> lookup;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">goto</span> discard_and_relse;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">//连接跟踪相关复位</span></span><br><span class="line">        nf_reset_ct(skb);</span><br><span class="line">        <span class="keyword">if</span> (nsk == sk) &#123;</span><br><span class="line">            reqsk_put(req);</span><br><span class="line">            tcp_v4_restore_cb(skb);</span><br><span class="line">        <span class="comment">//正常情况下走这个流程并返回0 </span></span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (tcp_child_process(sk, nsk, skb)) &#123;</span><br><span class="line">            tcp_v4_send_reset(nsk, skb);</span><br><span class="line">            <span class="keyword">goto</span> discard_and_relse;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            sock_put(sk);</span><br><span class="line">            <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码中，收到客户端的<code>ack</code>报文后，首先通过<code>reqsock</code>拿到监听<code>sock</code>然后计算校验和，然后会判断监听套接字的状态是否已经不是<code>listen</code>状态了（比如被<code>close</code>了）如果不是<code>listen</code>状态了则调用<code>reuseport_migrate_sock</code>看看能不找到一个可以替代的<code>sk</code>，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> sock *<span class="title function_">reuseport_migrate_sock</span><span class="params">(<span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">                    <span class="keyword">struct</span> sock *migrating_sk,</span></span><br><span class="line"><span class="params">                    <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">sock_reuseport</span> *<span class="title">reuse</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">nsk</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line">    <span class="type">bool</span> allocated = <span class="literal">false</span>;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">bpf_prog</span> *<span class="title">prog</span>;</span></span><br><span class="line">    u16 socks;</span><br><span class="line">    u32 hash;</span><br><span class="line"></span><br><span class="line">    rcu_read_lock();</span><br><span class="line">    <span class="comment">//获取端口重用组，如果为空就直接返回了</span></span><br><span class="line">    reuse = rcu_dereference(sk-&gt;sk_reuseport_cb);</span><br><span class="line">    <span class="keyword">if</span> (!reuse)</span><br><span class="line">        <span class="keyword">goto</span> out;</span><br><span class="line">    <span class="comment">//这个端口重用组中的sock的个数</span></span><br><span class="line">    socks = READ_ONCE(reuse-&gt;num_socks);</span><br><span class="line">    <span class="keyword">if</span> (unlikely(!socks))</span><br><span class="line">        <span class="keyword">goto</span> failure;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* paired with smp_wmb() in __reuseport_add_sock() */</span></span><br><span class="line">    smp_rmb();</span><br><span class="line"></span><br><span class="line">    hash = migrating_sk-&gt;sk_hash;</span><br><span class="line">    prog = rcu_dereference(reuse-&gt;prog);</span><br><span class="line">    <span class="comment">//是否根据bpf程序选择，如果不用bpf就使用hash</span></span><br><span class="line">    <span class="keyword">if</span> (!prog || prog-&gt;expected_attach_type != BPF_SK_REUSEPORT_SELECT_OR_MIGRATE) &#123;</span><br><span class="line">        <span class="comment">//默认不启用，表示是否能将请求迁移到其他sock</span></span><br><span class="line">        <span class="keyword">if</span> (READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_migrate_req)) </span><br><span class="line">            <span class="keyword">goto</span> select_by_hash;</span><br><span class="line">        <span class="keyword">goto</span> failure;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!skb) &#123;</span><br><span class="line">        skb = alloc_skb(<span class="number">0</span>, GFP_ATOMIC);</span><br><span class="line">        <span class="keyword">if</span> (!skb)</span><br><span class="line">            <span class="keyword">goto</span> failure;</span><br><span class="line">        allocated = <span class="literal">true</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    nsk = bpf_run_sk_reuseport(reuse, sk, prog, skb, migrating_sk, hash);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (allocated)</span><br><span class="line">        kfree_skb(skb);</span><br><span class="line"></span><br><span class="line">select_by_hash:</span><br><span class="line">    <span class="keyword">if</span> (!nsk)</span><br><span class="line">    <span class="comment">//根据hash和cpu亲和性选择sock，listen的时候也调用这个</span></span><br><span class="line">        nsk = reuseport_select_sock_by_hash(reuse, hash, socks);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (IS_ERR_OR_NULL(nsk) || unlikely(!refcount_inc_not_zero(&amp;nsk-&gt;sk_refcnt))) &#123;</span><br><span class="line">        nsk = <span class="literal">NULL</span>;</span><br><span class="line">        <span class="keyword">goto</span> failure;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">    rcu_read_unlock();</span><br><span class="line">    <span class="keyword">return</span> nsk;</span><br><span class="line"></span><br><span class="line">failure:</span><br><span class="line">    __NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPMIGRATEREQFAILURE);</span><br><span class="line">    <span class="keyword">goto</span> out;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>接下来会调用<code>tcp_filter</code>(安全和<code>bpf</code>的钩子)判断是否放行这个数据包，如果放行则调用<code>tcp_v4_fill_cb</code>根据数据包的信息填充skb 的是私有字段（<code>seq,endseq,ackseq</code>等），之后调用<code>tcp_check_req</code>，<strong>注意这里是关键，这里的核心工作可以总结如下：</strong></p>
+<ul>
+<li>解析 TCP 选项 &amp; PAWS 检查</li>
+<li>处理 SYN 重传（对端重发 SYN） → 触发重发 SYN+ACK 并重置定时器</li>
+<li>验证 ACK 是否有效（非 TFO）：ACK 对不上的直接交给监听 socket 回 RST</li>
+<li>校验序列号是否在窗口内（不在→发一个 ACK（挑战 ACK）然后丢弃）</li>
+<li>更新时间戳最近值 ts_recent（仅在合适条件）</li>
+<li>剥离越界的 SYN 位（SYN 被认为是“超窗的一个 bit”会被去掉）</li>
+<li>若报文带 RST 或 SYN → 走“胚胎期复位”路径（统计 + RST&#x2F;drop）</li>
+<li>确认 ACK 必须置位（否则静默丢弃）</li>
+<li>非 TFO：TCP_DEFER_ACCEPT 做“空 ACK 丢弃”（应用要求有数据才唤醒）</li>
+<li>创建子 socket（由半连接变成全连接）→ hashdance 完成三次握手</li>
+<li>监听队列溢出：根据 sysctl 行为选择丢弃或发 RST</li>
+<li>错误&#x2F;复位路径清理 request，并更新统计</li>
+</ul>
+<p>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br><span class="line">217</span><br><span class="line">218</span><br><span class="line">219</span><br><span class="line">220</span><br><span class="line">221</span><br><span class="line">222</span><br><span class="line">223</span><br><span class="line">224</span><br><span class="line">225</span><br><span class="line">226</span><br><span class="line">227</span><br><span class="line">228</span><br><span class="line">229</span><br><span class="line">230</span><br><span class="line">231</span><br><span class="line">232</span><br><span class="line">233</span><br><span class="line">234</span><br><span class="line">235</span><br><span class="line">236</span><br><span class="line">237</span><br><span class="line">238</span><br><span class="line">239</span><br><span class="line">240</span><br><span class="line">241</span><br><span class="line">242</span><br><span class="line">243</span><br><span class="line">244</span><br><span class="line">245</span><br><span class="line">246</span><br><span class="line">247</span><br><span class="line">248</span><br><span class="line">249</span><br><span class="line">250</span><br><span class="line">251</span><br><span class="line">252</span><br><span class="line">253</span><br><span class="line">254</span><br><span class="line">255</span><br><span class="line">256</span><br><span class="line">257</span><br><span class="line">258</span><br><span class="line">259</span><br><span class="line">260</span><br><span class="line">261</span><br><span class="line">262</span><br><span class="line">263</span><br><span class="line">264</span><br><span class="line">265</span><br><span class="line">266</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> sock *<span class="title function_">tcp_check_req</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">               <span class="keyword">struct</span> request_sock *req,</span></span><br><span class="line"><span class="params">               <span class="type">bool</span> fastopen, <span class="type">bool</span> *req_stolen)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">tcp_options_received</span> <span class="title">tmp_opt</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">child</span>;</span></span><br><span class="line">    <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">tcphdr</span> *<span class="title">th</span> =</span> tcp_hdr(skb);</span><br><span class="line">    __be32 flg = tcp_flag_word(th) &amp; (TCP_FLAG_RST|TCP_FLAG_SYN|TCP_FLAG_ACK);</span><br><span class="line">    <span class="type">bool</span> paws_reject = <span class="literal">false</span>;</span><br><span class="line">    <span class="type">bool</span> own_req;</span><br><span class="line"></span><br><span class="line">    tmp_opt.saw_tstamp = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">if</span> (th-&gt;doff &gt; (<span class="keyword">sizeof</span>(<span class="keyword">struct</span> tcphdr)&gt;&gt;<span class="number">2</span>)) &#123;</span><br><span class="line">        <span class="comment">//处理数据包的选项，在接收syn段的时候调用过了</span></span><br><span class="line">        tcp_parse_options(sock_net(sk), skb, &amp;tmp_opt, <span class="number">0</span>, <span class="literal">NULL</span>);</span><br><span class="line">        <span class="comment">//有时间戳选项</span></span><br><span class="line">        <span class="keyword">if</span> (tmp_opt.saw_tstamp) &#123;</span><br><span class="line">            tmp_opt.ts_recent = READ_ONCE(req-&gt;ts_recent);<span class="comment">//注意：这里是之前收到syn包中的时间戳</span></span><br><span class="line">            <span class="keyword">if</span> (tmp_opt.rcv_tsecr)<span class="comment">//回显的时间戳</span></span><br><span class="line">                tmp_opt.rcv_tsecr -= tcp_rsk(req)-&gt;ts_off;<span class="comment">//减去偏移</span></span><br><span class="line">            <span class="comment">/* We do not store true stamp, but it is not required,</span></span><br><span class="line"><span class="comment">             * it can be estimated (approximately)</span></span><br><span class="line"><span class="comment">             * from another data.</span></span><br><span class="line"><span class="comment">             */</span></span><br><span class="line">            <span class="comment">//计算一个时间点，用当前时间，减去第二次握手可以容忍的最大时间，也就是不会有比这个时间点更早的包？？这个时间用来是否可能发生序列号回绕</span></span><br><span class="line">            tmp_opt.ts_recent_stamp = ktime_get_seconds() - reqsk_timeout(req, TCP_RTO_MAX) / HZ;</span><br><span class="line">            <span class="comment">//返回false表示通过</span></span><br><span class="line">            paws_reject = tcp_paws_reject(&amp;tmp_opt, th-&gt;rst);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Check for pure retransmitted SYN. */</span></span><br><span class="line">    <span class="comment">//处理纯syn包的重传，这里其实就是重新调用了一下send_synack</span></span><br><span class="line">    <span class="keyword">if</span> (TCP_SKB_CB(skb)-&gt;seq == tcp_rsk(req)-&gt;rcv_isn &amp;&amp;</span><br><span class="line">        flg == TCP_FLAG_SYN &amp;&amp;</span><br><span class="line">        !paws_reject) &#123;</span><br><span class="line">        <span class="comment">/*</span></span><br><span class="line"><span class="comment">         * RFC793 draws (Incorrectly! It was fixed in RFC1122)</span></span><br><span class="line"><span class="comment">         * this case on figure 6 and figure 8, but formal</span></span><br><span class="line"><span class="comment">         * protocol description says NOTHING.</span></span><br><span class="line"><span class="comment">         * To be more exact, it says that we should send ACK,</span></span><br><span class="line"><span class="comment">         * because this segment (at least, if it has no data)</span></span><br><span class="line"><span class="comment">         * is out of window.</span></span><br><span class="line"><span class="comment">         *</span></span><br><span class="line"><span class="comment">         *  CONCLUSION: RFC793 (even with RFC1122) DOES NOT</span></span><br><span class="line"><span class="comment">         *  describe SYN-RECV state. All the description</span></span><br><span class="line"><span class="comment">         *  is wrong, we cannot believe to it and should</span></span><br><span class="line"><span class="comment">         *  rely only on common sense and implementation</span></span><br><span class="line"><span class="comment">         *  experience.</span></span><br><span class="line"><span class="comment">         *</span></span><br><span class="line"><span class="comment">         * Enforce &quot;SYN-ACK&quot; according to figure 8, figure 6</span></span><br><span class="line"><span class="comment">         * of RFC793, fixed by RFC1122.</span></span><br><span class="line"><span class="comment">         *</span></span><br><span class="line"><span class="comment">         * Note that even if there is new data in the SYN packet</span></span><br><span class="line"><span class="comment">         * they will be thrown away too.</span></span><br><span class="line"><span class="comment">         *</span></span><br><span class="line"><span class="comment">         * Reset timer after retransmitting SYNACK, similar to</span></span><br><span class="line"><span class="comment">         * the idea of fast retransmit in recovery.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="comment">//这里传入了last_oow_ack_time,也就是上次发送synack的时间，需要进行安全相关的检查</span></span><br><span class="line">        <span class="comment">//如果检查通过了直接重传synack包并重新设置synack定时器</span></span><br><span class="line">        <span class="keyword">if</span> (!tcp_oow_rate_limited(sock_net(sk), skb,</span><br><span class="line">                      LINUX_MIB_TCPACKSKIPPEDSYNRECV,</span><br><span class="line">                      &amp;tcp_rsk(req)-&gt;last_oow_ack_time) &amp;&amp;</span><br><span class="line"></span><br><span class="line">            !inet_rtx_syn_ack(sk, req)) &#123;<span class="comment">//重传synack</span></span><br><span class="line">            <span class="type">unsigned</span> <span class="type">long</span> expires = jiffies;</span><br><span class="line"></span><br><span class="line">            expires += reqsk_timeout(req, TCP_RTO_MAX);</span><br><span class="line">            <span class="keyword">if</span> (!fastopen)</span><br><span class="line">                mod_timer_pending(&amp;req-&gt;rsk_timer, expires);</span><br><span class="line">            <span class="keyword">else</span></span><br><span class="line">                req-&gt;rsk_timer.expires = expires;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">NULL</span>;<span class="comment">//外面什么也不做</span></span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Further reproduces section &quot;SEGMENT ARRIVES&quot;</span></span><br><span class="line"><span class="comment">       for state SYN-RECEIVED of RFC793.</span></span><br><span class="line"><span class="comment">       It is broken, however, it does not work only</span></span><br><span class="line"><span class="comment">       when SYNs are crossed.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">       You would think that SYN crossing is impossible here, since</span></span><br><span class="line"><span class="comment">       we should have a SYN_SENT socket (from connect()) on our end,</span></span><br><span class="line"><span class="comment">       but this is not true if the crossed SYNs were sent to both</span></span><br><span class="line"><span class="comment">       ends by a malicious third party.  We must defend against this,</span></span><br><span class="line"><span class="comment">       and to do that we first verify the ACK (as per RFC793, page</span></span><br><span class="line"><span class="comment">       36) and reset if it is invalid.  Is this a true full defense?</span></span><br><span class="line"><span class="comment">       To convince ourselves, let us consider a way in which the ACK</span></span><br><span class="line"><span class="comment">       test can still pass in this &#x27;malicious crossed SYNs&#x27; case.</span></span><br><span class="line"><span class="comment">       Malicious sender sends identical SYNs (and thus identical sequence</span></span><br><span class="line"><span class="comment">       numbers) to both A and B:</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">        A: gets SYN, seq=7</span></span><br><span class="line"><span class="comment">        B: gets SYN, seq=7</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">       By our good fortune, both A and B select the same initial</span></span><br><span class="line"><span class="comment">       send sequence number of seven :-)</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">        A: sends SYN|ACK, seq=7, ack_seq=8</span></span><br><span class="line"><span class="comment">        B: sends SYN|ACK, seq=7, ack_seq=8</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">       So we are now A eating this SYN|ACK, ACK test passes.  So</span></span><br><span class="line"><span class="comment">       does sequence test, SYN is truncated, and thus we consider</span></span><br><span class="line"><span class="comment">       it a bare ACK.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">       If icsk-&gt;icsk_accept_queue.rskq_defer_accept, we silently drop this</span></span><br><span class="line"><span class="comment">       bare ACK.  Otherwise, we create an established connection.  Both</span></span><br><span class="line"><span class="comment">       ends (listening sockets) accept the new incoming connection and try</span></span><br><span class="line"><span class="comment">       to talk to each other. 8-)</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">       Note: This case is both harmless, and rare.  Possibility is about the</span></span><br><span class="line"><span class="comment">       same as us discovering intelligent life on another plant tomorrow.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">       But generally, we should (RFC lies!) to accept ACK</span></span><br><span class="line"><span class="comment">       from SYNACK both here and in tcp_rcv_state_process().</span></span><br><span class="line"><span class="comment">       tcp_rcv_state_process() does not, hence, we do not too.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">       Note that the case is absolutely generic:</span></span><br><span class="line"><span class="comment">       we cannot optimize anything here without</span></span><br><span class="line"><span class="comment">       violating protocol. All the checks must be made</span></span><br><span class="line"><span class="comment">       before attempt to create socket.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">/* RFC793 page 36: &quot;If the connection is in any non-synchronized state ...</span></span><br><span class="line"><span class="comment">     *                  and the incoming segment acknowledges something not yet</span></span><br><span class="line"><span class="comment">     *                  sent (the segment carries an unacceptable ACK) ...</span></span><br><span class="line"><span class="comment">     *                  a reset is sent.&quot;</span></span><br><span class="line"><span class="comment">     *</span></span><br><span class="line"><span class="comment">     * Invalid ACK: reset will be sent by listening socket.</span></span><br><span class="line"><span class="comment">     * Note that the ACK validity check for a Fast Open socket is done</span></span><br><span class="line"><span class="comment">     * elsewhere and is checked directly against the child socket rather</span></span><br><span class="line"><span class="comment">     * than req because user data may have been sent out.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="comment">//这个好像叫做处理交叉syn，或者ack不合法这里返回了listen sock listensock会回rst</span></span><br><span class="line">    <span class="keyword">if</span> ((flg &amp; TCP_FLAG_ACK) &amp;&amp; !fastopen &amp;&amp;</span><br><span class="line">        (TCP_SKB_CB(skb)-&gt;ack_seq !=</span><br><span class="line">         tcp_rsk(req)-&gt;snt_isn + <span class="number">1</span>))</span><br><span class="line">        <span class="keyword">return</span> sk;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Also, it would be not so bad idea to check rcv_tsecr, which</span></span><br><span class="line"><span class="comment">     * is essentially ACK extension and too early or too late values</span></span><br><span class="line"><span class="comment">     * should cause reset in unsynchronized states.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">/* RFC793: &quot;first check sequence number&quot;. */</span></span><br><span class="line">    <span class="comment">//注意：这里如果paws不通过的话，或者序号不在接收窗口内（这里感觉和上面的判断有点冲突呢？ 上面仅保证的是ack？</span></span><br><span class="line">    <span class="comment">// 因为走到这个分支可能不光是ack?上面分支直接就rst了， 这里可能是回一个挑战ack）比如ack正确，但数据包太大了？？？ 或者 paw返回ture？</span></span><br><span class="line">    <span class="keyword">if</span> (paws_reject || !tcp_in_window(TCP_SKB_CB(skb)-&gt;seq, TCP_SKB_CB(skb)-&gt;end_seq,</span><br><span class="line">                      tcp_rsk(req)-&gt;rcv_nxt, tcp_rsk(req)-&gt;rcv_nxt + req-&gt;rsk_rcv_wnd)) &#123;</span><br><span class="line">        <span class="comment">/* Out of window: send ACK and drop. */</span></span><br><span class="line">        <span class="keyword">if</span> (!(flg &amp; TCP_FLAG_RST) &amp;&amp; <span class="comment">//没有rst段，回一个挑战ack</span></span><br><span class="line">            !tcp_oow_rate_limited(sock_net(sk), skb,</span><br><span class="line">                      LINUX_MIB_TCPACKSKIPPEDSYNRECV,</span><br><span class="line">                      &amp;tcp_rsk(req)-&gt;last_oow_ack_time))</span><br><span class="line">            req-&gt;rsk_ops-&gt;send_ack(sk, skb, req);</span><br><span class="line">        <span class="keyword">if</span> (paws_reject)</span><br><span class="line">            NET_INC_STATS(sock_net(sk), LINUX_MIB_PAWSESTABREJECTED);</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">NULL</span>;<span class="comment">//默默丢弃</span></span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* In sequence, PAWS is OK. */</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">/* <span class="doctag">TODO:</span> We probably should defer ts_recent change once</span></span><br><span class="line"><span class="comment">     * we take ownership of @req.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="comment">//如果启用了时间戳选项，且序列号在下一个期待接收的后面就更新req的时间戳</span></span><br><span class="line">    <span class="keyword">if</span> (tmp_opt.saw_tstamp &amp;&amp; !after(TCP_SKB_CB(skb)-&gt;seq, tcp_rsk(req)-&gt;rcv_nxt))</span><br><span class="line">        WRITE_ONCE(req-&gt;ts_recent, tmp_opt.rcv_tsval);</span><br><span class="line">    <span class="comment">//如果收到数据包的序列号等于对端三次握手的序列号，就清掉syn标志 这是为什么呢？？？，防止后续影响处理？？</span></span><br><span class="line">    <span class="keyword">if</span> (TCP_SKB_CB(skb)-&gt;seq == tcp_rsk(req)-&gt;rcv_isn) &#123;</span><br><span class="line">        <span class="comment">/* Truncate SYN, it is out of window starting</span></span><br><span class="line"><span class="comment">           at tcp_rsk(req)-&gt;rcv_isn + 1. */</span></span><br><span class="line">        flg &amp;= ~TCP_FLAG_SYN;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* RFC793: &quot;second check the RST bit&quot; and</span></span><br><span class="line"><span class="comment">     *     &quot;fourth, check the SYN bit&quot;</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="comment">//走到这里表示已经验证过ack的合法性，正常情况下应该只有ack，这里直接goto</span></span><br><span class="line">    <span class="keyword">if</span> (flg &amp; (TCP_FLAG_RST|TCP_FLAG_SYN)) &#123;</span><br><span class="line">        TCP_INC_STATS(sock_net(sk), TCP_MIB_ATTEMPTFAILS);</span><br><span class="line">        <span class="keyword">goto</span> embryonic_reset;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* ACK sequence verified above, just make sure ACK is</span></span><br><span class="line"><span class="comment">     * set.  If ACK not set, just silently drop the packet.</span></span><br><span class="line"><span class="comment">     *</span></span><br><span class="line"><span class="comment">     * XXX (TFO) - if we ever allow &quot;data after SYN&quot;, the</span></span><br><span class="line"><span class="comment">     * following check needs to be removed.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="comment">//上面判断过 ack_seq == snt_isn + 1 这里再次确定报文一定带ack，感觉这个函数里面的逻辑有点乱套啊</span></span><br><span class="line">    <span class="keyword">if</span> (!(flg &amp; TCP_FLAG_ACK))</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* For Fast Open no more processing is needed (sk is the</span></span><br><span class="line"><span class="comment">     * child socket).</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="keyword">if</span> (fastopen)</span><br><span class="line">        <span class="keyword">return</span> sk;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* While TCP_DEFER_ACCEPT is active, drop bare ACK. */</span></span><br><span class="line">    <span class="comment">//用户set sockopt设置rskq_defer_accept 则默默丢弃不带数据的ack</span></span><br><span class="line">    <span class="keyword">if</span> (req-&gt;num_timeout &lt; READ_ONCE(inet_csk(sk)-&gt;icsk_accept_queue.rskq_defer_accept) &amp;&amp;</span><br><span class="line">        TCP_SKB_CB(skb)-&gt;end_seq == tcp_rsk(req)-&gt;rcv_isn + <span class="number">1</span>) &#123;</span><br><span class="line">        inet_rsk(req)-&gt;acked = <span class="number">1</span>;</span><br><span class="line">        __NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPDEFERACCEPTDROP);</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">NULL</span>; <span class="comment">//外层什么也不做</span></span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* OK, ACK is valid, create big socket and</span></span><br><span class="line"><span class="comment">     * feed this segment to it. It will repeat all</span></span><br><span class="line"><span class="comment">     * the tests. THIS SEGMENT MUST MOVE SOCKET TO</span></span><br><span class="line"><span class="comment">     * ESTABLISHED STATE. If it will be dropped after</span></span><br><span class="line"><span class="comment">     * socket is created, wait for troubles.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="comment">//这里返回了新创建的sock，并插入了ehash移除了原来的req</span></span><br><span class="line">    child = inet_csk(sk)-&gt;icsk_af_ops-&gt;syn_recv_sock(sk, skb, req, <span class="literal">NULL</span>,</span><br><span class="line">                             req, &amp;own_req);</span><br><span class="line">    <span class="keyword">if</span> (!child)</span><br><span class="line">        <span class="keyword">goto</span> listen_overflow;</span><br><span class="line">    <span class="comment">//这里直接跳过</span></span><br><span class="line">    <span class="keyword">if</span> (own_req &amp;&amp; rsk_drop_req(req)) &#123;</span><br><span class="line">        reqsk_queue_removed(&amp;inet_csk(req-&gt;rsk_listener)-&gt;icsk_accept_queue, req);</span><br><span class="line">        inet_csk_reqsk_queue_drop_and_put(req-&gt;rsk_listener, req);</span><br><span class="line">        <span class="keyword">return</span> child;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//skb的hash 给到sk的hash</span></span><br><span class="line">    sock_rps_save_rxhash(child, skb);</span><br><span class="line">    <span class="comment">//注意这里更新了rtt</span></span><br><span class="line">    tcp_synack_rtt_meas(child, req);</span><br><span class="line">    *req_stolen = !own_req;</span><br><span class="line">    <span class="keyword">return</span> inet_csk_complete_hashdance(sk, child, req, own_req);</span><br><span class="line"></span><br><span class="line">listen_overflow:</span><br><span class="line">    <span class="keyword">if</span> (sk != req-&gt;rsk_listener)</span><br><span class="line">        __NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPMIGRATEREQFAILURE);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_abort_on_overflow)) &#123;</span><br><span class="line">        inet_rsk(req)-&gt;acked = <span class="number">1</span>;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">embryonic_reset:</span><br><span class="line">    <span class="comment">//如果收到的包不含rst 那就主动回一个rst</span></span><br><span class="line">    <span class="keyword">if</span> (!(flg &amp; TCP_FLAG_RST)) &#123;</span><br><span class="line">        <span class="comment">/* Received a bad SYN pkt - for TFO We try not to reset</span></span><br><span class="line"><span class="comment">         * the local connection unless it&#x27;s really necessary to</span></span><br><span class="line"><span class="comment">         * avoid becoming vulnerable to outside attack aiming at</span></span><br><span class="line"><span class="comment">         * resetting legit local connections.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        req-&gt;rsk_ops-&gt;send_reset(sk, skb);</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (fastopen) &#123; <span class="comment">/* received a valid RST pkt */</span></span><br><span class="line">        reqsk_fastopen_remove(sk, req, <span class="literal">true</span>);</span><br><span class="line">        tcp_reset(sk, skb);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (!fastopen) &#123;</span><br><span class="line">        <span class="comment">//从监听 socket 的半连接队列里移除一个 request_sock</span></span><br><span class="line">        <span class="type">bool</span> unlinked = inet_csk_reqsk_queue_drop(sk, req);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (unlinked)</span><br><span class="line">            __NET_INC_STATS(sock_net(sk), LINUX_MIB_EMBRYONICRSTS);</span><br><span class="line">        *req_stolen = !unlinked; <span class="comment">//表示不要二次释放</span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E5%BB%BA%E8%BF%9E/" rel="tag"># TCP建连</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/09/16/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E5%8F%91%E9%80%81synack/" rel="prev" title="TCP三次握手-发送synack">
+      <i class="fa fa-chevron-left"></i> TCP三次握手-发送synack
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2025/09/20/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack%EF%BC%88%E4%BA%8C%EF%BC%89/" rel="next" title="TCP三次握手-接收ack (二)">
+      TCP三次握手-接收ack (二) <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">51</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">15</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "评论秒回复，你试试",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
