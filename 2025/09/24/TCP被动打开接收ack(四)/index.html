@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="回到tcp_check_req中，计算完rtt相关字段后，则到了最后一步，叫做hashdance，也就是将新创建的sock加入全连接队列具体代码如下所示： 1234567891011121314151617181920212223242526272829303132333435363738394041424344454647484950struct sock *inet_csk_complete_">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TCP三次握手-接收ack (四)">
+<meta property="og:url" content="http://example.com/2025/09/24/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack(%E5%9B%9B)/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="回到tcp_check_req中，计算完rtt相关字段后，则到了最后一步，叫做hashdance，也就是将新创建的sock加入全连接队列具体代码如下所示： 1234567891011121314151617181920212223242526272829303132333435363738394041424344454647484950struct sock *inet_csk_complete_">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-09-24T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-09-24T14:36:06.698Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP建连">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/09/24/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack(%E5%9B%9B)/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TCP三次握手-接收ack (四) | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/09/24/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack(%E5%9B%9B)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TCP三次握手-接收ack (四)
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-09-24 22:00:00 / 修改时间：22:36:06" itemprop="dateCreated datePublished" datetime="2025-09-24T22:00:00+08:00">2025-09-24</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/09/24/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack(%E5%9B%9B)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/09/24/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack(%E5%9B%9B)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>回到<code>tcp_check_req</code>中，计算完<code>rtt</code>相关字段后，则到了最后一步，叫做<code>hashdance</code>，也就是将新创建的<code>sock</code>加入全连接队列具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> sock *<span class="title function_">inet_csk_complete_hashdance</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sock *child,</span></span><br><span class="line"><span class="params">                     <span class="keyword">struct</span> request_sock *req, <span class="type">bool</span> own_req)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="comment">//正常情况，新创建的子sock成功插入ehash后own_req为ture</span></span><br><span class="line">    <span class="keyword">if</span> (own_req) &#123;</span><br><span class="line">        <span class="comment">//从ehash中删除(这里应该不会在删除了)，删除定时器</span></span><br><span class="line">        inet_csk_reqsk_queue_drop(req-&gt;rsk_listener, req);</span><br><span class="line">        <span class="comment">//从半连接队列中移除了</span></span><br><span class="line">        reqsk_queue_removed(&amp;inet_csk(req-&gt;rsk_listener)-&gt;icsk_accept_queue, req);</span><br><span class="line">        <span class="comment">//如果监听sock和req 指向的sock不是一个,基本上不会是这种情况</span></span><br><span class="line">        <span class="keyword">if</span> (sk != req-&gt;rsk_listener) &#123;</span><br><span class="line">            <span class="comment">/* another listening sk has been selected,</span></span><br><span class="line"><span class="comment">             * migrate the req to it.</span></span><br><span class="line"><span class="comment">             */</span></span><br><span class="line">            <span class="class"><span class="keyword">struct</span> <span class="title">request_sock</span> *<span class="title">nreq</span>;</span></span><br><span class="line"></span><br><span class="line">            <span class="comment">/* hold a refcnt for the nreq-&gt;rsk_listener</span></span><br><span class="line"><span class="comment">             * which is assigned in inet_reqsk_clone()</span></span><br><span class="line"><span class="comment">             */</span></span><br><span class="line">            sock_hold(sk);</span><br><span class="line">            <span class="comment">//由于原始的 req关联的是旧的监听套接字，不能直接用于新的监听套接字。</span></span><br><span class="line">            <span class="comment">//因此需要调用 inet_reqsk_clone  克隆一个新的请求块</span></span><br><span class="line">            nreq = inet_reqsk_clone(req, sk);</span><br><span class="line">            <span class="keyword">if</span> (!nreq) &#123;</span><br><span class="line">                inet_child_forget(sk, req, child);</span><br><span class="line">                <span class="keyword">goto</span> child_put;</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            refcount_set(&amp;nreq-&gt;rsk_refcnt, <span class="number">1</span>);</span><br><span class="line">            <span class="comment">//加入全连接队列，更新三次握手成功数量</span></span><br><span class="line">            <span class="keyword">if</span> (inet_csk_reqsk_queue_add(sk, nreq, child)) &#123;</span><br><span class="line">                __NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPMIGRATEREQSUCCESS);</span><br><span class="line">                reqsk_migrate_reset(req);</span><br><span class="line">                reqsk_put(req); <span class="comment">//处理原来的req</span></span><br><span class="line">                <span class="keyword">return</span> child; <span class="comment">//直接返回新的sock</span></span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            __NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPMIGRATEREQFAILURE);</span><br><span class="line">            reqsk_migrate_reset(nreq);</span><br><span class="line">            __reqsk_free(nreq);</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (inet_csk_reqsk_queue_add(sk, req, child)) &#123; <span class="comment">//正常走这个分支，加入全连接队列</span></span><br><span class="line">            <span class="keyword">return</span> child; <span class="comment">//返回新创建的sock，注意这里其实并没有释放req这个结构，req是在外面被释放的</span></span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">/* Too bad, another child took ownership of the request, undo. */</span></span><br><span class="line">child_put:</span><br><span class="line">    bh_unlock_sock(child);</span><br><span class="line">    sock_put(child);</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码的逻辑为**，如果 <code>own_req</code> 为 true（子 socket 成功<code>ehash</code>），就会从半连接队列移除 <code>req</code><strong>；如果监听 socket 发生变化，就克隆一个新的 <code>req</code> 并迁移到新的监听 socket（基本不会发生这个情况吧）</strong>；否则调用<code>inet_csk_reqsk_queue_add</code>将新的<code>sock</code>加入全连接队列，并返回新的 sock**。</p>
+<p>加入全连接队列，更新三次握手成功数量具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//加入全连接队列，更新三次握手成功数量</span></span><br><span class="line"><span class="keyword">struct</span> sock *<span class="title function_">inet_csk_reqsk_queue_add</span><span class="params">(<span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">                      <span class="keyword">struct</span> request_sock *req,</span></span><br><span class="line"><span class="params">                      <span class="keyword">struct</span> sock *child)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">request_sock_queue</span> *<span class="title">queue</span> =</span> &amp;inet_csk(sk)-&gt;icsk_accept_queue;</span><br><span class="line"></span><br><span class="line">    spin_lock(&amp;<span class="built_in">queue</span>-&gt;rskq_lock);</span><br><span class="line">    <span class="comment">//如果应用程序关掉监听套件字了？这里直接把资源都释放了</span></span><br><span class="line">    <span class="keyword">if</span> (unlikely(sk-&gt;sk_state != TCP_LISTEN)) &#123;</span><br><span class="line">        inet_child_forget(sk, req, child);</span><br><span class="line">        child = <span class="literal">NULL</span>;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        req-&gt;sk = child; <span class="comment">//关联req和新创建的sock</span></span><br><span class="line">        req-&gt;dl_next = <span class="literal">NULL</span>;</span><br><span class="line">        <span class="comment">//注意这里加入了全连接队列</span></span><br><span class="line">        <span class="keyword">if</span> (<span class="built_in">queue</span>-&gt;rskq_accept_head == <span class="literal">NULL</span>)</span><br><span class="line">            WRITE_ONCE(<span class="built_in">queue</span>-&gt;rskq_accept_head, req);</span><br><span class="line">        <span class="keyword">else</span></span><br><span class="line">            <span class="built_in">queue</span>-&gt;rskq_accept_tail-&gt;dl_next = req;</span><br><span class="line">        <span class="built_in">queue</span>-&gt;rskq_accept_tail = req;</span><br><span class="line">        sk_acceptq_added(sk); <span class="comment">//sk_ack_backlog++（三次握手成功的数量）</span></span><br><span class="line">    &#125;</span><br><span class="line">    spin_unlock(&amp;<span class="built_in">queue</span>-&gt;rskq_lock);</span><br><span class="line">    <span class="keyword">return</span> child;</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">sk_acceptq_added</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">    WRITE_ONCE(sk-&gt;sk_ack_backlog, sk-&gt;sk_ack_backlog + <span class="number">1</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>至此<code>tcp_check_req</code>全部逻辑就执行完毕，回到<code>tcp_v4_rcv</code>中 <code>**tcp_check_req**</code>返回了新创建的<code>sock</code> **此时<code>sk</code>与<code>nsk</code>不是一个<code>sock</code>具体代码如下所示</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//bfp相关的过滤钩子，返回0表示被接收</span></span><br><span class="line">        <span class="keyword">if</span> (!tcp_filter(sk, skb)) &#123;</span><br><span class="line">            th = (<span class="type">const</span> <span class="keyword">struct</span> tcphdr *)skb-&gt;data;</span><br><span class="line">            iph = ip_hdr(skb);</span><br><span class="line">            <span class="comment">//根据数据包字段填充私有控制结构</span></span><br><span class="line">            tcp_v4_fill_cb(skb, iph, th);</span><br><span class="line">            <span class="comment">//创建新的sock，这里可能返回监听sk，或者空，或者新的sock</span></span><br><span class="line">            nsk = tcp_check_req(sk, skb, req, <span class="literal">false</span>, &amp;req_stolen);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            drop_reason = SKB_DROP_REASON_SOCKET_FILTER;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (!nsk) &#123;<span class="comment">//如果返回空则表示收到的报文可能不合法，打概率默默丢弃了</span></span><br><span class="line">            reqsk_put(req);</span><br><span class="line">            <span class="keyword">if</span> (req_stolen) &#123;</span><br><span class="line">                tcp_v4_restore_cb(skb);</span><br><span class="line">                sock_put(sk);</span><br><span class="line">                <span class="keyword">goto</span> lookup;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">goto</span> discard_and_relse;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">//连接跟踪相关复位</span></span><br><span class="line">        nf_reset_ct(skb);</span><br><span class="line">        <span class="keyword">if</span> (nsk == sk) &#123;</span><br><span class="line">            reqsk_put(req);</span><br><span class="line">            tcp_v4_restore_cb(skb);</span><br><span class="line">        <span class="comment">//正常情况下走这个流程并返回0 </span></span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (tcp_child_process(sk, nsk, skb)) &#123;</span><br><span class="line">            tcp_v4_send_reset(nsk, skb);</span><br><span class="line">            <span class="keyword">goto</span> discard_and_relse;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            sock_put(sk);</span><br><span class="line">            <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">        &#125;</span><br></pre></td></tr></table></figure>
+
+<p>因此上述代码会调用<code>tcp_child_process</code>进一步进行处理**，</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">tcp_child_process</span><span class="params">(<span class="keyword">struct</span> sock *parent, <span class="keyword">struct</span> sock *child,</span></span><br><span class="line"><span class="params">              <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">    __<span class="title function_">releases</span><span class="params">(&amp;((child)-&gt;sk_lock.slock))</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="type">int</span> ret = <span class="number">0</span>;</span><br><span class="line">    <span class="comment">//三次握手被动打开接收ack走到这里后这里应该是syn_rcv的状态</span></span><br><span class="line">    <span class="type">int</span> state = child-&gt;sk_state;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* record sk_napi_id and sk_rx_queue_mapping of child. */</span></span><br><span class="line">    <span class="comment">//这里设置了用那个队列和napi</span></span><br><span class="line">    sk_mark_napi_id_set(child, skb);</span><br><span class="line"></span><br><span class="line">    tcp_segs_in(tcp_sk(child), skb);</span><br><span class="line">    <span class="comment">//三次握手收到ack后这里用户进程会操作sock吗？ 可能有其他的进程调用？</span></span><br><span class="line">    <span class="keyword">if</span> (!sock_owned_by_user(child)) &#123;</span><br><span class="line">        ret = tcp_rcv_state_process(child, skb);</span><br><span class="line">        <span class="comment">/* Wakeup parent, send SIGIO */</span></span><br><span class="line">        <span class="keyword">if</span> (state == TCP_SYN_RECV &amp;&amp; child-&gt;sk_state != state)</span><br><span class="line">            parent-&gt;sk_data_ready(parent);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">/* Alas, it is possible again, because we do lookup</span></span><br><span class="line"><span class="comment">         * in main socket hash table and lock on listening</span></span><br><span class="line"><span class="comment">         * socket does not protect us more.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        __sk_add_backlog(child, skb);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    bh_unlock_sock(child);</span><br><span class="line">    sock_put(child);</span><br><span class="line">    <span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述<code>tcp_child_process</code>中，首先把当前<code>sock</code>的状态保存起来了，<strong>此时是TCP_SYN_RECV</strong>, 如果用户没有持有<code>sock</code>则调用<code>tcp_rcv_state_process</code>进一步处理，<strong>注意，这里把状态设置成 了TCP_ESTABLISHED</strong>。因此<code>child-&gt;sk_state</code>的状态就是不是<code>TCP_SYN_RECV</code>了，则会进一步调用<code>sk_data_ready</code>唤醒监听 socket 的等待队列，告诉用户进程<strong>有新的连接可以 <code>accept</code> 了</strong></p>
+<p><strong><code>tcp_rcv_state_process</code>第三次握手的处理TCP_SYN_RECV状态的代码如下所示：</strong></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">tcp_rcv_state_process</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">    ...</span><br><span class="line">	<span class="keyword">case</span> TCP_SYN_RECV:</span><br><span class="line">		tp-&gt;delivered++; <span class="comment">/* SYN-ACK delivery isn&#x27;t tracked in tcp_ack */</span></span><br><span class="line">		<span class="keyword">if</span> (!tp-&gt;srtt_us)</span><br><span class="line">			<span class="comment">//这里计算rtt和平滑rtt</span></span><br><span class="line">			tcp_synack_rtt_meas(sk, req);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (req) &#123;</span><br><span class="line">			<span class="comment">//如果不是TFO的话这里的req就是空</span></span><br><span class="line">			tcp_rcv_synrecv_state_fastopen(sk);</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			<span class="comment">//撤销超时重传导致的丢包怀疑标记</span></span><br><span class="line">			tcp_try_undo_spurious_syn(sk);</span><br><span class="line">			tp-&gt;retrans_stamp = <span class="number">0</span>;</span><br><span class="line">			tcp_init_transfer(sk, BPF_SOCK_OPS_PASSIVE_ESTABLISHED_CB,</span><br><span class="line">					  skb);</span><br><span class="line">			<span class="comment">//设置用户已经读取到的序列号，这里色湖之为rcv_nxt</span></span><br><span class="line">			WRITE_ONCE(tp-&gt;copied_seq, tp-&gt;rcv_nxt);</span><br><span class="line">		&#125;</span><br><span class="line">		smp_mb();</span><br><span class="line">		tcp_set_state(sk, TCP_ESTABLISHED);</span><br><span class="line">		sk-&gt;sk_state_change(sk);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Note, that this wakeup is only for marginal crossed SYN case.</span></span><br><span class="line"><span class="comment">		 * Passively open sockets are not waked up, because</span></span><br><span class="line"><span class="comment">		 * sk-&gt;sk_sleep == NULL and sk-&gt;sk_socket == NULL.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//交叉syn会走这里</span></span><br><span class="line">		<span class="keyword">if</span> (sk-&gt;sk_socket)</span><br><span class="line">			sk_wake_async(sk, SOCK_WAKE_IO, POLL_OUT);</span><br><span class="line">		<span class="comment">//初始化snd_una</span></span><br><span class="line">		tp-&gt;snd_una = TCP_SKB_CB(skb)-&gt;ack_seq;</span><br><span class="line">		<span class="comment">//根据窗口和窗口缩放因子</span></span><br><span class="line">		tp-&gt;snd_wnd = ntohs(th-&gt;window) &lt;&lt; tp-&gt;rx_opt.snd_wscale;</span><br><span class="line">		<span class="comment">//记录发送窗口更新时候的序列号</span></span><br><span class="line">		tcp_init_wl(tp, TCP_SKB_CB(skb)-&gt;seq);</span><br><span class="line">		<span class="comment">//通告mss的大小减去时间戳选项</span></span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;rx_opt.tstamp_ok)</span><br><span class="line">			tp-&gt;advmss -= TCPOLEN_TSTAMP_ALIGNED;</span><br><span class="line">		<span class="comment">//这里通常不会走？ 拥塞算法没有实现钩子？</span></span><br><span class="line">		<span class="keyword">if</span> (!inet_csk(sk)-&gt;icsk_ca_ops-&gt;cong_control)</span><br><span class="line">			tcp_update_pacing_rate(sk);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Prevent spurious tcp_cwnd_restart() on first data packet */</span></span><br><span class="line">		tp-&gt;lsndtime = tcp_jiffies32;</span><br><span class="line"></span><br><span class="line">		tcp_initialize_rcv_mss(sk);</span><br><span class="line">		<span class="comment">//处理fastpath</span></span><br><span class="line">		tcp_fast_path_on(tp);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">         ...</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述代码主要是针对三次握手收到最后一个<code>ack</code>后（<strong>此时新创建的<code>sock</code>是TCP_SYN_RCV状态）进行处理</strong>，核心工作其实就是设置成建立连接状态和对一系列字段进行初始化(<strong>拥塞窗口，慢启动阈值，乱序阈值，<code>rto</code>，接收端最大窗口大小，发送窗口大小，初始化una。。。。</strong>) 上述代码中会调用<code>tcp_init_transfer</code>完成一部分的初始化工作，包括拥塞窗口，接收窗口的阈值设置等，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_init_transfer</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">int</span> bpf_op, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="comment">//初始化pmtu探测的范围</span></span><br><span class="line">	tcp_mtup_init(sk);</span><br><span class="line">	<span class="comment">//查一次路由</span></span><br><span class="line">	icsk-&gt;icsk_af_ops-&gt;rebuild_header(sk);</span><br><span class="line">	<span class="comment">//尝试利用 历史缓存的网络性能参数（RTT、ssthresh、乱序阈值等）</span></span><br><span class="line">	tcp_init_metrics(sk);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Initialize the congestion window to start the transfer.</span></span><br><span class="line"><span class="comment">	 * Cut cwnd down to 1 per RFC5681 if SYN or SYN-ACK has been</span></span><br><span class="line"><span class="comment">	 * retransmitted. In light of RFC6298 more aggressive 1sec</span></span><br><span class="line"><span class="comment">	 * initRTO, we only reset cwnd when more than 1 SYN/SYN-ACK</span></span><br><span class="line"><span class="comment">	 * retransmission has occurred.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//如果三次握手阶段丢包，要降低cwnd所以设置为了1</span></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;total_retrans &gt; <span class="number">1</span> &amp;&amp; tp-&gt;undo_marker)</span><br><span class="line">		tcp_snd_cwnd_set(tp, <span class="number">1</span>);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">	<span class="comment">//这里有用户没有显示配置的话大概率就是10个mss</span></span><br><span class="line">		tcp_snd_cwnd_set(tp, tcp_init_cwnd(tp, __sk_dst_get(sk)));</span><br><span class="line">	<span class="comment">//每次调整拥塞窗口的时间戳</span></span><br><span class="line">	tp-&gt;snd_cwnd_stamp = tcp_jiffies32;</span><br><span class="line">	<span class="comment">//bpf相关</span></span><br><span class="line">	bpf_skops_established(sk, bpf_op, skb);</span><br><span class="line">	<span class="comment">/* Initialize congestion control unless BPF initialized it already: */</span></span><br><span class="line">	<span class="keyword">if</span> (!icsk-&gt;icsk_ca_initialized) <span class="comment">//调用拥塞算法初始化的钩子</span></span><br><span class="line">		tcp_init_congestion_control(sk);</span><br><span class="line">	<span class="comment">//设置接收窗口阈值</span></span><br><span class="line">	tcp_init_buffer_space(sk);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_init_transfer</code>首先初始化了<code>pmtu</code>的探测范围(超时重传的黑洞检测会用到，发包通路中貌似也会调用)，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//初始化PMTU相关的字段</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">tcp_mtup_init</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> sock_net(sk);</span><br><span class="line">	<span class="comment">//系统是否启用mtu探测，默认没有启用</span></span><br><span class="line">	icsk-&gt;icsk_mtup.enabled = READ_ONCE(net-&gt;ipv4.sysctl_tcp_mtu_probing) &gt; <span class="number">1</span>;</span><br><span class="line">	<span class="comment">//计算一个mtu的最大值</span></span><br><span class="line">	icsk-&gt;icsk_mtup.search_high = tp-&gt;rx_opt.mss_clamp + <span class="keyword">sizeof</span>(<span class="keyword">struct</span> tcphdr) +</span><br><span class="line">			       icsk-&gt;icsk_af_ops-&gt;net_header_len;</span><br><span class="line">	<span class="comment">//计算一个mtu的最小值</span></span><br><span class="line">	icsk-&gt;icsk_mtup.search_low = tcp_mss_to_mtu(sk, READ_ONCE(net-&gt;ipv4.sysctl_tcp_base_mss));</span><br><span class="line">	<span class="comment">//初始化探测报文的大小为 0</span></span><br><span class="line">	icsk-&gt;icsk_mtup.probe_size = <span class="number">0</span>;</span><br><span class="line">	<span class="keyword">if</span> (icsk-&gt;icsk_mtup.enabled)</span><br><span class="line">		icsk-&gt;icsk_mtup.probe_timestamp = tcp_jiffies32;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>完成<code>pmtu</code>相关字段的初始化后会调用  <code>icsk-&gt;icsk_af_ops-&gt;rebuild_header</code>再查一次路由，这个函数在超时重传中也调用过。之后会调用<code>tcp_init_metrics</code>根据历史缓存的网络性能参数（<code>RTT、ssthresh、cwnd、</code>乱序阈值等），来指导初始化拥塞窗口字段，具体代码如下</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_init_metrics</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">dst_entry</span> *<span class="title">dst</span> =</span> __sk_dst_get(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> sock_net(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_metrics_block</span> *<span class="title">tm</span>;</span></span><br><span class="line">	u32 val, crtt = <span class="number">0</span>; <span class="comment">/* cached RTT scaled by 8 */</span></span><br><span class="line">	<span class="comment">//验证路由是否有效</span></span><br><span class="line">	sk_dst_confirm(sk);</span><br><span class="line">	<span class="keyword">if</span> (!dst)</span><br><span class="line">		<span class="keyword">goto</span> reset;</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	<span class="comment">//取出历史 metric</span></span><br><span class="line">	tm = tcp_get_metrics(sk, dst, <span class="literal">true</span>);</span><br><span class="line">	<span class="keyword">if</span> (!tm) &#123;</span><br><span class="line">		rcu_read_unlock();</span><br><span class="line">		<span class="keyword">goto</span> reset;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (tcp_metric_locked(tm, TCP_METRIC_CWND))</span><br><span class="line">		tp-&gt;snd_cwnd_clamp = tcp_metric_get(tm, TCP_METRIC_CWND); <span class="comment">//最大值？？</span></span><br><span class="line"></span><br><span class="line">	val = READ_ONCE(net-&gt;ipv4.sysctl_tcp_no_ssthresh_metrics_save) ?<span class="comment">//默认是1</span></span><br><span class="line">	      <span class="number">0</span> : tcp_metric_get(tm, TCP_METRIC_SSTHRESH);</span><br><span class="line">	<span class="keyword">if</span> (val) &#123;</span><br><span class="line">		tp-&gt;snd_ssthresh = val;</span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;snd_ssthresh &gt; tp-&gt;snd_cwnd_clamp)</span><br><span class="line">			tp-&gt;snd_ssthresh = tp-&gt;snd_cwnd_clamp;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="comment">/* ssthresh may have been reduced unnecessarily during.</span></span><br><span class="line"><span class="comment">		 * 3WHS. Restore it back to its initial default.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		tp-&gt;snd_ssthresh = TCP_INFINITE_SSTHRESH;  <span class="comment">//设置慢启动阈值为全F</span></span><br><span class="line">	&#125;</span><br><span class="line">	val = tcp_metric_get(tm, TCP_METRIC_REORDERING); <span class="comment">//从历史连接中获取乱序阈值 默认是3</span></span><br><span class="line">	<span class="keyword">if</span> (val &amp;&amp; tp-&gt;reordering != val)</span><br><span class="line">		tp-&gt;reordering = val; <span class="comment">//更新tp管理的乱序阈值上线</span></span><br><span class="line"></span><br><span class="line">	crtt = tcp_metric_get(tm, TCP_METRIC_RTT); <span class="comment">//从metric中获取缓存的rtt</span></span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">reset:</span><br><span class="line">	<span class="comment">/* The initial RTT measurement from the SYN/SYN-ACK is not ideal</span></span><br><span class="line"><span class="comment">	 * to seed the RTO for later data packets because SYN packets are</span></span><br><span class="line"><span class="comment">	 * small. Use the per-dst cached values to seed the RTO but keep</span></span><br><span class="line"><span class="comment">	 * the RTT estimator variables intact (e.g., srtt, mdev, rttvar).</span></span><br><span class="line"><span class="comment">	 * Later the RTO will be updated immediately upon obtaining the first</span></span><br><span class="line"><span class="comment">	 * data RTT sample (tcp_rtt_estimator()). Hence the cached RTT only</span></span><br><span class="line"><span class="comment">	 * influences the first RTO but not later RTT estimation.</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * But if RTT is not available from the SYN (due to retransmits or</span></span><br><span class="line"><span class="comment">	 * syn cookies) or the cache, force a conservative 3secs timeout.</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * A bit of theory. RTT is time passed after &quot;normal&quot; sized packet</span></span><br><span class="line"><span class="comment">	 * is sent until it is ACKed. In normal circumstances sending small</span></span><br><span class="line"><span class="comment">	 * packets force peer to delay ACKs and calculation is correct too.</span></span><br><span class="line"><span class="comment">	 * The algorithm is adaptive and, provided we follow specs, it</span></span><br><span class="line"><span class="comment">	 * NEVER underestimate RTT. BUT! If peer tries to make some clever</span></span><br><span class="line"><span class="comment">	 * tricks sort of &quot;quick acks&quot; for time long enough to decrease RTT</span></span><br><span class="line"><span class="comment">	 * to low value, and then abruptly stops to do it and starts to delay</span></span><br><span class="line"><span class="comment">	 * ACKs, wait for troubles.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//计算rto</span></span><br><span class="line">	<span class="keyword">if</span> (crtt &gt; tp-&gt;srtt_us) &#123;</span><br><span class="line">		<span class="comment">/* Set RTO like tcp_rtt_estimator(), but from cached RTT. */</span></span><br><span class="line">		crtt /= <span class="number">8</span> * USEC_PER_SEC / HZ;</span><br><span class="line">		inet_csk(sk)-&gt;icsk_rto = crtt + max(<span class="number">2</span> * crtt, tcp_rto_min(sk));</span><br><span class="line">		</span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (tp-&gt;srtt_us == <span class="number">0</span>) &#123;</span><br><span class="line">		<span class="comment">/* RFC6298: 5.7 We&#x27;ve failed to get a valid RTT sample from</span></span><br><span class="line"><span class="comment">		 * 3WHS. This is most likely due to retransmission,</span></span><br><span class="line"><span class="comment">		 * including spurious one. Reset the RTO back to 3secs</span></span><br><span class="line"><span class="comment">		 * from the more aggressive 1sec to avoid more spurious</span></span><br><span class="line"><span class="comment">		 * retransmission.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		tp-&gt;rttvar_us = jiffies_to_usecs(TCP_TIMEOUT_FALLBACK);</span><br><span class="line">		tp-&gt;mdev_us = tp-&gt;mdev_max_us = tp-&gt;rttvar_us;</span><br><span class="line"></span><br><span class="line">		inet_csk(sk)-&gt;icsk_rto = TCP_TIMEOUT_FALLBACK;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述<code>tcp_init_metrics</code>中首先调用<code>tcp_get_metrics</code>查<code>hash</code>表取出历史连接信息（<strong>如果有的话，没有则会创建一个</strong>）。之后设置了慢启动阈值，如果用户没有配置的话这里默认是全F,止之后从历史连接中获取获取乱序阈值和<code>rtt</code>注意这里可能都是零吧，如果没有历史连接数据的话。最后根据<code>srtt</code>计算<code>rto</code>。</p>
+<p>回到<code>tcp_init_transfer</code>中，获取历史连接数据之后，<strong>会进一步设置<code>cwnd</code>如果在三次握手阶段丢包了则初始化的拥塞窗口为1，否则为10个<code>MSS</code>,并记录此次调整拥塞窗口的时间。之后会调用拥塞算法初始化的钩子</strong>，最后调用<code>tcp_init_buffer_space</code>设置本端窗口的钳制值。</p>
+<p>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">tcp_init_buffer_space</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> tcp_app_win = READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_app_win); <span class="comment">//默认是31</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="type">int</span> maxwin;</span><br><span class="line">	<span class="comment">//用户是否setsockopt显示设置缓冲大小，默认是没有的</span></span><br><span class="line">	<span class="keyword">if</span> (!(sk-&gt;sk_userlocks &amp; SOCK_SNDBUF_LOCK))</span><br><span class="line">		tcp_sndbuf_expand(sk);</span><br><span class="line"></span><br><span class="line">	tcp_mstamp_refresh(tp);</span><br><span class="line">	tp-&gt;rcvq_space.time = tp-&gt;tcp_mstamp;</span><br><span class="line">	tp-&gt;rcvq_space.seq = tp-&gt;copied_seq;</span><br><span class="line">	 <span class="comment">//这个在三次握手的中间也调用过，用于告诉对端本端窗口的大小，是根据rcv_buf计算出来的</span></span><br><span class="line">	maxwin = tcp_full_space(sk);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;window_clamp &gt;= maxwin) &#123;</span><br><span class="line">		tp-&gt;window_clamp = maxwin; <span class="comment">//限制到最大缓存 这个可以理解为真实的缓存</span></span><br><span class="line">		<span class="comment">//最终大概率window_clamp = maxwin</span></span><br><span class="line">		<span class="keyword">if</span> (tcp_app_win &amp;&amp; maxwin &gt; <span class="number">4</span> * tp-&gt;advmss)</span><br><span class="line">			tp-&gt;window_clamp = max(maxwin -</span><br><span class="line">					       (maxwin &gt;&gt; tcp_app_win),</span><br><span class="line">					       <span class="number">4</span> * tp-&gt;advmss);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Force reservation of one segment. */</span></span><br><span class="line">	<span class="comment">//接收窗口要让出一个mss</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_app_win &amp;&amp;</span><br><span class="line">	    tp-&gt;window_clamp &gt; <span class="number">2</span> * tp-&gt;advmss &amp;&amp;</span><br><span class="line">	    tp-&gt;window_clamp + tp-&gt;advmss &gt; maxwin)</span><br><span class="line">		tp-&gt;window_clamp = max(<span class="number">2</span> * tp-&gt;advmss, maxwin - tp-&gt;advmss);</span><br><span class="line">	<span class="comment">//tp-&gt;rcv_ssthresh  这个值是发送synack的时候计算出来的(根据rcv_buf)</span></span><br><span class="line">	<span class="comment">///这个叫什么接收慢启动阈值？，就应该叫接受窗口阈值吧</span></span><br><span class="line">	tp-&gt;rcv_ssthresh = min(tp-&gt;rcv_ssthresh, tp-&gt;window_clamp);</span><br><span class="line">	tp-&gt;snd_cwnd_stamp = tcp_jiffies32;</span><br><span class="line">	tp-&gt;rcvq_space.space = min3(tp-&gt;rcv_ssthresh, tp-&gt;rcv_wnd,   <span class="comment">//预测未来的接收缓冲区状态？？</span></span><br><span class="line">				    (u32)TCP_INIT_CWND * tp-&gt;advmss);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_init_buffer_space</code>中，首先根据<code>rcv_buf</code>计算出<code>full_space</code>这个值可以理解为实际数据包的可以使用的窗口大小，根据这个大小，去设置最大的窗口的带线啊哦，并让出一个<code>mss</code>的空间（防止死锁？？），之后更新<code>rcv_ssthresh</code>(计算<code>tcp</code>窗口大小字段的时候会用到）。</p>
+<p>回到<code>tcp_rcv_state_process</code>中，初始化上述字段后，会根据确认号设置设置<code>una</code>，之后根据对端通告的窗口大小和缩放因子，计算发送窗口的大小**，最后初始化了接收的<code>mss</code>因为在 TCP 建立连接初期，本端还没有直接得到对端的 MSS 信息，所以只计算了一个估计值，核心思想是宁可低估，也不能高估**，这值最终会影响ack的触发，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_initialize_rcv_mss</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> hint = <span class="type">min_t</span>(<span class="type">unsigned</span> <span class="type">int</span>, tp-&gt;advmss, tp-&gt;mss_cache);</span><br><span class="line"></span><br><span class="line">	hint = min(hint, tp-&gt;rcv_wnd / <span class="number">2</span>);</span><br><span class="line">	hint = min(hint, TCP_MSS_DEFAULT);</span><br><span class="line">	hint = max(hint, TCP_MIN_MSS);</span><br><span class="line"></span><br><span class="line">	inet_csk(sk)-&gt;icsk_ack.rcv_mss = hint;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>最后调用<code>tcp_fast_path_on</code>设置了**<code>TCP</code> <code>fastpath</code>**中需要的标志位，其实就是根据当前的窗口大小，包头长度，<code>ack</code>标志到<code>flag</code>字段中，这个<code>flag</code>会在接下来收到数据包的时候判断是否可以直接走快速路径，设置快速路径的代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">tcp_fast_path_on</span><span class="params">(<span class="keyword">struct</span> tcp_sock *tp)</span></span><br><span class="line">&#123;</span><br><span class="line">	__tcp_fast_path_on(tp, tp-&gt;snd_wnd &gt;&gt; tp-&gt;rx_opt.snd_wscale);</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> __tcp_fast_path_on(<span class="keyword">struct</span> tcp_sock *tp, u32 snd_wnd)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/* mptcp hooks are only on the slow path */</span></span><br><span class="line">	<span class="keyword">if</span> (sk_is_mptcp((<span class="keyword">struct</span> sock *)tp))</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">	tp-&gt;pred_flags = htonl((tp-&gt;tcp_header_len &lt;&lt; <span class="number">26</span>) |</span><br><span class="line">			       ntohl(TCP_FLAG_ACK) |</span><br><span class="line">			       snd_wnd);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>至此，服务端的三次握手逻辑就结束了~~~。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E5%BB%BA%E8%BF%9E/" rel="tag"># TCP建连</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/09/22/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack%EF%BC%88%E4%B8%89%EF%BC%89/" rel="prev" title="TCP三次握手-接收ack (三)">
+      <i class="fa fa-chevron-left"></i> TCP三次握手-接收ack (三)
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">53</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">15</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "评论秒回复，你试试",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
