@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="__sys_connect() 为主动打开阶段，发送syn包的入口函数，具体代码如下所示： 123456789101112131415161718int __sys_connect(int fd, struct sockaddr __user *uservaddr, int addrlen)&#123;	int ret &#x3D; -EBADF;	struct fd f;	f &#x3D; fdget(fd);">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TCP三次握手-发送syn (一)">
+<meta property="og:url" content="http://example.com/2025/10/10/TCP%E4%B8%BB%E5%8A%A8%E6%89%93%E5%BC%80%E5%8F%91%E9%80%81syn/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="__sys_connect() 为主动打开阶段，发送syn包的入口函数，具体代码如下所示： 123456789101112131415161718int __sys_connect(int fd, struct sockaddr __user *uservaddr, int addrlen)&#123;	int ret &#x3D; -EBADF;	struct fd f;	f &#x3D; fdget(fd);">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-10-10T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-10-10T14:31:58.906Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP建连">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/10/10/TCP%E4%B8%BB%E5%8A%A8%E6%89%93%E5%BC%80%E5%8F%91%E9%80%81syn/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TCP三次握手-发送syn (一) | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/10/10/TCP%E4%B8%BB%E5%8A%A8%E6%89%93%E5%BC%80%E5%8F%91%E9%80%81syn/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TCP三次握手-发送syn (一)
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-10-10 22:00:00 / 修改时间：22:31:58" itemprop="dateCreated datePublished" datetime="2025-10-10T22:00:00+08:00">2025-10-10</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/10/10/TCP%E4%B8%BB%E5%8A%A8%E6%89%93%E5%BC%80%E5%8F%91%E9%80%81syn/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/10/10/TCP%E4%B8%BB%E5%8A%A8%E6%89%93%E5%BC%80%E5%8F%91%E9%80%81syn/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p> __sys_connect() 为主动打开阶段，发送syn包的入口函数，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __sys_connect(<span class="type">int</span> fd, <span class="keyword">struct</span> sockaddr __user *uservaddr, <span class="type">int</span> addrlen)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> ret = -EBADF;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fd</span> <span class="title">f</span>;</span></span><br><span class="line"></span><br><span class="line">	f = fdget(fd);</span><br><span class="line">	<span class="comment">//找到file</span></span><br><span class="line">	<span class="keyword">if</span> (f.file) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">sockaddr_storage</span> <span class="title">address</span>;</span></span><br><span class="line">		<span class="comment">//copy_from_usr</span></span><br><span class="line">		ret = move_addr_to_kernel(uservaddr, addrlen, &amp;address);</span><br><span class="line">		<span class="keyword">if</span> (!ret)</span><br><span class="line">			ret = __sys_connect_file(f.file, &amp;address, addrlen, <span class="number">0</span>);</span><br><span class="line">		fdput(f);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>和其他系统调用类似，也是根据<code>fd</code>找到<code>file</code>同时将用户传入的地址信息拷贝到内核态，然后调用<code>__sys_connect_file</code>进一步处理，具体代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __sys_connect_file(<span class="keyword">struct</span> file *file, <span class="keyword">struct</span> sockaddr_storage *address,</span><br><span class="line">		       <span class="type">int</span> addrlen, <span class="type">int</span> file_flags)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">socket</span> *<span class="title">sock</span>;</span></span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="comment">//通过file的私有结构找到sock</span></span><br><span class="line">	sock = sock_from_file(file);</span><br><span class="line">	<span class="keyword">if</span> (!sock) &#123;</span><br><span class="line">		err = -ENOTSOCK;</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//安全相关的钩子</span></span><br><span class="line">	err =</span><br><span class="line">	    security_socket_connect(sock, (<span class="keyword">struct</span> sockaddr *)address, addrlen);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	<span class="comment">//调用套接字层 connect__inet_stream_connect</span></span><br><span class="line">	err = READ_ONCE(sock-&gt;ops)-&gt;connect(sock, (<span class="keyword">struct</span> sockaddr *)address,</span><br><span class="line">				addrlen, sock-&gt;file-&gt;f_flags | file_flags);</span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>__sys_connect_file</code>中通过<code>file</code>的私有结构获取<code>sock</code>后进一步调用套接字层的<code>connect</code>回调，也就是<code>__inet_stream_connect</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __inet_stream_connect(<span class="keyword">struct</span> socket *sock, <span class="keyword">struct</span> sockaddr *uaddr,</span><br><span class="line">			  <span class="type">int</span> addr_len, <span class="type">int</span> flags, <span class="type">int</span> is_sendmsg)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span> =</span> sock-&gt;sk;</span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="type">long</span> timeo;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * uaddr can be NULL and addr_len can be 0 if:</span></span><br><span class="line"><span class="comment">	 * sk is a TCP fastopen active socket and</span></span><br><span class="line"><span class="comment">	 * TCP_FASTOPEN_CONNECT sockopt is set and</span></span><br><span class="line"><span class="comment">	 * we already have a valid cookie for this socket.</span></span><br><span class="line"><span class="comment">	 * In this case, user can call write() after connect().</span></span><br><span class="line"><span class="comment">	 * write() will invoke tcp_sendmsg_fastopen() which calls</span></span><br><span class="line"><span class="comment">	 * __inet_stream_connect().</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (uaddr) &#123;</span><br><span class="line">		<span class="comment">//长度不合法直接返回</span></span><br><span class="line">		<span class="keyword">if</span> (addr_len &lt; <span class="keyword">sizeof</span>(uaddr-&gt;sa_family))</span><br><span class="line">			<span class="keyword">return</span> -EINVAL;</span><br><span class="line">		<span class="comment">//指定特殊协议族，直接断开连接</span></span><br><span class="line">		<span class="keyword">if</span> (uaddr-&gt;sa_family == AF_UNSPEC) &#123;</span><br><span class="line">			sk-&gt;sk_disconnects++;</span><br><span class="line">			err = sk-&gt;sk_prot-&gt;disconnect(sk, flags);</span><br><span class="line">			sock-&gt;state = err ? SS_DISCONNECTING : SS_UNCONNECTED;</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//正常流程走到这里</span></span><br><span class="line">	<span class="keyword">switch</span> (sock-&gt;state) &#123;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		err = -EINVAL;</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	<span class="keyword">case</span> SS_CONNECTED:</span><br><span class="line">		err = -EISCONN;</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	<span class="keyword">case</span> SS_CONNECTING:</span><br><span class="line">		<span class="keyword">if</span> (inet_test_bit(DEFER_CONNECT, sk))</span><br><span class="line">			err = is_sendmsg ? -EINPROGRESS : -EISCONN;</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			err = -EALREADY;</span><br><span class="line">		<span class="comment">/* Fall out of switch with err, set for this state */</span></span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="comment">//通常是这个状态</span></span><br><span class="line">	<span class="keyword">case</span> SS_UNCONNECTED:</span><br><span class="line">		err = -EISCONN;</span><br><span class="line">		<span class="keyword">if</span> (sk-&gt;sk_state != TCP_CLOSE)</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line">		<span class="comment">//BPF相关的钩子</span></span><br><span class="line">		<span class="keyword">if</span> (BPF_CGROUP_PRE_CONNECT_ENABLED(sk)) &#123;</span><br><span class="line">			err = sk-&gt;sk_prot-&gt;pre_connect(sk, uaddr, addr_len);</span><br><span class="line">			<span class="keyword">if</span> (err)</span><br><span class="line">				<span class="keyword">goto</span> out;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//调用具体协议的connect 对于tcp则是tcp_v4_connect</span></span><br><span class="line">		err = sk-&gt;sk_prot-&gt;connect(sk, uaddr, addr_len);</span><br><span class="line">		<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line">		<span class="comment">//正在建立连接的状态</span></span><br><span class="line">		sock-&gt;state = SS_CONNECTING;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (!err &amp;&amp; inet_test_bit(DEFER_CONNECT, sk))</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Just entered SS_CONNECTING state; the only</span></span><br><span class="line"><span class="comment">		 * difference is that return value in non-blocking</span></span><br><span class="line"><span class="comment">		 * case is EINPROGRESS, rather than EALREADY.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		err = -EINPROGRESS;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	timeo = sock_sndtimeo(sk, flags &amp; O_NONBLOCK);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> ((<span class="number">1</span> &lt;&lt; sk-&gt;sk_state) &amp; (TCPF_SYN_SENT | TCPF_SYN_RECV)) &#123;</span><br><span class="line">		<span class="type">int</span> writebias = (sk-&gt;sk_protocol == IPPROTO_TCP) &amp;&amp;</span><br><span class="line">				tcp_sk(sk)-&gt;fastopen_req &amp;&amp;</span><br><span class="line">				tcp_sk(sk)-&gt;fastopen_req-&gt;data ? <span class="number">1</span> : <span class="number">0</span>;</span><br><span class="line">		<span class="type">int</span> dis = sk-&gt;sk_disconnects;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Error code is set above */</span></span><br><span class="line">		<span class="keyword">if</span> (!timeo || !inet_wait_for_connect(sk, timeo, writebias))</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">		err = sock_intr_errno(timeo);</span><br><span class="line">		<span class="keyword">if</span> (signal_pending(current))</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (dis != sk-&gt;sk_disconnects) &#123;</span><br><span class="line">			err = -EPIPE;</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Connection was closed by RST, timeout, ICMP error</span></span><br><span class="line"><span class="comment">	 * or another process disconnected us.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_state == TCP_CLOSE)</span><br><span class="line">		<span class="keyword">goto</span> sock_error;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* sk-&gt;sk_err may be not zero now, if RECVERR was ordered by user</span></span><br><span class="line"><span class="comment">	 * and error was received after socket entered established state.</span></span><br><span class="line"><span class="comment">	 * Hence, it is handled normally after connect() return successfully.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line"></span><br><span class="line">	sock-&gt;state = SS_CONNECTED;</span><br><span class="line">	err = <span class="number">0</span>;</span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line"></span><br><span class="line">sock_error:</span><br><span class="line">	err = sock_error(sk) ? : -ECONNABORTED;</span><br><span class="line">	sock-&gt;state = SS_UNCONNECTED;</span><br><span class="line">	sk-&gt;sk_disconnects++;</span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_prot-&gt;disconnect(sk, flags))</span><br><span class="line">		sock-&gt;state = SS_DISCONNECTING;</span><br><span class="line">	<span class="keyword">goto</span> out;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>__inet_stream_connect</code>中首先进合法性校验，然后根据socket的状态执行不同case，这里通常走<code>SS_UNCONNECTED</code>状态，也就是回调用具体协议的<code>prot</code>的<code>connect</code>回调，这里需要注意，调用完套机字层的回调后，此时应该是<code>SYN_SENT</code>状态，接下来的行为则取决于<code>connect</code>是阻塞还是非阻塞，如果是阻 的，它会在 SYN 发出后通过 <code>inet_wait_for_connect()</code> 睡眠等待握手完成，若是非阻塞的（设置 <code>O_NONBLOCK</code>），则不会等待，直接返回 <code>-EINPROGRESS</code>。后续貌似需要<code>getsockopt</code>来判断是否建立连接成功。接下来看上述具体协议的<code>connect</code>函数，对于<code>tcp</code>则是<code>tcp_v4_connect</code></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* This will initiate an outgoing connection. */</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">tcp_v4_connect</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sockaddr *uaddr, <span class="type">int</span> addr_len)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sockaddr_in</span> *<span class="title">usin</span> =</span> (<span class="keyword">struct</span> sockaddr_in *)uaddr;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_timewait_death_row</span> *<span class="title">tcp_death_row</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_sock</span> *<span class="title">inet</span> =</span> inet_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_options_rcu</span> *<span class="title">inet_opt</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> sock_net(sk);</span><br><span class="line">	__be16 orig_sport, orig_dport;</span><br><span class="line">	__be32 daddr, nexthop;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">flowi4</span> *<span class="title">fl4</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rtable</span> *<span class="title">rt</span>;</span></span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="comment">//检查床读是否合法</span></span><br><span class="line">	<span class="keyword">if</span> (addr_len &lt; <span class="keyword">sizeof</span>(<span class="keyword">struct</span> sockaddr_in))</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (usin-&gt;sin_family != AF_INET)</span><br><span class="line">		<span class="keyword">return</span> -EAFNOSUPPORT;</span><br><span class="line"></span><br><span class="line">	nexthop = daddr = usin-&gt;sin_addr.s_addr;</span><br><span class="line">	<span class="comment">//拿到ip opt</span></span><br><span class="line">	inet_opt = rcu_dereference_protected(inet-&gt;inet_opt,</span><br><span class="line">					     lockdep_sock_is_held(sk));</span><br><span class="line">	<span class="comment">//如果设置了源路由选项，就把选项中的地址拿到，下面查路由的时候要用到</span></span><br><span class="line">	<span class="keyword">if</span> (inet_opt &amp;&amp; inet_opt-&gt;opt.srr) &#123;</span><br><span class="line">		<span class="keyword">if</span> (!daddr)</span><br><span class="line">			<span class="keyword">return</span> -EINVAL;</span><br><span class="line">		nexthop = inet_opt-&gt;opt.faddr;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	orig_sport = inet-&gt;inet_sport; <span class="comment">//这里用户如果没有调用bind的话是0吧</span></span><br><span class="line">	orig_dport = usin-&gt;sin_port;<span class="comment">//用户设置port</span></span><br><span class="line">	fl4 = &amp;inet-&gt;cork.fl.u.ip4;</span><br><span class="line">	<span class="comment">//这里调用查路由的接口</span></span><br><span class="line">	rt = ip_route_connect(fl4, nexthop, inet-&gt;inet_saddr,</span><br><span class="line">			      sk-&gt;sk_bound_dev_if, IPPROTO_TCP, orig_sport,</span><br><span class="line">			      orig_dport, sk);</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR(rt)) &#123;</span><br><span class="line">		err = PTR_ERR(rt);</span><br><span class="line">		<span class="keyword">if</span> (err == -ENETUNREACH)</span><br><span class="line">			IP_INC_STATS(net, IPSTATS_MIB_OUTNOROUTES);</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//目的地址多播</span></span><br><span class="line">	<span class="keyword">if</span> (rt-&gt;rt_flags &amp; (RTCF_MULTICAST | RTCF_BROADCAST)) &#123;</span><br><span class="line">		ip_rt_put(rt);</span><br><span class="line">		<span class="keyword">return</span> -ENETUNREACH;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//没有启用严格路由选项</span></span><br><span class="line">	<span class="keyword">if</span> (!inet_opt || !inet_opt-&gt;opt.srr)</span><br><span class="line">		daddr = fl4-&gt;daddr;</span><br><span class="line">	<span class="comment">//这个叫管理timewait套接字的结构</span></span><br><span class="line">	tcp_death_row = &amp;sock_net(sk)-&gt;ipv4.tcp_death_row;</span><br><span class="line">	<span class="comment">//如果用户没有指定源ip地址（也就是没有bind？）通常都不会指定吧</span></span><br><span class="line">	<span class="keyword">if</span> (!inet-&gt;inet_saddr) &#123;</span><br><span class="line">		<span class="comment">//如果没有显示指定源ip地址，进入这里后把路由查找后得到的源ip设置到sock上就返回了，不立马的返回的逻辑在disconnect中</span></span><br><span class="line">		err = inet_bhash2_update_saddr(sk,  &amp;fl4-&gt;saddr, AF_INET);</span><br><span class="line">		<span class="keyword">if</span> (err) &#123;</span><br><span class="line">			ip_rt_put(rt);</span><br><span class="line">			<span class="keyword">return</span> err;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="comment">//sk-&gt;sk_rcv_saddr = addr</span></span><br><span class="line">		sk_rcv_saddr_set(sk, inet-&gt;inet_saddr);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//如果有历史连接，这个时间戳就不为空吧，且两次地址不同？</span></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;rx_opt.ts_recent_stamp &amp;&amp; inet-&gt;inet_daddr != daddr) &#123;</span><br><span class="line">		<span class="comment">/* Reset inherited state */</span></span><br><span class="line">		<span class="comment">//复位时间戳信息</span></span><br><span class="line">		tp-&gt;rx_opt.ts_recent	   = <span class="number">0</span>;</span><br><span class="line">		tp-&gt;rx_opt.ts_recent_stamp = <span class="number">0</span>;</span><br><span class="line">		<span class="keyword">if</span> (likely(!tp-&gt;repair))</span><br><span class="line">			WRITE_ONCE(tp-&gt;write_seq, <span class="number">0</span>);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//设置port</span></span><br><span class="line">	inet-&gt;inet_dport = usin-&gt;sin_port;</span><br><span class="line">	<span class="comment">//设置sk-&gt;sk_daddr = addr; </span></span><br><span class="line">	sk_daddr_set(sk, daddr);</span><br><span class="line">	<span class="comment">//设置ip选项长度</span></span><br><span class="line">	inet_csk(sk)-&gt;icsk_ext_hdr_len = <span class="number">0</span>;</span><br><span class="line">	<span class="keyword">if</span> (inet_opt)</span><br><span class="line">		inet_csk(sk)-&gt;icsk_ext_hdr_len = inet_opt-&gt;opt.optlen;</span><br><span class="line">	<span class="comment">//mss钳制到536</span></span><br><span class="line">	tp-&gt;rx_opt.mss_clamp = TCP_MSS_DEFAULT;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Socket identity is still unknown (sport may be zero).</span></span><br><span class="line"><span class="comment">	 * However we set state to SYN-SENT and not releasing socket</span></span><br><span class="line"><span class="comment">	 * lock select source port, enter ourselves into the hash tables and</span></span><br><span class="line"><span class="comment">	 * complete initialization after this.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//这里设置为了SYN_SENT</span></span><br><span class="line">	tcp_set_state(sk, TCP_SYN_SENT);</span><br><span class="line">	<span class="comment">//bind一个port并加入hash 表（查入ehash和bhash），如果用户调用过bind这里直接返回了</span></span><br><span class="line">	err = inet_hash_connect(tcp_death_row, sk);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> failure;</span><br><span class="line">	<span class="comment">//设置txhash</span></span><br><span class="line">	sk_set_txhash(sk);</span><br><span class="line">	<span class="comment">//这里等于可能改变了新的port所以要在查一次路由</span></span><br><span class="line">	rt = ip_route_newports(fl4, rt, orig_sport, orig_dport,</span><br><span class="line">			       inet-&gt;inet_sport, inet-&gt;inet_dport, sk);</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR(rt)) &#123;</span><br><span class="line">		err = PTR_ERR(rt);</span><br><span class="line">		rt = <span class="literal">NULL</span>;</span><br><span class="line">		<span class="keyword">goto</span> failure;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">/* OK, now commit destination to socket.  */</span></span><br><span class="line">	sk-&gt;sk_gso_type = SKB_GSO_TCPV4;</span><br><span class="line">	<span class="comment">//设置GSO能力 TCP这里默认置位TSO</span></span><br><span class="line">	sk_setup_caps(sk, &amp;rt-&gt;dst);</span><br><span class="line">	rt = <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (likely(!tp-&gt;repair)) &#123;</span><br><span class="line">		<span class="keyword">if</span> (!tp-&gt;write_seq)</span><br><span class="line">			WRITE_ONCE(tp-&gt;write_seq,</span><br><span class="line">				   secure_tcp_seq(inet-&gt;inet_saddr,</span><br><span class="line">						  inet-&gt;inet_daddr,</span><br><span class="line">						  inet-&gt;inet_sport,</span><br><span class="line">						  usin-&gt;sin_port));</span><br><span class="line">		WRITE_ONCE(tp-&gt;tsoffset,</span><br><span class="line">			   secure_tcp_ts_off(net, inet-&gt;inet_saddr,</span><br><span class="line">					     inet-&gt;inet_daddr));</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="type">atomic_set</span>(&amp;inet-&gt;inet_id, get_random_u16());</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (tcp_fastopen_defer_connect(sk, &amp;err))</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> failure;</span><br><span class="line"></span><br><span class="line">	err = tcp_connect(sk);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> failure;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">failure:</span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * This unhashes the socket and releases the local port,</span></span><br><span class="line"><span class="comment">	 * if necessary.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	tcp_set_state(sk, TCP_CLOSE);</span><br><span class="line">	inet_bhash2_reset_saddr(sk);</span><br><span class="line">	ip_rt_put(rt);</span><br><span class="line">	sk-&gt;sk_route_caps = <span class="number">0</span>;</span><br><span class="line">	inet-&gt;inet_dport = <span class="number">0</span>;</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_v4_connect</code>中主要做了如下几件事情，首先获取<code>ip</code> <code>option</code>，入果有严格路由选项就用选项中的<code>ip</code>去进行路由，否则就用用户指定的<code>ip</code>进行路由，之后进行路由查找，如果是法网多播或者广播的地址，则直接返回，<strong>之后根据路由查找到的结构设置源IP地址（前提是没有指定源ip地址的情况下）</strong>，之后设置目的<code>port</code>，<code>addr</code>等字段，<strong>然后将sk的状态设置为<code>TCP_SYN_SENT</code></strong>，之后会<strong>调用<code>inet_hash_connect</code>这个很关键，主要工作就是<code>bind</code>一个<code>port</code>然后就将套接子插入<code>ehash</code>这里注意，如果用户显示调用过bind这里直接就返回了</strong>，下面看具体实现</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">inet_hash_connect</span><span class="params">(<span class="keyword">struct</span> inet_timewait_death_row *death_row,</span></span><br><span class="line"><span class="params">		      <span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	u64 port_offset = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!inet_sk(sk)-&gt;inet_num)</span><br><span class="line">		port_offset = inet_sk_port_offset(sk);</span><br><span class="line">	<span class="keyword">return</span> __inet_hash_connect(death_row, sk, port_offset,</span><br><span class="line">				   __inet_check_established);</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">int</span> __inet_hash_connect(<span class="keyword">struct</span> inet_timewait_death_row *death_row,</span><br><span class="line">		<span class="keyword">struct</span> sock *sk, u64 port_offset,</span><br><span class="line">		<span class="type">int</span> (*check_established)(<span class="keyword">struct</span> inet_timewait_death_row *,</span><br><span class="line">			<span class="keyword">struct</span> sock *, __u16, <span class="keyword">struct</span> inet_timewait_sock **))</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_hashinfo</span> *<span class="title">hinfo</span> =</span> death_row-&gt;hashinfo;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_bind_hashbucket</span> *<span class="title">head</span>, *<span class="title">head2</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_timewait_sock</span> *<span class="title">tw</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="type">int</span> port = inet_sk(sk)-&gt;inet_num;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> sock_net(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_bind2_bucket</span> *<span class="title">tb2</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_bind_bucket</span> *<span class="title">tb</span>;</span></span><br><span class="line">	<span class="type">bool</span> tb_created = <span class="literal">false</span>;</span><br><span class="line">	u32 remaining, offset;</span><br><span class="line">	<span class="type">int</span> ret, i, low, high;</span><br><span class="line">	<span class="type">int</span> l3mdev;</span><br><span class="line">	u32 index;</span><br><span class="line">	<span class="comment">//如果port不为空(用户已经bind过了)，这里直接返回了</span></span><br><span class="line">	<span class="keyword">if</span> (port) &#123;</span><br><span class="line">		local_bh_disable();</span><br><span class="line">		ret = check_established(death_row, sk, port, <span class="literal">NULL</span>);</span><br><span class="line">		local_bh_enable();</span><br><span class="line">		<span class="keyword">return</span> ret;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	l3mdev = inet_sk_bound_l3mdev(sk);</span><br><span class="line">	<span class="comment">//根据系统参数和用户配置确定扫描范围</span></span><br><span class="line">	inet_sk_get_local_port_range(sk, &amp;low, &amp;high);</span><br><span class="line">	high++; <span class="comment">/* [32768, 60999] -&gt; [32768, 61000[ */</span></span><br><span class="line">	remaining = high - low;</span><br><span class="line">	<span class="keyword">if</span> (likely(remaining &gt; <span class="number">1</span>))</span><br><span class="line">		remaining &amp;= ~<span class="number">1U</span>;</span><br><span class="line">	<span class="comment">//为确定端口混入一个随机值</span></span><br><span class="line">	get_random_sleepable_once(table_perturb,</span><br><span class="line">				  INET_TABLE_PERTURB_SIZE * <span class="keyword">sizeof</span>(*table_perturb));</span><br><span class="line">	index = port_offset &amp; (INET_TABLE_PERTURB_SIZE - <span class="number">1</span>);</span><br><span class="line"></span><br><span class="line">	offset = READ_ONCE(table_perturb[index]) + (port_offset &gt;&gt; <span class="number">32</span>);</span><br><span class="line">	offset %= remaining;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* In first pass we try ports of @low parity.</span></span><br><span class="line"><span class="comment">	 * inet_csk_get_port() does the opposite choice.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//默认是从奇数开始扫描</span></span><br><span class="line">	offset &amp;= ~<span class="number">1U</span>;</span><br><span class="line">other_parity_scan:</span><br><span class="line">	port = low + offset;</span><br><span class="line">	<span class="comment">//步长为2</span></span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; remaining; i += <span class="number">2</span>, port += <span class="number">2</span>) &#123;</span><br><span class="line">		<span class="keyword">if</span> (unlikely(port &gt;= high))</span><br><span class="line">			port -= remaining;</span><br><span class="line">		<span class="comment">//跳过保留端口</span></span><br><span class="line">		<span class="keyword">if</span> (inet_is_local_reserved_port(net, port))</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="comment">//找到桶</span></span><br><span class="line">		head = &amp;hinfo-&gt;bhash[inet_bhashfn(net, port,</span><br><span class="line">						  hinfo-&gt;bhash_size)];</span><br><span class="line">		spin_lock_bh(&amp;head-&gt;lock);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Does not bother with rcv_saddr checks, because</span></span><br><span class="line"><span class="comment">		 * the established check is already unique enough.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//遍历bhash桶下挂的条目</span></span><br><span class="line">		inet_bind_bucket_for_each(tb, &amp;head-&gt;chain) &#123;</span><br><span class="line">			<span class="comment">//端口是否匹配</span></span><br><span class="line">			<span class="keyword">if</span> (inet_bind_bucket_match(tb, net, port, l3mdev)) &#123;</span><br><span class="line">				<span class="comment">//这里需要注意：如果这个条目是可以fastresues的这里直接跳过了</span></span><br><span class="line">				<span class="comment">//因为客户端通常要bind一个没有被使用的(或者不是建连的状态)？</span></span><br><span class="line">				<span class="keyword">if</span> (tb-&gt;fastreuse &gt;= <span class="number">0</span> ||</span><br><span class="line">				    tb-&gt;fastreuseport &gt;= <span class="number">0</span>)</span><br><span class="line">					<span class="keyword">goto</span> next_port;</span><br><span class="line">				WARN_ON(hlist_empty(&amp;tb-&gt;owners));</span><br><span class="line">				<span class="comment">//注意这里是判断是否可以重用tw的sock，如果走到了这里貌似一定会把新的sock插入到ehahs中!</span></span><br><span class="line">				<span class="keyword">if</span> (!check_established(death_row, sk,</span><br><span class="line">						       port, &amp;tw))</span><br><span class="line">					<span class="keyword">goto</span> ok;</span><br><span class="line">				<span class="keyword">goto</span> next_port;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//走到这里表示上面没有找到条目，那这里就要创建一个</span></span><br><span class="line">		tb = inet_bind_bucket_create(hinfo-&gt;bind_bucket_cachep,</span><br><span class="line">					     net, head, port, l3mdev);</span><br><span class="line">		<span class="keyword">if</span> (!tb) &#123;</span><br><span class="line">			spin_unlock_bh(&amp;head-&gt;lock);</span><br><span class="line">			<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">		&#125;</span><br><span class="line">		tb_created = <span class="literal">true</span>;</span><br><span class="line">		tb-&gt;fastreuse = <span class="number">-1</span>;</span><br><span class="line">		tb-&gt;fastreuseport = <span class="number">-1</span>;</span><br><span class="line">		<span class="keyword">goto</span> ok;</span><br><span class="line">next_port:</span><br><span class="line">		spin_unlock_bh(&amp;head-&gt;lock);</span><br><span class="line">		cond_resched();</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	offset++;</span><br><span class="line">	<span class="keyword">if</span> ((offset &amp; <span class="number">1</span>) &amp;&amp; remaining &gt; <span class="number">1</span>)</span><br><span class="line">		<span class="keyword">goto</span> other_parity_scan;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> -EADDRNOTAVAIL;</span><br><span class="line"></span><br><span class="line">ok:</span><br><span class="line">	<span class="comment">/* Find the corresponding tb2 bucket since we need to</span></span><br><span class="line"><span class="comment">	 * add the socket to the bhash2 table as well</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//走到这里分两种情况一种是没有在bhahs中找到条目，或者是找到了可以重用的tw。</span></span><br><span class="line">	<span class="comment">//这里根据port和addr找到bhash2的桶</span></span><br><span class="line">	head2 = inet_bhashfn_portaddr(hinfo, sk, net, port);</span><br><span class="line">	spin_lock(&amp;head2-&gt;lock);</span><br><span class="line">	<span class="comment">//找具体的条目，没有找到就直接创建</span></span><br><span class="line">	tb2 = inet_bind2_bucket_find(head2, net, port, l3mdev, sk);</span><br><span class="line">	<span class="keyword">if</span> (!tb2) &#123;</span><br><span class="line">		tb2 = inet_bind2_bucket_create(hinfo-&gt;bind2_bucket_cachep, net,</span><br><span class="line">					       head2, port, l3mdev, sk);</span><br><span class="line">		<span class="keyword">if</span> (!tb2)</span><br><span class="line">			<span class="keyword">goto</span> error;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Here we want to add a little bit of randomness to the next source</span></span><br><span class="line"><span class="comment">	 * port that will be chosen. We use a max() with a random here so that</span></span><br><span class="line"><span class="comment">	 * on low contention the randomness is maximal and on high contention</span></span><br><span class="line"><span class="comment">	 * it may be inexistent.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	i = <span class="type">max_t</span>(<span class="type">int</span>, i, get_random_u32_below(<span class="number">8</span>) * <span class="number">2</span>);</span><br><span class="line">	WRITE_ONCE(table_perturb[index], READ_ONCE(table_perturb[index]) + i + <span class="number">2</span>);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Head lock still held and bh&#x27;s disabled */</span></span><br><span class="line">	inet_bind_hash(sk, tb, tb2, port);</span><br><span class="line">	<span class="comment">//判断是否加入到ehahs中过，比如说上面是有可能插入ehash</span></span><br><span class="line">	<span class="keyword">if</span> (sk_unhashed(sk)) &#123;</span><br><span class="line">		inet_sk(sk)-&gt;inet_sport = htons(port);</span><br><span class="line">		<span class="comment">//插入到ehash中</span></span><br><span class="line">		inet_ehash_nolisten(sk, (<span class="keyword">struct</span> sock *)tw, <span class="literal">NULL</span>);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> (tw)</span><br><span class="line">	<span class="comment">//如果是tw重用，这里把tw从bhahs中移除</span></span><br><span class="line">		inet_twsk_bind_unhash(tw, hinfo);</span><br><span class="line"></span><br><span class="line">	spin_unlock(&amp;head2-&gt;lock);</span><br><span class="line">	spin_unlock(&amp;head-&gt;lock);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (tw)</span><br><span class="line">	<span class="comment">//释放tw的资源</span></span><br><span class="line">		inet_twsk_deschedule_put(tw);</span><br><span class="line">	local_bh_enable();</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">error:</span><br><span class="line">	spin_unlock(&amp;head2-&gt;lock);</span><br><span class="line">	<span class="keyword">if</span> (tb_created)</span><br><span class="line">		inet_bind_bucket_destroy(hinfo-&gt;bind_bucket_cachep, tb);</span><br><span class="line">	spin_unlock_bh(&amp;head-&gt;lock);</span><br><span class="line">	<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述<code>__inet_hash_connect</code>中，首先判断用户在<code>connect</code>之前是否已经<code>bind</code>过了，入如果<code>bind</code>过，则调用<code>__inet_check_established</code>把<code>sk</code>插入<code>ehash</code> 中(也可能会复用<code>tw</code>状态的套接字)，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* called with local bh disabled */</span></span><br><span class="line"><span class="comment">//检查端口是否可用的核心函数，主要用于判断一个端口是否已经被 established 或 TIME_WAIT 状态的连接占用</span></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> __inet_check_established(<span class="keyword">struct</span> inet_timewait_death_row *death_row,</span><br><span class="line">				    <span class="keyword">struct</span> sock *sk, __u16 lport,</span><br><span class="line">				    <span class="keyword">struct</span> inet_timewait_sock **twp)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_hashinfo</span> *<span class="title">hinfo</span> =</span> death_row-&gt;hashinfo;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_sock</span> *<span class="title">inet</span> =</span> inet_sk(sk);</span><br><span class="line">	__be32 daddr = inet-&gt;inet_rcv_saddr;</span><br><span class="line">	__be32 saddr = inet-&gt;inet_daddr;</span><br><span class="line">	<span class="type">int</span> dif = sk-&gt;sk_bound_dev_if;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> sock_net(sk);</span><br><span class="line">	<span class="type">int</span> sdif = l3mdev_master_ifindex_by_index(net, dif);</span><br><span class="line">	INET_ADDR_COOKIE(acookie, saddr, daddr);</span><br><span class="line">	<span class="type">const</span> __portpair ports = INET_COMBINED_PORTS(inet-&gt;inet_dport, lport);</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> hash = inet_ehashfn(net, daddr, lport,</span><br><span class="line">					 saddr, inet-&gt;inet_dport);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_ehash_bucket</span> *<span class="title">head</span> =</span> inet_ehash_bucket(hinfo, hash);</span><br><span class="line">	<span class="type">spinlock_t</span> *lock = inet_ehash_lockp(hinfo, hash);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk2</span>;</span></span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">hlist_nulls_node</span> *<span class="title">node</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_timewait_sock</span> *<span class="title">tw</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	spin_lock(lock);</span><br><span class="line">	<span class="comment">//这里是在遍历ehash的一个桶</span></span><br><span class="line">	sk_nulls_for_each(sk2, node, &amp;head-&gt;chain) &#123;</span><br><span class="line">		<span class="keyword">if</span> (sk2-&gt;sk_hash != hash)</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="comment">//遍历桶下的条目，判断是否有匹配的</span></span><br><span class="line">		<span class="keyword">if</span> (likely(inet_match(net, sk2, acookie, ports, dif, sdif))) &#123;</span><br><span class="line">			<span class="keyword">if</span> (sk2-&gt;sk_state == TCP_TIME_WAIT) &#123; <span class="comment">//如果有匹配的且是tw状态</span></span><br><span class="line">				tw = inet_twsk(sk2);</span><br><span class="line">				<span class="comment">//这里只要系统开启可以重用tw的套接子这里大概率返回1 </span></span><br><span class="line">				<span class="keyword">if</span> (twsk_unique(sk, sk2, twp))</span><br><span class="line">					<span class="keyword">break</span>;<span class="comment">//tw 类型的sock 可以重用</span></span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">goto</span> not_unique;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Must record num and sport now. Otherwise we will see</span></span><br><span class="line"><span class="comment">	 * in hash table socket with a funny identity.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//走到这里表示没有冲突 或者可以重用</span></span><br><span class="line">	inet-&gt;inet_num = lport;</span><br><span class="line">	inet-&gt;inet_sport = htons(lport);</span><br><span class="line">	sk-&gt;sk_hash = hash;<span class="comment">//找hahs表的hash值</span></span><br><span class="line">	WARN_ON(!sk_unhashed(sk));</span><br><span class="line">	<span class="comment">//将新的sock插入ehahs</span></span><br><span class="line">	__sk_nulls_add_node_rcu(sk, &amp;head-&gt;chain);</span><br><span class="line">	<span class="keyword">if</span> (tw) &#123;<span class="comment">//如果是重用的那这里就要把旧的给移除</span></span><br><span class="line">		sk_nulls_del_node_init_rcu((<span class="keyword">struct</span> sock *)tw);</span><br><span class="line">		__NET_INC_STATS(net, LINUX_MIB_TIMEWAITRECYCLED);</span><br><span class="line">	&#125;</span><br><span class="line">	spin_unlock(lock);</span><br><span class="line">	sock_prot_inuse_add(sock_net(sk), sk-&gt;sk_prot, <span class="number">1</span>);</span><br><span class="line">	<span class="comment">//这里是空</span></span><br><span class="line">	<span class="keyword">if</span> (twp) &#123;</span><br><span class="line">		*twp = tw;</span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (tw) &#123;</span><br><span class="line">		<span class="comment">/* Silly. Should hash-dance instead... */</span></span><br><span class="line">		inet_twsk_deschedule_put(tw);<span class="comment">//释放twsock的资源</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">not_unique:</span><br><span class="line">	spin_unlock(lock);</span><br><span class="line">	<span class="keyword">return</span> -EADDRNOTAVAIL;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>__inet_check_established</code>首先根据四元组计算一个<code>hash</code>勇于索引<code>ehash</code>表中的桶，然后遍历这个桶下挂的所有<code>sock</code>判断是否有匹配的，这里大概率不会有有吧，如果有的话进一步判断是否是<code>tw</code>类型的<code>sk</code>如果是的话则进一步判断是否可以重用（根据系统参数，如果可以重用的话会重新设置发送序列号），如果可以重用则直接<code>break</code>，否则返回<code>err</code>，如果没有冲突 或者可以重用则会把当前的<code>sk</code>插入到<code>ehash</code>中，同时如果是复用<code>tw</code>的话会移除这个<code>tw</code>。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E5%BB%BA%E8%BF%9E/" rel="tag"># TCP建连</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/09/24/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack(%E5%9B%9B)/" rel="prev" title="TCP三次握手-接收ack (四)">
+      <i class="fa fa-chevron-left"></i> TCP三次握手-接收ack (四)
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">54</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">15</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "评论秒回复，你试试",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
