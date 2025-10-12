@@ -193,6 +193,107 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/21/socket_sock_file_%E6%A6%82%E5%BF%B5/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/05/21/socket_sock_file_%E6%A6%82%E5%BF%B5/" class="post-title-link" itemprop="url">套接字层socket、sock、文件系统之间的关系</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-05-21 22:00:00" itemprop="dateCreated datePublished" datetime="2025-05-21T22:00:00+08:00">2025-05-21</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-05-26 21:17:51" itemprop="dateModified" datetime="2025-05-26T21:17:51+08:00">2025-05-26</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/05/21/socket_sock_file_%E6%A6%82%E5%BF%B5/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/21/socket_sock_file_%E6%A6%82%E5%BF%B5/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="1-概念"><a href="#1-概念" class="headerlink" title="1.概念"></a>1.概念</h2><p>内核套接字层<code>（socket layer）</code>是 Linux 网络协议栈中承上启下的一层，负责将用户空间的 <code>socket API</code>（如 <code>socket()</code>, <code>bind()</code>, <code>send()</code>, <code>recv()</code> 等）与内核中的协议栈对接，其核心作用在于实现应用层与传输层协议之间的解耦，为应用程序提供一种统一且抽象的网络通信方式，套接字机制最初由 BSD UNIX 引入，现已广泛应用于各类网络编程环境中。</p>
+<p><strong>套接字层（sockets）在整个网络协议栈中的位置如下图所示</strong>：</p>
+<p><img src="/images/socket/socket%E5%B1%82.jpg" alt="套接字层"></p>
+<h2 id="2-关键数据结构"><a href="#2-关键数据结构" class="headerlink" title="2.关键数据结构"></a>2.关键数据结构</h2><p>套接字层使用的关键数据结构以及作用如下：</p>
+<h3 id="2-1struct-socket"><a href="#2-1struct-socket" class="headerlink" title="2.1struct socket"></a>2.1<code>struct socket</code></h3><p><strong>作用</strong>：是用户空间 <code>socket</code> 文件描述符在内核中的抽象</p>
+<p>核心字段如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">socket</span> &#123;</span></span><br><span class="line">    socket_state          state;     <span class="comment">// 套接字状态</span></span><br><span class="line">    <span class="type">short</span>                 type;      <span class="comment">// SOCK_STREAM、SOCK_DGRAM 等</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">sock</span>          *<span class="title">sk</span>;</span>        <span class="comment">// 指向内核协议栈的 sock 结构</span></span><br><span class="line">    <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">proto_ops</span> *<span class="title">ops</span>;</span>     <span class="comment">// 指向协议操作函数表，如 inet_stream_ops</span></span><br><span class="line">    ...</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/05/21/socket_sock_file_%E6%A6%82%E5%BF%B5/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/21/%E5%86%85%E6%A0%B8socket%E5%88%9B%E5%BB%BA/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -686,7 +787,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">54</span>
+          <span class="site-state-item-count">55</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
