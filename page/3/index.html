@@ -193,6 +193,110 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/08/16/TLP%E5%AE%9A%E6%97%B6%E5%99%A8/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/08/16/TLP%E5%AE%9A%E6%97%B6%E5%99%A8/" class="post-title-link" itemprop="url">TCP尾部丢包探测定时器</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-08-16 22:00:00" itemprop="dateCreated datePublished" datetime="2025-08-16T22:00:00+08:00">2025-08-16</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-08-17 00:15:26" itemprop="dateModified" datetime="2025-08-17T00:15:26+08:00">2025-08-17</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/08/16/TLP%E5%AE%9A%E6%97%B6%E5%99%A8/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/08/16/TLP%E5%AE%9A%E6%97%B6%E5%99%A8/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="尾部丢包探测-TLP-定时器"><a href="#尾部丢包探测-TLP-定时器" class="headerlink" title="尾部丢包探测(TLP)定时器"></a>尾部丢包探测(TLP)定时器</h2><p>因为 TCP 的 <strong>快速重传</strong>需要重复 ACK 才能触发，而尾部丢包时往往没有新数据推动 ACK；如果依赖 <strong>RTO 定时器</strong>又太慢，动辄几百毫秒甚至秒级，造成应用延迟。于是引入 <strong>TLP 定时器</strong>，在 RTO 之前提前触发一次探测报文，用来快速确认是否真的丢包，从而避免长时间等待 RTO，提高尾部丢包情况下的恢复速度。</p>
+<p>TLP使用的定时器与超时重传用的是同一个定时器，具体定定时器到期的主要逻辑为，首先判断发送队列是否为空，如果不为空或者空间不够发送，则尝试从发送队列拿出一个个数据包直接发送，若发送队列为空，则从重传队列中拿到一个数据包发送</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//主动发生一个数据包</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">tcp_send_loss_probe</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>;</span></span><br><span class="line">	<span class="type">int</span> pcount;</span><br><span class="line">	<span class="type">int</span> mss = tcp_current_mss(sk);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* At most one outstanding TLP */</span></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;tlp_high_seq) <span class="comment">//tcpack中会把这个设置为0</span></span><br><span class="line">		<span class="keyword">goto</span> rearm_timer;</span><br><span class="line"></span><br><span class="line">	tp-&gt;tlp_retrans = <span class="number">0</span>;  <span class="comment">//标记是否触发了TLP</span></span><br><span class="line">	skb = tcp_send_head(sk); <span class="comment">//从发送队列拿到一个数据包。其实就是看一下数据包是否为空</span></span><br><span class="line">	<span class="comment">//如果数据包不为空，且当前空间有一个mss的大小，</span></span><br><span class="line">	<span class="keyword">if</span> (skb &amp;&amp; tcp_snd_wnd_test(tp, skb, mss)) &#123;</span><br><span class="line">		pcount = tp-&gt;packets_out;</span><br><span class="line">		tcp_write_xmit(sk, mss, TCP_NAGLE_OFF, <span class="number">2</span>, GFP_ATOMIC);</span><br><span class="line">		<span class="comment">//相当于在判断是否发送成功</span></span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;packets_out &gt; pcount) </span><br><span class="line">			<span class="keyword">goto</span> probe_sent;</span><br><span class="line">		<span class="keyword">goto</span> rearm_timer;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//如果发送队列为空或者可用空间不足，就从重传队列中拿到一个数据包</span></span><br><span class="line">	skb = skb_rb_last(&amp;sk-&gt;tcp_rtx_queue);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(!skb)) &#123;</span><br><span class="line">		WARN_ONCE(tp-&gt;packets_out,</span><br><span class="line">			  <span class="string">&quot;invalid inflight: %u state %u cwnd %u mss %d\n&quot;</span>,</span><br><span class="line">			  tp-&gt;packets_out, sk-&gt;sk_state, tcp_snd_cwnd(tp), mss);</span><br><span class="line">		inet_csk(sk)-&gt;icsk_pending = <span class="number">0</span>;</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//通过fclone判断是否已经在主机中了</span></span><br><span class="line">	<span class="keyword">if</span> (skb_still_in_host_queue(sk, skb))</span><br><span class="line">		<span class="keyword">goto</span> rearm_timer;</span><br><span class="line">	<span class="comment">//计算当前数据包有几个段</span></span><br><span class="line">	pcount = tcp_skb_pcount(skb);</span><br><span class="line">	<span class="keyword">if</span> (WARN_ON(!pcount))</span><br><span class="line">		<span class="keyword">goto</span> rearm_timer;</span><br><span class="line">	<span class="comment">//超过一个段的情况需要分段</span></span><br><span class="line">	<span class="keyword">if</span> ((pcount &gt; <span class="number">1</span>) &amp;&amp; (skb-&gt;len &gt; (pcount - <span class="number">1</span>) * mss)) &#123;</span><br><span class="line">		<span class="keyword">if</span> (unlikely(tcp_fragment(sk, TCP_FRAG_IN_RTX_QUEUE, skb,</span><br><span class="line">					  (pcount - <span class="number">1</span>) * mss, mss,</span><br><span class="line">					  GFP_ATOMIC)))</span><br><span class="line">			<span class="keyword">goto</span> rearm_timer;</span><br><span class="line">		skb = skb_rb_next(skb);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (WARN_ON(!skb || !tcp_skb_pcount(skb)))</span><br><span class="line">		<span class="keyword">goto</span> rearm_timer;</span><br><span class="line">	<span class="comment">//重传一个数据包</span></span><br><span class="line">	<span class="keyword">if</span> (__tcp_retransmit_skb(sk, skb, <span class="number">1</span>))</span><br><span class="line">		<span class="keyword">goto</span> rearm_timer;</span><br><span class="line"></span><br><span class="line">	tp-&gt;tlp_retrans = <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line">probe_sent:</span><br><span class="line">	<span class="comment">/* Record snd_nxt for loss detection. */</span></span><br><span class="line">	<span class="comment">//这里其实相当与标记了tlp重传</span></span><br><span class="line">	tp-&gt;tlp_high_seq = tp-&gt;snd_nxt;</span><br><span class="line">	<span class="comment">//更新统计信息</span></span><br><span class="line">	NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPLOSSPROBES);</span><br><span class="line">	<span class="comment">/* Reset s.t. tcp_rearm_rto will restart timer from now */</span></span><br><span class="line">	inet_csk(sk)-&gt;icsk_pending = <span class="number">0</span>;</span><br><span class="line">rearm_timer:</span><br><span class="line">	tcp_rearm_rto(sk);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>如果从重传队列中取出一个数据包发送，在经过一系列处理后会调用<code>__tcp_retransmit_skb</code> 注意重传定时器也使用这个函数，这里面主要对数据包进行了裁剪，查看路由是否有效，计算mss，计算数据包的的断数，尝试合并重传数据包，然后调用<code>tcp_transmit_skb</code>这里不在粘贴这部分代码了。</p>
+<h3 id="尾部丢包探测-TLP-定时器的激活"><a href="#尾部丢包探测-TLP-定时器的激活" class="headerlink" title="尾部丢包探测(TLP)定时器的激活"></a>尾部丢包探测(TLP)定时器的激活</h3><p>TLP定时器的激活由<code>tcp_schedule_loss_probe</code>完成，具体代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">bool</span> <span class="title function_">tcp_schedule_loss_probe</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">bool</span> advancing_rto)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	u32 timeout, timeout_us, rto_delta_us;</span><br><span class="line">	<span class="type">int</span> early_retrans;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Don&#x27;t do any loss probe on a Fast Open connection before 3WHS</span></span><br><span class="line"><span class="comment">	 * finishes.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//fastopen 不启动tlp</span></span><br><span class="line">	<span class="keyword">if</span> (rcu_access_pointer(tp-&gt;fastopen_rsk))</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	<span class="comment">//默认是3</span></span><br><span class="line">	early_retrans = READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_early_retrans);</span><br><span class="line">	<span class="comment">/* Schedule a loss probe in 2*RTT for SACK capable connections</span></span><br><span class="line"><span class="comment">	 * not in loss recovery, that are either limited by cwnd or application.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> ((early_retrans != <span class="number">3</span> &amp;&amp; early_retrans != <span class="number">4</span>) ||</span><br><span class="line">	    !tp-&gt;packets_out || !tcp_is_sack(tp) ||  <span class="comment">//是否支持sack，如果不支持sack也不能启动tlp，为什么呢？</span></span><br><span class="line">	    (icsk-&gt;icsk_ca_state != TCP_CA_Open &amp;&amp;</span><br><span class="line">	     icsk-&gt;icsk_ca_state != TCP_CA_CWR))</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Probe timeout is 2*rtt. Add minimum RTO to account</span></span><br><span class="line"><span class="comment">	 * for delayed ack when there&#x27;s one outstanding packet. If no RTT</span></span><br><span class="line"><span class="comment">	 * sample is available then probe after TCP_TIMEOUT_INIT.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//先拿到rtt</span></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;srtt_us) &#123;</span><br><span class="line">		timeout_us = tp-&gt;srtt_us &gt;&gt; <span class="number">2</span>;<span class="comment">//先算一个pto 这里除了4,</span></span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;packets_out == <span class="number">1</span>)	<span class="comment">//只有一个未确认数据包的情况</span></span><br><span class="line">			timeout_us += tcp_rto_min_us(sk);  <span class="comment">//加一个最小rto？ 200ms</span></span><br><span class="line">		<span class="keyword">else</span> <span class="comment">//有多个未确认数据包的情况</span></span><br><span class="line">			timeout_us += TCP_TIMEOUT_MIN_US; <span class="comment">//2ms</span></span><br><span class="line">		timeout = usecs_to_jiffies(timeout_us);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		timeout = TCP_TIMEOUT_INIT; <span class="comment">//如果没有rtt就是1s</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* If the RTO formula yields an earlier time, then use that time. */</span></span><br><span class="line">	<span class="comment">//直接用当前rto的原始值，还是rto的剩余时间，由传入的参数决定</span></span><br><span class="line">	rto_delta_us = advancing_rto ?</span><br><span class="line">			jiffies_to_usecs(inet_csk(sk)-&gt;icsk_rto) :</span><br><span class="line">			tcp_rto_delta_us(sk);  <span class="comment">/* How far in future is RTO? */</span></span><br><span class="line">	<span class="keyword">if</span> (rto_delta_us &gt; <span class="number">0</span>)</span><br><span class="line">	<span class="comment">//取最小值</span></span><br><span class="line">		timeout = <span class="type">min_t</span>(u32, timeout, usecs_to_jiffies(rto_delta_us));</span><br><span class="line"></span><br><span class="line">	tcp_reset_xmit_timer(sk, ICSK_TIME_LOSS_PROBE, timeout, TCP_RTO_MAX);</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_schedule_loss_probe</code> 首先判断是否可以调度定时器，如果拥塞状态机的状态不是<code>open</code>或拥塞状态， 或者系统参数没有开启TLP或者没有未确认的数据包，就直接返回了，不需要调度丢包探测定时器。否则的话就先获取<code>rtt</code>，然后根据rtt计算一个超时时间，启动定时器。</p>
+<p>接下来看上述调度<code>tcp_schedule_loss_probe</code>的地方，有两个地方，一个是发送数据包的路径上，另一个是<code>tcp_ack</code>的处理中，具体代码如下所示：</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/08/16/TLP%E5%AE%9A%E6%97%B6%E5%99%A8/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/08/14/TCP%E4%BF%9D%E6%B4%BB%E5%AE%9A%E6%97%B6%E5%99%A8/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1087,110 +1191,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/07/06/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98(%E4%BA%94)/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/07/06/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98(%E4%BA%94)/" class="post-title-link" itemprop="url">虚拟内存（五）</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2025-07-06 22:00:00 / 修改时间：21:35:04" itemprop="dateCreated datePublished" datetime="2025-07-06T22:00:00+08:00">2025-07-06</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/07/06/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98(%E4%BA%94)/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/07/06/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98(%E4%BA%94)/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="显示空闲链表"><a href="#显示空闲链表" class="headerlink" title="显示空闲链表"></a>显示空闲链表</h2><p>隐式空闲链表查找效率低，适合块数很少的情况；显式空闲链表把空闲块用前后指针连成链表，比如用双向链表，可以大大加快查找速度（只跟空闲块数量有关），如果用后进先出插入，释放块和合并可以是常数时间，但如果按地址排序虽然释放块需要找位置（慢一些），但内存利用率更高；缺点是显式链表需要额外的前后指针，块最小尺寸增大，增加了内部碎片。</p>
-<p><img src="/images/CSAPP/vmem20.png" alt="&#96;虚拟内存&#96;"></p>
-<h2 id="与内存有关的错误"><a href="#与内存有关的错误" class="headerlink" title="与内存有关的错误"></a>与内存有关的错误</h2><h4 id="间接引用坏指针"><a href="#间接引用坏指针" class="headerlink" title="间接引用坏指针"></a>间接引用坏指针</h4><ul>
-<li><strong>间接引用</strong>就是用指针去访问内存。</li>
-<li><strong>坏指针</strong>就是：<ul>
-<li>指向了不该访问的区域（比如没分配过的虚拟内存洞）</li>
-<li>或者指向了只读区域（但你却想写它）</li>
-<li>或者根本就是乱的值（未初始化、被覆盖、拼错……）</li>
-</ul>
-</li>
-</ul>
-<p>当你去<strong>解引用</strong>（访问 <code>*p</code>）一个坏指针时，操作系统会触发保护机制（段错误或保护错误），直接把程序干掉，防止你破坏别的内存。</p>
-<p>例子：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> val;</span><br><span class="line"><span class="built_in">scanf</span>(<span class="string">&quot;%d&quot;</span>, &amp;val);  <span class="comment">// 正确：传的是变量 val 的地址</span></span><br><span class="line"><span class="built_in">scanf</span>(<span class="string">&quot;%d&quot;</span>, val);  <span class="comment">// 错误：把 val 的值当成地址传了</span></span><br></pre></td></tr></table></figure>
-
-<p>可能的后果</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/07/06/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98(%E4%BA%94)/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1260,7 +1260,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">57</span>
+          <span class="site-state-item-count">58</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>

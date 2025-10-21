@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="同时打开的场景出现于双方同时发送syn，因此双方都处于 SYN_SENT 状态，此时如果收到对端的syn包，从tcp_v4_rcv中收到数据包后，根据状态会交由tcp_rcv_synsent_state_process处理，（注意和正常握手接收synack是一个路径），tcp_rcv_synsent_state_process中对于纯syn包的处理如下所示： 1234567891011121314">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TCP三次握手-同时打开">
+<meta property="og:url" content="http://example.com/2025/10/21/TCP%E5%90%8C%E6%97%B6%E6%89%93%E5%BC%80/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="同时打开的场景出现于双方同时发送syn，因此双方都处于 SYN_SENT 状态，此时如果收到对端的syn包，从tcp_v4_rcv中收到数据包后，根据状态会交由tcp_rcv_synsent_state_process处理，（注意和正常握手接收synack是一个路径），tcp_rcv_synsent_state_process中对于纯syn包的处理如下所示： 1234567891011121314">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-10-21T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-10-21T15:39:26.365Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP建连">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/10/21/TCP%E5%90%8C%E6%97%B6%E6%89%93%E5%BC%80/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TCP三次握手-同时打开 | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/10/21/TCP%E5%90%8C%E6%97%B6%E6%89%93%E5%BC%80/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TCP三次握手-同时打开
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-10-21 22:00:00 / 修改时间：23:39:26" itemprop="dateCreated datePublished" datetime="2025-10-21T22:00:00+08:00">2025-10-21</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/10/21/TCP%E5%90%8C%E6%97%B6%E6%89%93%E5%BC%80/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/10/21/TCP%E5%90%8C%E6%97%B6%E6%89%93%E5%BC%80/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>同时打开的场景出现于双方同时发送<code>syn</code>，因此双方都处于 <code>SYN_SENT</code> 状态，此时如果收到对端的<code>syn</code>包，从<code>tcp_v4_rcv</code>中收到数据包后，根据状态会交由<code>tcp_rcv_synsent_state_process</code>处理，（注意和正常握手接收<code>synack</code>是一个路径），<code>tcp_rcv_synsent_state_process</code>中对于纯<code>syn</code>包的处理如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">tcp_rcv_synsent_state_process</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">					 <span class="type">const</span> <span class="keyword">struct</span> tcphdr *th)</span></span><br><span class="line">&#123;</span><br><span class="line">   ...</span><br><span class="line">consume:</span><br><span class="line">			__kfree_skb(skb);</span><br><span class="line">			<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> (th-&gt;syn) &#123;</span><br><span class="line">		<span class="comment">/* We see SYN without ACK. It is attempt of</span></span><br><span class="line"><span class="comment">		 * simultaneous connect with crossed SYNs.</span></span><br><span class="line"><span class="comment">		 * Particularly, it can be connect to self.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//注意这里设置成了syn recv  正常第三次握手短暂存活的状态！！！</span></span><br><span class="line">		tcp_set_state(sk, TCP_SYN_RECV);</span><br><span class="line">		<span class="comment">//有时间戳选项，保存时间戳 修正tcp头长度</span></span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;rx_opt.saw_tstamp) &#123;</span><br><span class="line">			tp-&gt;rx_opt.tstamp_ok = <span class="number">1</span>;</span><br><span class="line">			tcp_store_ts_recent(tp);</span><br><span class="line">			tp-&gt;tcp_header_len =</span><br><span class="line">				<span class="keyword">sizeof</span>(<span class="keyword">struct</span> tcphdr) + TCPOLEN_TSTAMP_ALIGNED;</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			tp-&gt;tcp_header_len = <span class="keyword">sizeof</span>(<span class="keyword">struct</span> tcphdr);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//更新接收序号与用户已读指针</span></span><br><span class="line">		WRITE_ONCE(tp-&gt;rcv_nxt, TCP_SKB_CB(skb)-&gt;seq + <span class="number">1</span>);</span><br><span class="line">		WRITE_ONCE(tp-&gt;copied_seq, tp-&gt;rcv_nxt);</span><br><span class="line">		tp-&gt;rcv_wup = TCP_SKB_CB(skb)-&gt;seq + <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* RFC1323: The window in SYN &amp; SYN/ACK segments is</span></span><br><span class="line"><span class="comment">		 * never scaled.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//握手报文不使用窗口缩放</span></span><br><span class="line">		tp-&gt;snd_wnd    = ntohs(th-&gt;window);</span><br><span class="line">		tp-&gt;snd_wl1    = TCP_SKB_CB(skb)-&gt;seq;</span><br><span class="line">		tp-&gt;max_window = tp-&gt;snd_wnd;</span><br><span class="line"></span><br><span class="line">		tcp_ecn_rcv_syn(tp, th);</span><br><span class="line">		<span class="comment">//初始化PMTU相关的字段</span></span><br><span class="line">		tcp_mtup_init(sk);</span><br><span class="line">		<span class="comment">//重新计算mss cache  这第二个参数是发syn包的时候设置的</span></span><br><span class="line">		tcp_sync_mss(sk, icsk-&gt;icsk_pmtu_cookie);</span><br><span class="line">		<span class="comment">//设置接收mss</span></span><br><span class="line">		tcp_initialize_rcv_mss(sk);</span><br><span class="line">		<span class="comment">//发送syn ack</span></span><br><span class="line">		tcp_send_synack(sk);</span><br><span class="line"><span class="meta">#<span class="keyword">if</span> 0</span></span><br><span class="line">		<span class="comment">/* Note, we could accept data and URG from this segment.</span></span><br><span class="line"><span class="comment">		 * There are no obstacles to make this (except that we must</span></span><br><span class="line"><span class="comment">		 * either change tcp_recvmsg() to prevent it from returning data</span></span><br><span class="line"><span class="comment">		 * before 3WHS completes per RFC793, or employ TCP Fast Open).</span></span><br><span class="line"><span class="comment">		 *</span></span><br><span class="line"><span class="comment">		 * However, if we ignore data in ACKless segments sometimes,</span></span><br><span class="line"><span class="comment">		 * we have no reasons to accept it sometimes.</span></span><br><span class="line"><span class="comment">		 * Also, seems the code doing it in step6 of tcp_rcv_state_process</span></span><br><span class="line"><span class="comment">		 * is not flawless. So, discard packet for sanity.</span></span><br><span class="line"><span class="comment">		 * Uncomment this return to process the data.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line"><span class="meta">#<span class="keyword">else</span></span></span><br><span class="line">		<span class="keyword">goto</span> consume;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	&#125;</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>如上述代码所示，<code>SYN_SENT</code>状态下如果收到一个<strong>合法</strong>的<code>syn</code>包会直接将状态设置为<code>TCP_SYN_RECV</code>，<strong>注意，这里和第三次握手收到<code>ack</code>后短暂存活的状态是一样的</strong>，因此下面发送<code>synack</code>的时候就走了第三次握手的分支，并设置为建立连接状态。</p>
+<p>接下来处理时间戳选项，更新接收序号与用户已读指针，初始化PMTU相关的字段，重新计算<code>mss</code>相关参数，之后调用<code>tcp_send_synack</code></p>
+<p>发送<code>syn_ack</code>发送<code>synack</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//注意 只有同时打开调用这个函数</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">tcp_send_synack</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>;</span></span><br><span class="line">	<span class="comment">//取出重传队列中的syn  很巧妙 应为没有被ack</span></span><br><span class="line">	skb = tcp_rtx_queue_head(sk);</span><br><span class="line">	<span class="keyword">if</span> (!skb || !(TCP_SKB_CB(skb)-&gt;tcp_flags &amp; TCPHDR_SYN)) &#123;</span><br><span class="line">		pr_err(<span class="string">&quot;%s: wrong queue state\n&quot;</span>, __func__);</span><br><span class="line">		<span class="keyword">return</span> -EFAULT;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//如果这个 SYN 还没带 ACK，就给它加上 ACK 标志</span></span><br><span class="line">	<span class="keyword">if</span> (!(TCP_SKB_CB(skb)-&gt;tcp_flags &amp; TCPHDR_ACK)) &#123;</span><br><span class="line">		<span class="keyword">if</span> (skb_cloned(skb)) &#123; <span class="comment">//处理克隆的情况</span></span><br><span class="line">			<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">nskb</span>;</span></span><br><span class="line"></span><br><span class="line">			tcp_skb_tsorted_save(skb) &#123;</span><br><span class="line">				nskb = skb_copy(skb, GFP_ATOMIC); <span class="comment">//深copy</span></span><br><span class="line">			&#125; tcp_skb_tsorted_restore(skb);</span><br><span class="line">			<span class="keyword">if</span> (!nskb)</span><br><span class="line">				<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">			INIT_LIST_HEAD(&amp;nskb-&gt;tcp_tsorted_anchor);</span><br><span class="line">			tcp_highest_sack_replace(sk, skb, nskb);<span class="comment">//如果是最高 SACK包，更新为新的 nskb</span></span><br><span class="line">			tcp_rtx_queue_unlink_and_free(skb, sk); </span><br><span class="line">			__skb_header_release(nskb);</span><br><span class="line">			tcp_rbtree_insert(&amp;sk-&gt;tcp_rtx_queue, nskb);<span class="comment">//替换原 skb</span></span><br><span class="line">			sk_wmem_queued_add(sk, nskb-&gt;truesize);  <span class="comment">//更新队列使用量 注意上面会uncharge</span></span><br><span class="line">			sk_mem_charge(sk, nskb-&gt;truesize); <span class="comment">//正式向内存管理系统申请这部分内存</span></span><br><span class="line">			skb = nskb;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//给新包加上 ACK 位</span></span><br><span class="line">		TCP_SKB_CB(skb)-&gt;tcp_flags |= TCPHDR_ACK;</span><br><span class="line">		<span class="comment">//如果协商了 ECN（显式拥塞通知），在 SYN+ACK 上打相应的标志</span></span><br><span class="line">		tcp_ecn_send_synack(sk, skb);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//发送数据包</span></span><br><span class="line">	<span class="keyword">return</span> tcp_transmit_skb(sk, skb, <span class="number">1</span>, GFP_ATOMIC);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>首先从传出队列中取出<code>skb</code>由于此时数据包一定没有被<code>ack</code>所以一定能获取，之后深拷贝获取一个<code>skb</code>，将<code>flag</code>加上<code>ack</code>标志，并插入重传队列中，更新内存使用量，之后调用<code>tcp_transmit_skb</code>发送数据包。之后，当收到对端<code>synack</code>后会重走一便第三次握手的逻辑，这里不再重复了：）</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E5%BB%BA%E8%BF%9E/" rel="tag"># TCP建连</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/10/19/TCP%E4%B8%BB%E5%8A%A8%E6%89%93%E5%BC%80%E5%8F%91%E9%80%81ack/" rel="prev" title="TCP三次握手-发送ack">
+      <i class="fa fa-chevron-left"></i> TCP三次握手-发送ack
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">58</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">15</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
