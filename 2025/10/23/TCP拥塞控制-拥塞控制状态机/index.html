@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="TCP 拥塞控制的核心思想是： 用 ACK 驱动拥塞状态机，根据网络反馈改变发送窗口。 在内核中，TCP 的拥塞控制状态用枚举 enum tcp_ca_state 表示： 1234567enum tcp_ca_state &#123;    TCP_CA_Open &#x3D; 0,      &#x2F;&#x2F; 正常状态    TCP_CA_Disorder &#x3D; 1,  &#x2F;&#x2F; 乱序 &#x2F; 可疑丢包    TCP_CA_C">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TCP拥塞控制-拥塞控制状态机">
+<meta property="og:url" content="http://example.com/2025/10/23/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6%E7%8A%B6%E6%80%81%E6%9C%BA/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="TCP 拥塞控制的核心思想是： 用 ACK 驱动拥塞状态机，根据网络反馈改变发送窗口。 在内核中，TCP 的拥塞控制状态用枚举 enum tcp_ca_state 表示： 1234567enum tcp_ca_state &#123;    TCP_CA_Open &#x3D; 0,      &#x2F;&#x2F; 正常状态    TCP_CA_Disorder &#x3D; 1,  &#x2F;&#x2F; 乱序 &#x2F; 可疑丢包    TCP_CA_C">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-10-23T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-10-23T14:47:10.785Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP拥塞控制">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/10/23/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6%E7%8A%B6%E6%80%81%E6%9C%BA/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TCP拥塞控制-拥塞控制状态机 | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/10/23/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6%E7%8A%B6%E6%80%81%E6%9C%BA/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TCP拥塞控制-拥塞控制状态机
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-10-23 22:00:00 / 修改时间：22:47:10" itemprop="dateCreated datePublished" datetime="2025-10-23T22:00:00+08:00">2025-10-23</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/10/23/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6%E7%8A%B6%E6%80%81%E6%9C%BA/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/10/23/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6%E7%8A%B6%E6%80%81%E6%9C%BA/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p><strong>TCP 拥塞控制的核心思想是：</strong> <strong>用 ACK 驱动拥塞状态机，根据网络反馈改变发送窗口。</strong></p>
+<p>在内核中，TCP 的拥塞控制状态用枚举 <code>enum</code> <code>tcp_ca_state</code> 表示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">enum</span> <span class="title">tcp_ca_state</span> &#123;</span></span><br><span class="line">    TCP_CA_Open = <span class="number">0</span>,      <span class="comment">// 正常状态</span></span><br><span class="line">    TCP_CA_Disorder = <span class="number">1</span>,  <span class="comment">// 乱序 / 可疑丢包</span></span><br><span class="line">    TCP_CA_CWR = <span class="number">2</span>,       <span class="comment">// ECN 拥塞反馈</span></span><br><span class="line">    TCP_CA_Recovery = <span class="number">3</span>,  <span class="comment">// 快速重传恢复中</span></span><br><span class="line">    TCP_CA_Loss = <span class="number">4</span>       <span class="comment">// 超时丢包恢复</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<table>
+<thead>
+<tr>
+<th>状态名</th>
+<th>含义</th>
+<th>常见触发</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Open</strong></td>
+<td>网络顺畅</td>
+<td>正常 ACK</td>
+</tr>
+<tr>
+<td><strong>Disorder</strong></td>
+<td>出现乱序或重复 ACK</td>
+<td>DUPACK&#x2F;SACK</td>
+</tr>
+<tr>
+<td><strong>CWR</strong></td>
+<td>网络拥塞反馈（ECN）</td>
+<td>ECE 标志或队列丢包</td>
+</tr>
+<tr>
+<td><strong>Recovery</strong></td>
+<td>检测到丢包，快速恢复中</td>
+<td>多个 DUPACK</td>
+</tr>
+<tr>
+<td><strong>Loss</strong></td>
+<td>超时丢包恢复</td>
+<td>RTO 超时</td>
+</tr>
+</tbody></table>
+<p>上述表格为<strong>常见的拥塞状态的触发机制</strong>。下图为具体状态转移图：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">stateDiagram-v2</span><br><span class="line">    [*] --&gt; Open</span><br><span class="line"></span><br><span class="line">    Open --&gt; Disorder : DACK / SACK</span><br><span class="line">    Open --&gt; CWR : 拥塞通知(ECN)</span><br><span class="line">    Open --&gt; Loss : RTO 超时</span><br><span class="line"></span><br><span class="line">    Disorder --&gt; Recovery : 更多 DACK</span><br><span class="line">    Disorder --&gt; CWR : 拥塞通知(ECN)</span><br><span class="line">    Disorder --&gt; Loss : RTO 超时</span><br><span class="line"></span><br><span class="line">    Recovery --&gt; Loss : RTO 超时</span><br><span class="line">    Recovery --&gt; Open : 全部丢失段被确认</span><br><span class="line"></span><br><span class="line">    CWR --&gt; Open : 拥塞恢复完成</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>首先分析进入各个状态后的需要处理的逻辑：</p>
+<h2 id="设置拥塞状态为TCP-CA-Loss"><a href="#设置拥塞状态为TCP-CA-Loss" class="headerlink" title="设置拥塞状态为TCP_CA_Loss"></a>设置拥塞状态为<code>TCP_CA_Loss</code></h2><p><code>tcp_enter_loss</code>在超时重传定时器到期的时候会被调用会将状态设置为<code>TCP_CA_Loss</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_enter_loss</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> sock_net(sk);</span><br><span class="line">	<span class="type">bool</span> new_recovery = icsk-&gt;icsk_ca_state &lt; TCP_CA_Recovery; <span class="comment">//是否在recovery状态之前</span></span><br><span class="line">	u8 reordering;</span><br><span class="line">	<span class="comment">//基于rack 批量标记丢失数据包</span></span><br><span class="line">	tcp_timeout_mark_lost(sk);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Reduce ssthresh if it has not yet been made inside this window. */</span></span><br><span class="line">	<span class="comment">//保存撤销用到的值</span></span><br><span class="line">	<span class="keyword">if</span> (icsk-&gt;icsk_ca_state &lt;= TCP_CA_Disorder ||  <span class="comment">//如果是乱序或者open</span></span><br><span class="line">	    !after(tp-&gt;high_seq, tp-&gt;snd_una) ||  <span class="comment">//上一次拥塞恢复范围（high_seq）已经被完全 ACK ， 下面会重新设置</span></span><br><span class="line">	    (icsk-&gt;icsk_ca_state == TCP_CA_Loss &amp;&amp; !icsk-&gt;icsk_retransmits)) &#123;</span><br><span class="line">		tp-&gt;prior_ssthresh = tcp_current_ssthresh(sk);  <span class="comment">//慢启动阈值</span></span><br><span class="line">		tp-&gt;prior_cwnd = tcp_snd_cwnd(tp);    <span class="comment">//enterloss前保存拥塞窗口</span></span><br><span class="line">		tp-&gt;snd_ssthresh = icsk-&gt;icsk_ca_ops-&gt;ssthresh(sk);</span><br><span class="line">		tcp_ca_event(sk, CA_EVENT_LOSS); <span class="comment">//调用拥塞算法的钩子</span></span><br><span class="line">		tcp_init_undo(tp); <span class="comment">//初始化撤销用到的信息</span></span><br><span class="line">	&#125;</span><br><span class="line">	tcp_snd_cwnd_set(tp, tcp_packets_in_flight(tp) + <span class="number">1</span>); <span class="comment">//设置拥塞窗口，飞包数+1</span></span><br><span class="line">	tp-&gt;snd_cwnd_cnt   = <span class="number">0</span>; <span class="comment">//清零 cwnd 计数器</span></span><br><span class="line">	tp-&gt;snd_cwnd_stamp = tcp_jiffies32;  <span class="comment">//记录时间戳</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Timeout in disordered state after receiving substantial DUPACKs</span></span><br><span class="line"><span class="comment">	 * suggests that the degree of reordering is over-estimated.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	reordering = READ_ONCE(net-&gt;ipv4.sysctl_tcp_reordering); <span class="comment">//乱序容忍阈值</span></span><br><span class="line">	<span class="keyword">if</span> (icsk-&gt;icsk_ca_state &lt;= TCP_CA_Disorder &amp;&amp;</span><br><span class="line">	    tp-&gt;sacked_out &gt;= reordering)    		<span class="comment">//</span></span><br><span class="line">		tp-&gt;reordering = <span class="type">min_t</span>(<span class="type">unsigned</span> <span class="type">int</span>, tp-&gt;reordering,  <span class="comment">//缩小乱序容忍阈值,相当于容忍度太宽了，都丢包了，所以要缩小</span></span><br><span class="line">				       reordering);</span><br><span class="line"></span><br><span class="line">	tcp_set_ca_state(sk, TCP_CA_Loss); <span class="comment">//设置为loss</span></span><br><span class="line">	tp-&gt;high_seq = tp-&gt;snd_nxt;  <span class="comment">//进入拥塞控制状态后下一个待发送的序列号</span></span><br><span class="line">	tcp_ecn_queue_cwr(tp); <span class="comment">//设置cwr标志位</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* F-RTO RFC5682 sec 3.1 step 1: retransmit SND.UNA if no previous</span></span><br><span class="line"><span class="comment">	 * loss recovery is underway except recurring timeout(s) on</span></span><br><span class="line"><span class="comment">	 * the same SND.UNA (sec 3.2). Disable F-RTO on path MTU probing</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//F-RTO 在 RTO 之后先只重传 SND.UNA 再观察后续 ACK 的模式来判定是否真丢包</span></span><br><span class="line">	tp-&gt;frto = READ_ONCE(net-&gt;ipv4.sysctl_tcp_frto) &amp;&amp;  <span class="comment">//是否开启frto</span></span><br><span class="line">		   (new_recovery || icsk-&gt;icsk_retransmits) &amp;&amp;</span><br><span class="line">		   !inet_csk(sk)-&gt;icsk_mtup.probe_size;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_enter_loss</code>中首先调用<code>tcp_timeout_mark_lost</code>批量标记待重传的数据包（基于<code>rack</code>，重传队列中的数据包是否超过了平均<code>rtt</code>）具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"> */</span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">tcp_timeout_mark_lost</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>, *<span class="title">head</span>;</span></span><br><span class="line">	<span class="type">bool</span> is_reneg;			<span class="comment">/* is receiver reneging on SACKs? */</span></span><br><span class="line">	<span class="comment">//重传队列最老的数据包</span></span><br><span class="line">	head = tcp_rtx_queue_head(sk);</span><br><span class="line">	<span class="comment">//被sack过，但是还在重传队列中，认为是反悔的</span></span><br><span class="line">	is_reneg = head &amp;&amp; (TCP_SKB_CB(head)-&gt;sacked &amp; TCPCB_SACKED_ACKED);</span><br><span class="line">	<span class="keyword">if</span> (is_reneg) &#123; <span class="comment">//处理 SACK 反悔情况</span></span><br><span class="line">		NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPSACKRENEGING);</span><br><span class="line">		tp-&gt;sacked_out = <span class="number">0</span>;</span><br><span class="line">		<span class="comment">/* Mark SACK reneging until we recover from this loss event. */</span></span><br><span class="line">		<span class="comment">//置位 is_sack_reneg</span></span><br><span class="line">		tp-&gt;is_sack_reneg = <span class="number">1</span>;  </span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (tcp_is_reno(tp)) &#123;</span><br><span class="line">		tcp_reset_reno_sack(tp);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	skb = head;</span><br><span class="line">	<span class="comment">//遍历重传队列</span></span><br><span class="line">	skb_rbtree_walk_from(skb) &#123;</span><br><span class="line">		<span class="keyword">if</span> (is_reneg)<span class="comment">//处理 SACK 反悔情况</span></span><br><span class="line">			TCP_SKB_CB(skb)-&gt;sacked &amp;= ~TCPCB_SACKED_ACKED; <span class="comment">//反悔了，清掉</span></span><br><span class="line">		<span class="keyword">else</span> <span class="keyword">if</span> (tcp_is_rack(sk) &amp;&amp; skb != head &amp;&amp;  <span class="comment">//否则如果启用了 RACK（基于时间的丢包检测</span></span><br><span class="line">			 tcp_rack_skb_timeout(tp, skb, <span class="number">0</span>) &gt; <span class="number">0</span>)  <span class="comment">//这个数据包的时间戳是否已经超过了一个平均rtt时间</span></span><br><span class="line">			<span class="keyword">continue</span>; <span class="comment">/* Don&#x27;t mark recently sent ones lost yet */</span></span><br><span class="line">		tcp_mark_skb_lost(sk, skb); <span class="comment">//标记丢失</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//重置 TCP 的重传辅助指针</span></span><br><span class="line">	tcp_verify_left_out(tp);</span><br><span class="line">	tcp_clear_all_retrans_hints(tp);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_timeout_mark_lost</code>中，首先取出重传队列的第一个数据包，判断是否是sack反悔的情况，如果是，则设置标志位，下面会把所有数据包标记位<code>loss</code>并清除<code>sack</code>过的标志，否则的话根据数据包是否在队列中的超过平均<code>rtt</code>来标记是否丢失。</p>
+<p>回到<code>tcp_enter_loss</code>中，标记丢失的数据包之后，保存当前的拥塞窗口，慢启动阈值（为撤销使用），同时调用拥塞算法的钩子，之后更新乱序容忍的阈值，因为已经超时重传了，所以可能是乱序阈值太大了。这里可能会缩小</p>
+<p>之后设置状态为<code>TCP_CA_Loss</code>并调用拥塞算法的钩子。同时记录进入拥塞状态后下一个待发送的序列号。最后根据重传次和系统参数，以及超时重传确定是否开启<code>frto</code>。<strong>这里的<code>frto</code>会影响<code>loss</code>的撤销</strong>！</p>
+<h2 id="设置拥塞状态为TCP-CA-Recovery"><a href="#设置拥塞状态为TCP-CA-Recovery" class="headerlink" title="设置拥塞状态为TCP_CA_Recovery"></a>设置拥塞状态为<code>TCP_CA_Recovery</code></h2><p><code>tcp_enter_recovery</code>在<code>rack</code>定时到期和<code>tcp_fastretrans_alert</code>中被调用具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_enter_recovery</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">bool</span> ece_ack)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="type">int</span> mib_idx;</span><br><span class="line">	<span class="comment">//通常不会走这个</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_is_reno(tp))</span><br><span class="line">		mib_idx = LINUX_MIB_TCPRENORECOVERY;</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		mib_idx = LINUX_MIB_TCPSACKRECOVERY;</span><br><span class="line"></span><br><span class="line">	NET_INC_STATS(sock_net(sk), mib_idx);</span><br><span class="line">	<span class="comment">//重置之前的慢启动阈值</span></span><br><span class="line">	tp-&gt;prior_ssthresh = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//记录进入恢复时候的una和重传的包数</span></span><br><span class="line">	tcp_init_undo(tp);</span><br><span class="line">	<span class="comment">//是否在恢复或者减少拥塞窗口的状态</span></span><br><span class="line">	<span class="keyword">if</span> (!tcp_in_cwnd_reduction(sk)) &#123;</span><br><span class="line">		<span class="keyword">if</span> (!ece_ack) <span class="comment">//如果不是现实拥塞通知，保存慢启动阈值</span></span><br><span class="line">			tp-&gt;prior_ssthresh = tcp_current_ssthresh(sk);</span><br><span class="line">		tcp_init_cwnd_reduction(sk);</span><br><span class="line">	&#125;</span><br><span class="line">	tcp_set_ca_state(sk, TCP_CA_Recovery); <span class="comment">//设置recovery</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_enter_recovery</code>的工作很简单，首先重置了之前的慢启动阈值，之后记录撤销可能用到的参数，之后判断是否是是<code>TCPF_CA_CWR</code> | <code>TCPF_CA_Recovery</code> 状态，如果不是同时不是显示拥塞的情况下，重新计算之前的慢启动阈值（大概率当前拥塞 窗口的0.75），之后调用</p>
+<p><code>tcp_init_cwnd_reduction</code>，**<code>tcp_init_cwnd_reduction</code>中会调用拥塞算法的钩子，重新计算慢启动阈值，**具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line"></span><br><span class="line">	tp-&gt;high_seq = tp-&gt;snd_nxt; <span class="comment">//标记恢复开始的位置</span></span><br><span class="line">	tp-&gt;tlp_high_seq = <span class="number">0</span>; <span class="comment">//TLP（尾部丢包探测）相关参数清零</span></span><br><span class="line">	tp-&gt;snd_cwnd_cnt = <span class="number">0</span>; <span class="comment">//这个有什么用？？累加之后影响拥塞窗口？</span></span><br><span class="line">	tp-&gt;prior_cwnd = tcp_snd_cwnd(tp); <span class="comment">//保存拥塞窗口</span></span><br><span class="line">	tp-&gt;prr_delivered = <span class="number">0</span>;</span><br><span class="line">	tp-&gt;prr_out = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">////拥塞算法钩子重新计算慢启动阈值</span></span><br><span class="line">	tp-&gt;snd_ssthresh = inet_csk(sk)-&gt;icsk_ca_ops-&gt;ssthresh(sk); </span><br><span class="line">	tcp_ecn_queue_cwr(tp);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h2 id="设置拥塞状态为TCP-CA-CWR"><a href="#设置拥塞状态为TCP-CA-CWR" class="headerlink" title="设置拥塞状态为TCP_CA_CWR"></a>设置拥塞状态为<code>TCP_CA_CWR</code></h2><p>当 TCP 检测到发生 ECN 拥塞或本地主机丢包（比如<code>qdisc</code>）时会调用<code>tcp_enter_cwr</code></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_enter_cwr</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line"></span><br><span class="line">	tp-&gt;prior_ssthresh = <span class="number">0</span>;</span><br><span class="line">	<span class="keyword">if</span> (inet_csk(sk)-&gt;icsk_ca_state &lt; TCP_CA_CWR) &#123;</span><br><span class="line">		tp-&gt;undo_marker = <span class="number">0</span>;</span><br><span class="line">		tcp_init_cwnd_reduction(sk);<span class="comment">//初始化拥塞窗口减小</span></span><br><span class="line">		tcp_set_ca_state(sk, TCP_CA_CWR); <span class="comment">//设置cwr状态</span></span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_enter_cwr</code>中将待设置为<code>TCP_CA_CWR</code><strong>因为是显示拥塞，所以是不会撤销的！</strong></p>
+<h2 id="设置拥塞状态为TCP-CA-Disorder"><a href="#设置拥塞状态为TCP-CA-Disorder" class="headerlink" title="设置拥塞状态为TCP_CA_Disorder"></a>设置拥塞状态为<code>TCP_CA_Disorder</code></h2><p><code>TLP ACK</code>的确认以及<code>tcp_fastretrans_alert</code>中会调用<code>tcp_try_keep_open</code>来设置<code>TCP_CA_Disorder</code>状态，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">tcp_try_keep_open</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="type">int</span> state = TCP_CA_Open;</span><br><span class="line">	<span class="comment">//计算sack和丢包的数量  或者是否正在重传的包或者重传队列中有数据包</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_left_out(tp) || tcp_any_retrans_done(sk))</span><br><span class="line">		state = TCP_CA_Disorder;  <span class="comment">//设置为乱需状态</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (inet_csk(sk)-&gt;icsk_ca_state != state) &#123;  <span class="comment">//如果不是open状态</span></span><br><span class="line">		tcp_set_ca_state(sk, state); <span class="comment">//设置乱需或者open状态</span></span><br><span class="line">		tp-&gt;high_seq = tp-&gt;snd_nxt;  <span class="comment">//保存进入拥塞状态的的序号</span></span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里的<code>tcp_try_keep_open</code>可以理解为一个健康检查，当存在<code>sack</code>或者存在可能丢失的数据包（<code>sack</code>和<code>dupack</code>导致的？），或者重传队列的最早的数据包以及重传过则设置为<code>TCP_CA_Disorder</code>状态。</p>
+<h2 id="设置拥塞状态为TCP-CA-Open"><a href="#设置拥塞状态为TCP-CA-Open" class="headerlink" title="设置拥塞状态为TCP_CA_Open"></a>设置拥塞状态为TCP_CA_Open</h2><p><code>TCP_CA_Open</code>在多个地方会设置，这里不粘贴代码了，当从各种异常状态撤销时，会转变为<code>open</code>状态，拥塞算法刚初始化时，也会设置为<code>open</code>状态。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6/" rel="tag"># TCP拥塞控制</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/10/21/TCP%E5%90%8C%E6%97%B6%E6%89%93%E5%BC%80/" rel="prev" title="TCP三次握手-同时打开">
+      <i class="fa fa-chevron-left"></i> TCP三次握手-同时打开
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BE%E7%BD%AE%E6%8B%A5%E5%A1%9E%E7%8A%B6%E6%80%81%E4%B8%BATCP-CA-Loss"><span class="nav-number">1.</span> <span class="nav-text">设置拥塞状态为TCP_CA_Loss</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BE%E7%BD%AE%E6%8B%A5%E5%A1%9E%E7%8A%B6%E6%80%81%E4%B8%BATCP-CA-Recovery"><span class="nav-number">2.</span> <span class="nav-text">设置拥塞状态为TCP_CA_Recovery</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BE%E7%BD%AE%E6%8B%A5%E5%A1%9E%E7%8A%B6%E6%80%81%E4%B8%BATCP-CA-CWR"><span class="nav-number">3.</span> <span class="nav-text">设置拥塞状态为TCP_CA_CWR</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BE%E7%BD%AE%E6%8B%A5%E5%A1%9E%E7%8A%B6%E6%80%81%E4%B8%BATCP-CA-Disorder"><span class="nav-number">4.</span> <span class="nav-text">设置拥塞状态为TCP_CA_Disorder</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BE%E7%BD%AE%E6%8B%A5%E5%A1%9E%E7%8A%B6%E6%80%81%E4%B8%BATCP-CA-Open"><span class="nav-number">5.</span> <span class="nav-text">设置拥塞状态为TCP_CA_Open</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">59</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">16</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
