@@ -193,6 +193,243 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/11/04/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-cubic%E6%8B%A5%E5%A1%9E%E7%AE%97%E6%B3%95%EF%BC%88%E4%BA%8C%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/11/04/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-cubic%E6%8B%A5%E5%A1%9E%E7%AE%97%E6%B3%95%EF%BC%88%E4%BA%8C%EF%BC%89/" class="post-title-link" itemprop="url">TCP拥塞控制-CUBIC算法(二)</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-11-04 22:00:00" itemprop="dateCreated datePublished" datetime="2025-11-04T22:00:00+08:00">2025-11-04</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-11-02 23:04:11" itemprop="dateModified" datetime="2025-11-02T23:04:11+08:00">2025-11-02</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/11/04/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-cubic%E6%8B%A5%E5%A1%9E%E7%AE%97%E6%B3%95%EF%BC%88%E4%BA%8C%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/11/04/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-cubic%E6%8B%A5%E5%A1%9E%E7%AE%97%E6%B3%95%EF%BC%88%E4%BA%8C%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p><code>cubictcp_cong_avoid</code>中如果当前不在慢启动阶段，则会调用<code>bictcp_update</code>计算拥塞窗口，具体代如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br></pre></td><td class="code"><pre><span class="line"> */</span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">bictcp_update</span><span class="params">(<span class="keyword">struct</span> bictcp *ca, u32 cwnd, u32 acked)</span></span><br><span class="line">&#123;</span><br><span class="line">	u32 delta, bic_target, max_cnt;</span><br><span class="line">	u64 offs, t;</span><br><span class="line">	<span class="comment">//ack的总数</span></span><br><span class="line">	ca-&gt;ack_cnt += acked;	<span class="comment">/* count the number of ACKed packets */</span></span><br><span class="line">	<span class="comment">//拥塞窗口没有变化，且时间太短了</span></span><br><span class="line">	<span class="keyword">if</span> (ca-&gt;last_cwnd == cwnd &amp;&amp;</span><br><span class="line">	    (s32)(tcp_jiffies32 - ca-&gt;last_time) &lt;= HZ / <span class="number">32</span>)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* The CUBIC function can update ca-&gt;cnt at most once per jiffy.</span></span><br><span class="line"><span class="comment">	 * On all cwnd reduction events, ca-&gt;epoch_start is set to 0,</span></span><br><span class="line"><span class="comment">	 * which will force a recalculation of ca-&gt;cnt.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//是否处于一个增长周期 且在同一个时间片内，意思就是每个jiffy最多计算一次Cubic</span></span><br><span class="line">	<span class="keyword">if</span> (ca-&gt;epoch_start &amp;&amp; tcp_jiffies32 == ca-&gt;last_time)</span><br><span class="line">		<span class="keyword">goto</span> tcp_friendliness;</span><br><span class="line"></span><br><span class="line">	ca-&gt;last_cwnd = cwnd;  <span class="comment">//记录当前拥塞窗口</span></span><br><span class="line">	ca-&gt;last_time = tcp_jiffies32; <span class="comment">//记录当前时间戳</span></span><br><span class="line">	<span class="comment">//== 0表示上次发生过拥塞</span></span><br><span class="line">	<span class="keyword">if</span> (ca-&gt;epoch_start == <span class="number">0</span>) &#123;</span><br><span class="line">		ca-&gt;epoch_start = tcp_jiffies32;	<span class="comment">/* record beginning */</span> <span class="comment">//记录新周期开始的时间戳</span></span><br><span class="line">		ca-&gt;ack_cnt = acked;			<span class="comment">/* start counting */</span> <span class="comment">//传入的ack数目</span></span><br><span class="line">		ca-&gt;tcp_cwnd = cwnd;			<span class="comment">/* syn with cubic */</span> <span class="comment">//保存当前的拥塞窗口</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (ca-&gt;last_max_cwnd &lt;= cwnd) &#123;  <span class="comment">//历史最大窗口是否小于本次的拥塞窗口</span></span><br><span class="line">			ca-&gt;bic_K = <span class="number">0</span>;       		<span class="comment">//立即开始快速增长？</span></span><br><span class="line">			ca-&gt;bic_origin_point = cwnd; <span class="comment">//当前窗口为起点</span></span><br><span class="line">		&#125; <span class="keyword">else</span> &#123; <span class="comment">//低于最大的拥塞窗口</span></span><br><span class="line">			<span class="comment">/* Compute new K based on</span></span><br><span class="line"><span class="comment">			 * (wmax-cwnd) * (srtt&gt;&gt;3 / HZ) / c * 2^(3*bictcp_HZ)</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="comment">//从当前窗口恢复到历史最大窗口所需的预估时间</span></span><br><span class="line">			ca-&gt;bic_K = cubic_root(cube_factor</span><br><span class="line">					       * (ca-&gt;last_max_cwnd - cwnd));</span><br><span class="line">			ca-&gt;bic_origin_point = ca-&gt;last_max_cwnd;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* cubic function - calc*/</span></span><br><span class="line">	<span class="comment">/* calculate c * time^3 / rtt,</span></span><br><span class="line"><span class="comment">	 *  while considering overflow in calculation of time^3</span></span><br><span class="line"><span class="comment">	 * (so time^3 is done by using 64 bit)</span></span><br><span class="line"><span class="comment">	 * and without the support of division of 64bit numbers</span></span><br><span class="line"><span class="comment">	 * (so all divisions are done by using 32 bit)</span></span><br><span class="line"><span class="comment">	 *  also NOTE the unit of those veriables</span></span><br><span class="line"><span class="comment">	 *	  time  = (t - K) / 2^bictcp_HZ</span></span><br><span class="line"><span class="comment">	 *	  c = bic_scale &gt;&gt; 10</span></span><br><span class="line"><span class="comment">	 * rtt  = (srtt &gt;&gt; 3) / HZ</span></span><br><span class="line"><span class="comment">	 * !!! The following code does not have overflow problems,</span></span><br><span class="line"><span class="comment">	 * if the cwnd &lt; 1 million packets !!!</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//当前增长周期开始到现在经过的时间</span></span><br><span class="line">	t = (s32)(tcp_jiffies32 - ca-&gt;epoch_start);</span><br><span class="line">	<span class="comment">//加一个最小rtt 是干什么的</span></span><br><span class="line">	t += usecs_to_jiffies(ca-&gt;delay_min);</span><br><span class="line">	<span class="comment">/* change the unit from HZ to bictcp_HZ */</span></span><br><span class="line">	t &lt;&lt;= BICTCP_HZ;</span><br><span class="line">	do_div(t, HZ);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (t &lt; ca-&gt;bic_K)		<span class="comment">//计算/* t - K */</span></span><br><span class="line">		offs = ca-&gt;bic_K - t;</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		offs = t - ca-&gt;bic_K;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* c/rtt * (t-K)^3 */</span></span><br><span class="line">	<span class="comment">//相当于delta = C × (t - K)³</span></span><br><span class="line">	delta = (cube_rtt_scale * offs * offs * offs) &gt;&gt; (<span class="number">10</span>+<span class="number">3</span>*BICTCP_HZ);  <span class="comment">//这个是计算窗口差值</span></span><br><span class="line">	<span class="keyword">if</span> (t &lt; ca-&gt;bic_K)                            <span class="comment">/* below origin*/</span></span><br><span class="line">		bic_target = ca-&gt;bic_origin_point - delta; <span class="comment">//恢复</span></span><br><span class="line">	<span class="keyword">else</span>                                          <span class="comment">/* above origin*/</span></span><br><span class="line">		bic_target = ca-&gt;bic_origin_point + delta; <span class="comment">//超越</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* cubic function - calc bictcp_cnt*/</span></span><br><span class="line">	<span class="keyword">if</span> (bic_target &gt; cwnd) &#123;</span><br><span class="line">		<span class="comment">//计算多少个ack增加拥塞窗口</span></span><br><span class="line">		ca-&gt;cnt = cwnd / (bic_target - cwnd);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123; <span class="comment">//不正常的情况，极慢</span></span><br><span class="line">		ca-&gt;cnt = <span class="number">100</span> * cwnd;              <span class="comment">/* very small increment*/</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * The initial growth of cubic function may be too conservative</span></span><br><span class="line"><span class="comment">	 * when the available bandwidth is still unknown.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	 <span class="comment">//如果刚开始，确保增长的别太慢</span></span><br><span class="line">	<span class="keyword">if</span> (ca-&gt;last_max_cwnd == <span class="number">0</span> &amp;&amp; ca-&gt;cnt &gt; <span class="number">20</span>)</span><br><span class="line">		ca-&gt;cnt = <span class="number">20</span>;	<span class="comment">/* increase cwnd 5% per RTT */</span></span><br><span class="line"></span><br><span class="line">tcp_friendliness:</span><br><span class="line">	<span class="comment">/* TCP Friendly */</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_friendliness) &#123;</span><br><span class="line">		u32 scale = beta_scale;	</span><br><span class="line">		<span class="comment">//计算reno 多少ack加拥塞窗口</span></span><br><span class="line">		delta = (cwnd * scale) &gt;&gt; <span class="number">3</span>; <span class="comment">//每 RTT +1 cwnd？ 这里不太懂</span></span><br><span class="line">		<span class="keyword">while</span> (ca-&gt;ack_cnt &gt; delta) &#123;		<span class="comment">/* update tcp cwnd */</span></span><br><span class="line">			ca-&gt;ack_cnt -= delta;</span><br><span class="line">			ca-&gt;tcp_cwnd++;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//比reno还慢，用reno的</span></span><br><span class="line">		<span class="keyword">if</span> (ca-&gt;tcp_cwnd &gt; cwnd) &#123;	<span class="comment">/* if bic is slower than tcp */</span></span><br><span class="line">			delta = ca-&gt;tcp_cwnd - cwnd;</span><br><span class="line">			max_cnt = cwnd / delta;</span><br><span class="line">			<span class="keyword">if</span> (ca-&gt;cnt &gt; max_cnt)</span><br><span class="line">				ca-&gt;cnt = max_cnt;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* The maximum rate of cwnd increase CUBIC allows is 1 packet per</span></span><br><span class="line"><span class="comment">	 * 2 packets ACKed, meaning cwnd grows at 1.5x per RTT.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">    <span class="comment">//至少收到两个ack 窗口才能加1 </span></span><br><span class="line">	ca-&gt;cnt = max(ca-&gt;cnt, <span class="number">2U</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="bictcp-update"><a href="#bictcp-update" class="headerlink" title="bictcp_update"></a><code>bictcp_update</code></h2><p>为CUBIC算法的核心，核心思想为：<strong>根据当前时间、上一次的最大窗口、现在的 cwnd，把 CUBIC 曲线算出来，得到“下一段时间 cwnd 应该以多快的速度涨”，这个“多快”就是 <code>ca-&gt;cnt</code>（拥塞窗口增长的速率）。</strong></p>
+<p><code>bictcp_update</code>中首先判断是否需要进行计算，如果距离上次计算拥塞窗口的时间很短，就直接返回。如果当前已经在一个增长周期里，且这次时间戳跟上次完全一样， 那这次就<strong>不算立方曲线部分，直接走 TCP 兼容</strong>。</p>
+<p>否则的话判断根据<code>epoch_start</code> 是否为0，判断是否需要计算新的<code>cubic</code>曲线，也就是发生过拥塞（或者第一次进入拥塞避免），这里分两种情况进行处理，如果当前窗口已经达到或超过历史峰值，	K为 0，立方曲线从当前时刻开始。如果历史最大值 &gt; 当前窗口，则计算K的值， 表示<strong>预计要经过多久（时间偏移）才能恢复到上次最大窗口</strong>。</p>
+<p>得到了K之后，会根据t - K以及C来计算<code>delta</code>这个<code>delta</code>就是窗口的变化量(是超越还是恢复)，接下来计算多少个ack增加拥塞窗口（如果处于刚开阶段，还会修正一下确保增长不过于缓慢）。</p>
+<p>接下来进入<code>tcp</code>的友好处理逻辑：</p>
+<p><strong>算法会同时维护一个虚 Reno 拥塞窗口（<code>tcp_cwnd</code>）来模拟传统 Reno 的线性增长过程</strong>计算出在 Reno 模型下，大约需要多少个 ACK 才能让 cwnd 增加 1。</p>
+<p><strong>如果发现 CUBIC 的实际窗口 (<code>cwnd</code>) 比 Reno 模拟窗口 (<code>tcp_cwnd</code>) 小，说明 CUBIC 增长太慢，于是计算两者差距并调低 <code>ca-&gt;cnt</code></strong></p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/11/04/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-cubic%E6%8B%A5%E5%A1%9E%E7%AE%97%E6%B3%95%EF%BC%88%E4%BA%8C%EF%BC%89/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/11/02/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-cubic%E6%8B%A5%E5%A1%9E%E7%AE%97%E6%B3%95%EF%BC%88%E4%B8%80%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/11/02/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-cubic%E6%8B%A5%E5%A1%9E%E7%AE%97%E6%B3%95%EF%BC%88%E4%B8%80%EF%BC%89/" class="post-title-link" itemprop="url">TCP拥塞控制-CUBIC算法(一)</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-11-02 22:00:00 / 修改时间：23:15:26" itemprop="dateCreated datePublished" datetime="2025-11-02T22:00:00+08:00">2025-11-02</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/11/02/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-cubic%E6%8B%A5%E5%A1%9E%E7%AE%97%E6%B3%95%EF%BC%88%E4%B8%80%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/11/02/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-cubic%E6%8B%A5%E5%A1%9E%E7%AE%97%E6%B3%95%EF%BC%88%E4%B8%80%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p> <code>CUBIC</code> 是为高带宽-时延积设计的拥塞控制算法，也是目前 Linux系统的默认 <code>TCP</code> 算法与传统的 <code>Reno</code> 算法（线性增大窗口）不同，<code>CUBIC</code> 采用<strong>随时间增长拥塞窗口的策略</strong>，使得窗口先<strong>快速上升</strong>接近上次拥塞前的大小（凹形增长），在达到“拐点”时短暂<strong>平稳期</strong>，然后再以更快的速度进行凸形增长来探测更多带宽。<strong>这样设计可以使窗口增长独立于 RTT</strong>（基于时间驱动）。</p>
+<p> CUBIC 的核心公式如下所示<br>$$<br>W(t) &#x3D; C \cdot (t - K)^3 + W_{\max}<br>$$</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>含义</th>
+<th>典型值 &#x2F; 单位</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>W(t)</strong></td>
+<td>当前时间 <code>t</code> 下的目标拥塞窗口（Congestion Window）</td>
+<td>单位：MSS</td>
+<td>算法根据时间推算出的理想发送窗口。实际发送窗口 <code>cwnd</code> 会慢慢靠近它。</td>
+</tr>
+<tr>
+<td><strong>C</strong></td>
+<td>曲线增长系数（Cubic Scaling Factor）</td>
+<td>通常取 <code>0.4</code></td>
+<td>控制窗口增长的“速度”和“陡峭程度”。C 越大，增长越快；越小，增长越平缓。</td>
+</tr>
+<tr>
+<td><strong>t</strong></td>
+<td>自上次丢包事件以来的时间</td>
+<td>秒（或 RTT 为单位）</td>
+<td>从上次检测到拥塞开始计时，用于计算曲线位置。</td>
+</tr>
+<tr>
+<td><strong>K</strong></td>
+<td>到达上次最大窗口 <code>Wmax</code> 所需的时间偏移</td>
+<td>单位：秒（或 RTT）</td>
+<td>表示多久后窗口恢复到上次丢包时的最大值。由下式计算：</td>
+</tr>
+</tbody></table>
+<h2 id="拥塞算法的注册"><a href="#拥塞算法的注册" class="headerlink" title="拥塞算法的注册"></a>拥塞算法的注册</h2><p>注册拥塞算法的代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> __init <span class="title function_">cubictcp_register</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> ret;</span><br><span class="line"></span><br><span class="line">	BUILD_BUG_ON(<span class="keyword">sizeof</span>(<span class="keyword">struct</span> bictcp) &gt; ICSK_CA_PRIV_SIZE);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Precompute a bunch of the scaling factors that are used per-packet</span></span><br><span class="line"><span class="comment">	 * based on SRTT of 100ms</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">// TCP友好性用到 beta_scale 用来把 CUBIC 的增长速度调成和 Reno 相当</span></span><br><span class="line">	beta_scale = <span class="number">8</span>*(BICTCP_BETA_SCALE+beta) / <span class="number">3</span></span><br><span class="line">		/ (BICTCP_BETA_SCALE - beta);</span><br><span class="line"></span><br><span class="line">	<span class="comment">//算C用到</span></span><br><span class="line">	cube_rtt_scale = (bic_scale * <span class="number">10</span>);	<span class="comment">/* 1024*c/rtt */</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* calculate the &quot;K&quot; for (wmax-cwnd) = c/rtt * K^3</span></span><br><span class="line"><span class="comment">	 *  so K = cubic_root( (wmax-cwnd)*rtt/c )</span></span><br><span class="line"><span class="comment">	 * the unit of K is bictcp_HZ=2^10, not HZ</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 *  c = bic_scale &gt;&gt; 10</span></span><br><span class="line"><span class="comment">	 *  rtt = 100ms</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * the following code has been designed and tested for</span></span><br><span class="line"><span class="comment">	 * cwnd &lt; 1 million packets</span></span><br><span class="line"><span class="comment">	 * RTT &lt; 100 seconds</span></span><br><span class="line"><span class="comment">	 * HZ &lt; 1,000,00  (corresponding to 10 nano-second)</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* 1/c * 2^2*bictcp_HZ * srtt */</span></span><br><span class="line">	cube_factor = <span class="number">1ull</span> &lt;&lt; (<span class="number">10</span>+<span class="number">3</span>*BICTCP_HZ); <span class="comment">/* 2^40 */</span></span><br><span class="line">	<span class="comment">//算K的时候用到</span></span><br><span class="line">	<span class="comment">/* divide by bic_scale and by constant Srtt (100ms) */</span></span><br><span class="line">	do_div(cube_factor, bic_scale * <span class="number">10</span>);</span><br><span class="line">	<span class="comment">//bfp相关</span></span><br><span class="line">	ret = register_btf_kfunc_id_set(BPF_PROG_TYPE_STRUCT_OPS, &amp;tcp_cubic_kfunc_set);</span><br><span class="line">	<span class="keyword">if</span> (ret &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">return</span> ret;</span><br><span class="line">	<span class="keyword">return</span> tcp_register_congestion_control(&amp;cubictcp);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>cubictcp_register</code>中首先预计算了几个常量，计算C和K的时候会用到，用于减少运算的复杂度，之后调用<code>tcp_register_congestion_control</code>注册<code>CUBIC</code>的一系列<code>ops</code>，具体的回调函数集合如下所示以及管理CUBIC结构的字段如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="class"><span class="keyword">struct</span> <span class="title">tcp_congestion_ops</span> <span class="title">cubictcp</span> __<span class="title">read_mostly</span> =</span> &#123;</span><br><span class="line">	.init		= cubictcp_init,		<span class="comment">//三次握手完成的时候会调用</span></span><br><span class="line">	.ssthresh	= cubictcp_recalc_ssthresh,  <span class="comment">//进入恢复状态的时候会调用，重新计算慢启动阈值</span></span><br><span class="line">	.cong_avoid	= cubictcp_cong_avoid,	<span class="comment">//拥塞避免阶段会调用</span></span><br><span class="line">	.set_state	= cubictcp_state,		<span class="comment">//状态转换的时候会调用</span></span><br><span class="line">	.undo_cwnd	= tcp_reno_undo_cwnd,  <span class="comment">//拥塞窗口撤销的时候调用</span></span><br><span class="line">	.cwnd_event	= cubictcp_cwnd_event, <span class="comment">//多个地方会调用，在发送的通路上回调用cubic注册的这个钩子</span></span><br><span class="line">	.pkts_acked     = cubictcp_acked,	<span class="comment">//清理重传队列回调用，是否需要提前退出慢启动</span></span><br><span class="line">	.owner		= THIS_MODULE,</span><br><span class="line">	.name		= <span class="string">&quot;cubic&quot;</span>,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">bictcp</span> &#123;</span></span><br><span class="line">	u32	cnt;		        <span class="comment">// 每收到 cnt 个 ACK 后 cwnd 增加 1，控制增长速度</span></span><br><span class="line">	u32	last_max_cwnd;	    <span class="comment">// 上次丢包前的最大 cwnd，用于确定下一轮 cubic 峰值</span></span><br><span class="line">	u32	last_cwnd;		    <span class="comment">// 上次调用 bictcp_update() 时的 cwnd</span></span><br><span class="line">	u32	last_time;		    <span class="comment">// 上次更新 cwnd 的时间戳（jiffies）</span></span><br><span class="line">	u32	bic_origin_point;	<span class="comment">// cubic 曲线原点（通常为 Wmax 或当前 cwnd）</span></span><br><span class="line">	u32	bic_K;		        <span class="comment">// 当前周期起点到原点的时间间隔，用于计算 cubic 曲线</span></span><br><span class="line">	u32	delay_min;		    <span class="comment">// 观测到的最小 RTT（微秒），表示基础传播延迟</span></span><br><span class="line">	u32	epoch_start;	    <span class="comment">// 当前增长周期起始时间戳（检测到拥塞后重置）</span></span><br><span class="line">	u32	ack_cnt;		    <span class="comment">// 当前周期累计 ACK 数量，用于控制 cwnd 增长步频</span></span><br><span class="line">	u32	tcp_cwnd;		    <span class="comment">// 模拟 Reno 下的 cwnd，用于保持 TCP 友好性</span></span><br><span class="line">	u16	unused;		        <span class="comment">// 保留字段（未使用）</span></span><br><span class="line">	u8	sample_cnt;		    <span class="comment">// 当前 RTT 轮采样的 RTT 数量，用于 HyStart 延迟判断</span></span><br><span class="line">	u8	found;		        <span class="comment">// 是否已找到退出慢启动的时机（HyStart 标志）</span></span><br><span class="line">	u32	round_start;	    <span class="comment">// 当前轮发送开始时间，用于 ACK train 检测</span></span><br><span class="line">	u32	end_seq;		    <span class="comment">// 当前轮发送数据的最后一个序列号</span></span><br><span class="line">	u32	last_ack;		    <span class="comment">// 最近一次收到密集 ACK 的时间戳（ACK train）</span></span><br><span class="line">	u32	curr_rtt;		    <span class="comment">// 当前轮最小 RTT，用于判断排队是否出现</span></span><br><span class="line">&#125;;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>如上述代码所示，在协议栈的不同阶段会调用上述注册的一系列钩子，具体功能如下所示</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/11/02/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-cubic%E6%8B%A5%E5%A1%9E%E7%AE%97%E6%B3%95%EF%BC%88%E4%B8%80%EF%BC%89/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/10/28/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-%E6%8B%A5%E5%A1%9E%E7%8A%B6%E6%80%81%E8%BD%AC%E6%8D%A2/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1038,210 +1275,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/09/24/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack(%E5%9B%9B)/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/09/24/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack(%E5%9B%9B)/" class="post-title-link" itemprop="url">TCP三次握手-接收ack (四)</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2025-09-24 22:00:00 / 修改时间：22:36:06" itemprop="dateCreated datePublished" datetime="2025-09-24T22:00:00+08:00">2025-09-24</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/09/24/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack(%E5%9B%9B)/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/09/24/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack(%E5%9B%9B)/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p>回到<code>tcp_check_req</code>中，计算完<code>rtt</code>相关字段后，则到了最后一步，叫做<code>hashdance</code>，也就是将新创建的<code>sock</code>加入全连接队列具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> sock *<span class="title function_">inet_csk_complete_hashdance</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sock *child,</span></span><br><span class="line"><span class="params">                     <span class="keyword">struct</span> request_sock *req, <span class="type">bool</span> own_req)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="comment">//正常情况，新创建的子sock成功插入ehash后own_req为ture</span></span><br><span class="line">    <span class="keyword">if</span> (own_req) &#123;</span><br><span class="line">        <span class="comment">//从ehash中删除(这里应该不会在删除了)，删除定时器</span></span><br><span class="line">        inet_csk_reqsk_queue_drop(req-&gt;rsk_listener, req);</span><br><span class="line">        <span class="comment">//从半连接队列中移除了</span></span><br><span class="line">        reqsk_queue_removed(&amp;inet_csk(req-&gt;rsk_listener)-&gt;icsk_accept_queue, req);</span><br><span class="line">        <span class="comment">//如果监听sock和req 指向的sock不是一个,基本上不会是这种情况</span></span><br><span class="line">        <span class="keyword">if</span> (sk != req-&gt;rsk_listener) &#123;</span><br><span class="line">            <span class="comment">/* another listening sk has been selected,</span></span><br><span class="line"><span class="comment">             * migrate the req to it.</span></span><br><span class="line"><span class="comment">             */</span></span><br><span class="line">            <span class="class"><span class="keyword">struct</span> <span class="title">request_sock</span> *<span class="title">nreq</span>;</span></span><br><span class="line"></span><br><span class="line">            <span class="comment">/* hold a refcnt for the nreq-&gt;rsk_listener</span></span><br><span class="line"><span class="comment">             * which is assigned in inet_reqsk_clone()</span></span><br><span class="line"><span class="comment">             */</span></span><br><span class="line">            sock_hold(sk);</span><br><span class="line">            <span class="comment">//由于原始的 req关联的是旧的监听套接字，不能直接用于新的监听套接字。</span></span><br><span class="line">            <span class="comment">//因此需要调用 inet_reqsk_clone  克隆一个新的请求块</span></span><br><span class="line">            nreq = inet_reqsk_clone(req, sk);</span><br><span class="line">            <span class="keyword">if</span> (!nreq) &#123;</span><br><span class="line">                inet_child_forget(sk, req, child);</span><br><span class="line">                <span class="keyword">goto</span> child_put;</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            refcount_set(&amp;nreq-&gt;rsk_refcnt, <span class="number">1</span>);</span><br><span class="line">            <span class="comment">//加入全连接队列，更新三次握手成功数量</span></span><br><span class="line">            <span class="keyword">if</span> (inet_csk_reqsk_queue_add(sk, nreq, child)) &#123;</span><br><span class="line">                __NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPMIGRATEREQSUCCESS);</span><br><span class="line">                reqsk_migrate_reset(req);</span><br><span class="line">                reqsk_put(req); <span class="comment">//处理原来的req</span></span><br><span class="line">                <span class="keyword">return</span> child; <span class="comment">//直接返回新的sock</span></span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            __NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPMIGRATEREQFAILURE);</span><br><span class="line">            reqsk_migrate_reset(nreq);</span><br><span class="line">            __reqsk_free(nreq);</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (inet_csk_reqsk_queue_add(sk, req, child)) &#123; <span class="comment">//正常走这个分支，加入全连接队列</span></span><br><span class="line">            <span class="keyword">return</span> child; <span class="comment">//返回新创建的sock，注意这里其实并没有释放req这个结构，req是在外面被释放的</span></span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">/* Too bad, another child took ownership of the request, undo. */</span></span><br><span class="line">child_put:</span><br><span class="line">    bh_unlock_sock(child);</span><br><span class="line">    sock_put(child);</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>上述代码的逻辑为**，如果 <code>own_req</code> 为 true（子 socket 成功<code>ehash</code>），就会从半连接队列移除 <code>req</code><strong>；如果监听 socket 发生变化，就克隆一个新的 <code>req</code> 并迁移到新的监听 socket（基本不会发生这个情况吧）</strong>；否则调用<code>inet_csk_reqsk_queue_add</code>将新的<code>sock</code>加入全连接队列，并返回新的 sock**。</p>
-<p>加入全连接队列，更新三次握手成功数量具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//加入全连接队列，更新三次握手成功数量</span></span><br><span class="line"><span class="keyword">struct</span> sock *<span class="title function_">inet_csk_reqsk_queue_add</span><span class="params">(<span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">                      <span class="keyword">struct</span> request_sock *req,</span></span><br><span class="line"><span class="params">                      <span class="keyword">struct</span> sock *child)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">request_sock_queue</span> *<span class="title">queue</span> =</span> &amp;inet_csk(sk)-&gt;icsk_accept_queue;</span><br><span class="line"></span><br><span class="line">    spin_lock(&amp;<span class="built_in">queue</span>-&gt;rskq_lock);</span><br><span class="line">    <span class="comment">//如果应用程序关掉监听套件字了？这里直接把资源都释放了</span></span><br><span class="line">    <span class="keyword">if</span> (unlikely(sk-&gt;sk_state != TCP_LISTEN)) &#123;</span><br><span class="line">        inet_child_forget(sk, req, child);</span><br><span class="line">        child = <span class="literal">NULL</span>;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        req-&gt;sk = child; <span class="comment">//关联req和新创建的sock</span></span><br><span class="line">        req-&gt;dl_next = <span class="literal">NULL</span>;</span><br><span class="line">        <span class="comment">//注意这里加入了全连接队列</span></span><br><span class="line">        <span class="keyword">if</span> (<span class="built_in">queue</span>-&gt;rskq_accept_head == <span class="literal">NULL</span>)</span><br><span class="line">            WRITE_ONCE(<span class="built_in">queue</span>-&gt;rskq_accept_head, req);</span><br><span class="line">        <span class="keyword">else</span></span><br><span class="line">            <span class="built_in">queue</span>-&gt;rskq_accept_tail-&gt;dl_next = req;</span><br><span class="line">        <span class="built_in">queue</span>-&gt;rskq_accept_tail = req;</span><br><span class="line">        sk_acceptq_added(sk); <span class="comment">//sk_ack_backlog++（三次握手成功的数量）</span></span><br><span class="line">    &#125;</span><br><span class="line">    spin_unlock(&amp;<span class="built_in">queue</span>-&gt;rskq_lock);</span><br><span class="line">    <span class="keyword">return</span> child;</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">sk_acceptq_added</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">    WRITE_ONCE(sk-&gt;sk_ack_backlog, sk-&gt;sk_ack_backlog + <span class="number">1</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>至此<code>tcp_check_req</code>全部逻辑就执行完毕，回到<code>tcp_v4_rcv</code>中 <code>**tcp_check_req**</code>返回了新创建的<code>sock</code> **此时<code>sk</code>与<code>nsk</code>不是一个<code>sock</code>具体代码如下所示</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//bfp相关的过滤钩子，返回0表示被接收</span></span><br><span class="line">        <span class="keyword">if</span> (!tcp_filter(sk, skb)) &#123;</span><br><span class="line">            th = (<span class="type">const</span> <span class="keyword">struct</span> tcphdr *)skb-&gt;data;</span><br><span class="line">            iph = ip_hdr(skb);</span><br><span class="line">            <span class="comment">//根据数据包字段填充私有控制结构</span></span><br><span class="line">            tcp_v4_fill_cb(skb, iph, th);</span><br><span class="line">            <span class="comment">//创建新的sock，这里可能返回监听sk，或者空，或者新的sock</span></span><br><span class="line">            nsk = tcp_check_req(sk, skb, req, <span class="literal">false</span>, &amp;req_stolen);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            drop_reason = SKB_DROP_REASON_SOCKET_FILTER;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (!nsk) &#123;<span class="comment">//如果返回空则表示收到的报文可能不合法，打概率默默丢弃了</span></span><br><span class="line">            reqsk_put(req);</span><br><span class="line">            <span class="keyword">if</span> (req_stolen) &#123;</span><br><span class="line">                tcp_v4_restore_cb(skb);</span><br><span class="line">                sock_put(sk);</span><br><span class="line">                <span class="keyword">goto</span> lookup;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">goto</span> discard_and_relse;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">//连接跟踪相关复位</span></span><br><span class="line">        nf_reset_ct(skb);</span><br><span class="line">        <span class="keyword">if</span> (nsk == sk) &#123;</span><br><span class="line">            reqsk_put(req);</span><br><span class="line">            tcp_v4_restore_cb(skb);</span><br><span class="line">        <span class="comment">//正常情况下走这个流程并返回0 </span></span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (tcp_child_process(sk, nsk, skb)) &#123;</span><br><span class="line">            tcp_v4_send_reset(nsk, skb);</span><br><span class="line">            <span class="keyword">goto</span> discard_and_relse;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            sock_put(sk);</span><br><span class="line">            <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">        &#125;</span><br></pre></td></tr></table></figure>
-
-<p>因此上述代码会调用<code>tcp_child_process</code>进一步进行处理**，</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">tcp_child_process</span><span class="params">(<span class="keyword">struct</span> sock *parent, <span class="keyword">struct</span> sock *child,</span></span><br><span class="line"><span class="params">              <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">    __<span class="title function_">releases</span><span class="params">(&amp;((child)-&gt;sk_lock.slock))</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="type">int</span> ret = <span class="number">0</span>;</span><br><span class="line">    <span class="comment">//三次握手被动打开接收ack走到这里后这里应该是syn_rcv的状态</span></span><br><span class="line">    <span class="type">int</span> state = child-&gt;sk_state;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* record sk_napi_id and sk_rx_queue_mapping of child. */</span></span><br><span class="line">    <span class="comment">//这里设置了用那个队列和napi</span></span><br><span class="line">    sk_mark_napi_id_set(child, skb);</span><br><span class="line"></span><br><span class="line">    tcp_segs_in(tcp_sk(child), skb);</span><br><span class="line">    <span class="comment">//三次握手收到ack后这里用户进程会操作sock吗？ 可能有其他的进程调用？</span></span><br><span class="line">    <span class="keyword">if</span> (!sock_owned_by_user(child)) &#123;</span><br><span class="line">        ret = tcp_rcv_state_process(child, skb);</span><br><span class="line">        <span class="comment">/* Wakeup parent, send SIGIO */</span></span><br><span class="line">        <span class="keyword">if</span> (state == TCP_SYN_RECV &amp;&amp; child-&gt;sk_state != state)</span><br><span class="line">            parent-&gt;sk_data_ready(parent);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">/* Alas, it is possible again, because we do lookup</span></span><br><span class="line"><span class="comment">         * in main socket hash table and lock on listening</span></span><br><span class="line"><span class="comment">         * socket does not protect us more.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        __sk_add_backlog(child, skb);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    bh_unlock_sock(child);</span><br><span class="line">    sock_put(child);</span><br><span class="line">    <span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>上述<code>tcp_child_process</code>中，首先把当前<code>sock</code>的状态保存起来了，<strong>此时是TCP_SYN_RECV</strong>, 如果用户没有持有<code>sock</code>则调用<code>tcp_rcv_state_process</code>进一步处理，<strong>注意，这里把状态设置成 了TCP_ESTABLISHED</strong>。因此<code>child-&gt;sk_state</code>的状态就是不是<code>TCP_SYN_RECV</code>了，则会进一步调用<code>sk_data_ready</code>唤醒监听 socket 的等待队列，告诉用户进程<strong>有新的连接可以 <code>accept</code> 了</strong></p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/09/24/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack(%E5%9B%9B)/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/09/22/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack%EF%BC%88%E4%B8%89%EF%BC%89/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/09/22/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack%EF%BC%88%E4%B8%89%EF%BC%89/" class="post-title-link" itemprop="url">TCP三次握手-接收ack (三)</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2025-09-22 22:00:00 / 修改时间：22:53:59" itemprop="dateCreated datePublished" datetime="2025-09-22T22:00:00+08:00">2025-09-22</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/09/22/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack%EF%BC%88%E4%B8%89%EF%BC%89/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/09/22/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack%EF%BC%88%E4%B8%89%EF%BC%89/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p>回到<code>tcp_v4_syn_recv_sock</code>中，完成新<code>sock</code>的创建后，设置了<code>sk</code>的<code>GSO</code>的类型，设置了地址，所属的网口索引，<code>ipoption</code>，多播相关等字段。然后随机生成<code>ipid</code>, 并根据系统选项设置数据包的<code>tos</code>字段，随后调用查路由的接口，并调用<code>sk_setup_caps</code>设置<code>GSO</code>（<strong>注意，这里如果是TCP协议会默认设置上<code>NETIF_F_GSO</code>标志，这个标志里面其实包括了驱动注册的TSO标志位，而不管驱动是否真正注册了TSO能力，从协议栈的视角看，就是支持TSO的</strong>，而是否真正卸载分段的工作是在数据包交给网卡驱动前<code>validate_xmit_skb</code>判断的）上述<code>sk_setup_caps</code>代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">sk_setup_caps</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> dst_entry *dst)</span></span><br><span class="line">&#123;</span><br><span class="line">	u32 max_segs = <span class="number">1</span>;</span><br><span class="line">	<span class="comment">//这里拿到设备注册的features</span></span><br><span class="line">	sk-&gt;sk_route_caps = dst-&gt;dev-&gt;features;</span><br><span class="line">	<span class="keyword">if</span> (sk_is_tcp(sk)) <span class="comment">//tcp协议默认注册GSO</span></span><br><span class="line">		sk-&gt;sk_route_caps |= NETIF_F_GSO;</span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_route_caps &amp; NETIF_F_GSO)</span><br><span class="line">		sk-&gt;sk_route_caps |= NETIF_F_GSO_SOFTWARE; <span class="comment">//这里是软件兜底，这个标志位中包含TSO标志位</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(sk-&gt;sk_gso_disabled)) <span class="comment">//只有md5相关会禁用，正常不会走到这个分支</span></span><br><span class="line">		sk-&gt;sk_route_caps &amp;= ~NETIF_F_GSO_MASK;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (sk_can_gso(sk)) &#123; <span class="comment">//如果是TCP这里一定会走到</span></span><br><span class="line">		<span class="keyword">if</span> (dst-&gt;header_len &amp;&amp; !xfrm_dst_offload_ok(dst)) &#123; </span><br><span class="line">			sk-&gt;sk_route_caps &amp;= ~NETIF_F_GSO_MASK;</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123; <span class="comment">//大概率走这个分支</span></span><br><span class="line">			sk-&gt;sk_route_caps |= NETIF_F_SG | NETIF_F_HW_CSUM;</span><br><span class="line">			sk-&gt;sk_gso_max_size = sk_dst_gso_max_size(sk, dst); <span class="comment">//这里大概率返回65535左右</span></span><br><span class="line">			<span class="comment">/* pairs with the WRITE_ONCE() in netif_set_gso_max_segs() */</span></span><br><span class="line">			max_segs = <span class="type">max_t</span>(u32, READ_ONCE(dst-&gt;dev-&gt;gso_max_segs), <span class="number">1</span>); </span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	sk-&gt;sk_gso_max_segs = max_segs; <span class="comment">//65535左右</span></span><br><span class="line">	sk_dst_set(sk, dst);<span class="comment">//关联dst</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>回到<code>tcp_v4_syn_recv_sock</code>中，注册GSO能力后，随后调用<code>tcp_ca_openreq_child</code>设置拥塞算法，手下你判断使用户是否显示设置了拥塞算法，如果没有设置，则使用系统默认的拥塞算法，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_ca_openreq_child</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">const</span> <span class="keyword">struct</span> dst_entry *dst)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">	u32 ca_key = dst_metric(dst, RTAX_CC_ALGO);</span><br><span class="line">	<span class="type">bool</span> ca_got_dst = <span class="literal">false</span>;</span><br><span class="line">	<span class="comment">//看看用户是否配置,大概率不走这里优先从路由表 metric 获取指定的拥塞控制算法</span></span><br><span class="line">	<span class="keyword">if</span> (ca_key != TCP_CA_UNSPEC) &#123;</span><br><span class="line">		<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">tcp_congestion_ops</span> *<span class="title">ca</span>;</span></span><br><span class="line"></span><br><span class="line">		rcu_read_lock();</span><br><span class="line">		ca = tcp_ca_find_key(ca_key);</span><br><span class="line">		<span class="keyword">if</span> (likely(ca &amp;&amp; bpf_try_module_get(ca, ca-&gt;owner))) &#123;</span><br><span class="line">			icsk-&gt;icsk_ca_dst_locked = tcp_ca_dst_locked(dst);</span><br><span class="line">			icsk-&gt;icsk_ca_ops = ca;</span><br><span class="line">			ca_got_dst = <span class="literal">true</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		rcu_read_unlock();</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//如果用户们没有配置，则调用tcp_assign_congestion_control使用系统默认的</span></span><br><span class="line">	<span class="comment">/* If no valid choice made yet, assign current system default ca. */</span></span><br><span class="line">	<span class="keyword">if</span> (!ca_got_dst &amp;&amp;</span><br><span class="line">	    (!icsk-&gt;icsk_ca_setsockopt ||</span><br><span class="line">	     !bpf_try_module_get(icsk-&gt;icsk_ca_ops, icsk-&gt;icsk_ca_ops-&gt;owner)))</span><br><span class="line">		tcp_assign_congestion_control(sk);</span><br><span class="line">	<span class="comment">//注意这里设置了拥塞状态</span></span><br><span class="line">	tcp_set_ca_state(sk, TCP_CA_Open);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>回到<code>tcp_v4_syn_recv_sock</code>中，设置完拥塞算法后，计算<code>tp</code>的<code>mss</code>和通告的<code>mss</code>，这里其实就是计算了两个<code>mss</code>一个是<code>mss_cache</code>,一个是<code>adv_mss</code>前者是通过<code>tcp_sync_mss</code>计算的，会根据系统最小值和协商值以及窗口大小值进行比较后设置，后者是根据设备的<code>mtu</code>设置，超时重传中具体介绍过这个函数，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"> <span class="comment">//三次握手，icmp报文，或者tcp的mtu探测  超时重传貌似都会调用它</span></span><br><span class="line"><span class="type">unsigned</span> <span class="type">int</span> <span class="title function_">tcp_sync_mss</span><span class="params">(<span class="keyword">struct</span> sock *sk, u32 pmtu)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">	<span class="type">int</span> mss_now;</span><br><span class="line">	<span class="comment">//当前传入的pmtu小于历史 的最大值，缩小范围</span></span><br><span class="line">	<span class="keyword">if</span> (icsk-&gt;icsk_mtup.search_high &gt; pmtu)</span><br><span class="line">		icsk-&gt;icsk_mtup.search_high = pmtu;</span><br><span class="line">	</span><br><span class="line"></span><br><span class="line">	<span class="comment">//计算当前的mss</span></span><br><span class="line">	mss_now = tcp_mtu_to_mss(sk, pmtu);</span><br><span class="line">	<span class="comment">//根据窗口大小调整再次调整mss,可能会变小</span></span><br><span class="line">	mss_now = tcp_bound_to_half_wnd(tp, mss_now);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* And store cached results */</span></span><br><span class="line">	<span class="comment">//把传进来的pmtu保存起来</span></span><br><span class="line">	icsk-&gt;icsk_pmtu_cookie = pmtu;</span><br><span class="line">	<span class="comment">//这个enble 在tcp超时的retry1中进行黑洞检查的时候会使能正常应该不会走到这个分支吧</span></span><br><span class="line">	<span class="keyword">if</span> (icsk-&gt;icsk_mtup.enabled)</span><br><span class="line">		<span class="comment">//如果使能的mtu 探测， 那可能会再次变小这个mss ，这个mss的值不能超过search_low</span></span><br><span class="line">		mss_now = min(mss_now, tcp_mtu_to_mss(sk, icsk-&gt;icsk_mtup.search_low));</span><br><span class="line">	<span class="comment">//</span></span><br><span class="line">	tp-&gt;mss_cache = mss_now;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> mss_now;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> u16 <span class="title function_">tcp_mss_clamp</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> tcp_sock *tp, u16 mss)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/* We use READ_ONCE() here because socket might not be locked.</span></span><br><span class="line"><span class="comment">	 * This happens for listeners.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	u16 user_mss = READ_ONCE(tp-&gt;rx_opt.user_mss);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> (user_mss &amp;&amp; user_mss &lt; mss) ? user_mss : mss;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>随后调用<code>tcp_initialize_rcv_mss</code>计算的两个<code>mss</code>中选个最小值，给延迟ack使用, 具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_initialize_rcv_mss</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> hint = <span class="type">min_t</span>(<span class="type">unsigned</span> <span class="type">int</span>, tp-&gt;advmss, tp-&gt;mss_cache);</span><br><span class="line"></span><br><span class="line">	hint = min(hint, tp-&gt;rcv_wnd / <span class="number">2</span>);</span><br><span class="line">	hint = min(hint, TCP_MSS_DEFAULT);</span><br><span class="line">	hint = max(hint, TCP_MIN_MSS);</span><br><span class="line"></span><br><span class="line">	inet_csk(sk)-&gt;icsk_ack.rcv_mss = hint;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>随后<code>tcp_v4_syn_recv_sock</code>中调用<code>__inet_inherit_port</code>将新创建<code>sock</code>加入到<code>bhash</code>中 因为<code>bhash</code>是管理端口的hash表，新创建的sock也理所应当被管理，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">int</span> __inet_inherit_port(<span class="type">const</span> <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sock *child)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_hashinfo</span> *<span class="title">table</span> =</span> tcp_or_dccp_get_hashinfo(sk);</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">short</span> port = inet_sk(child)-&gt;inet_num;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_bind_hashbucket</span> *<span class="title">head</span>, *<span class="title">head2</span>;</span></span><br><span class="line">	<span class="type">bool</span> created_inet_bind_bucket = <span class="literal">false</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> sock_net(sk);</span><br><span class="line">	<span class="type">bool</span> update_fastreuse = <span class="literal">false</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_bind2_bucket</span> *<span class="title">tb2</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_bind_bucket</span> *<span class="title">tb</span>;</span></span><br><span class="line">	<span class="type">int</span> bhash, l3mdev;</span><br><span class="line"></span><br><span class="line">	bhash = inet_bhashfn(net, port, table-&gt;bhash_size);</span><br><span class="line">	head = &amp;table-&gt;bhash[bhash]; <span class="comment">//bhash桶</span></span><br><span class="line">	head2 = inet_bhashfn_portaddr(table, child, net, port);<span class="comment">//bhash2的桶</span></span><br><span class="line"></span><br><span class="line">	spin_lock(&amp;head-&gt;lock);</span><br><span class="line">	spin_lock(&amp;head2-&gt;lock);</span><br><span class="line">	<span class="comment">//监听套接字的bhash桶和监听套接字的bhash2桶</span></span><br><span class="line">	tb = inet_csk(sk)-&gt;icsk_bind_hash;</span><br><span class="line">	tb2 = inet_csk(sk)-&gt;icsk_bind2_hash;</span><br><span class="line">	<span class="keyword">if</span> (unlikely(!tb || !tb2)) &#123;</span><br><span class="line">		spin_unlock(&amp;head2-&gt;lock);</span><br><span class="line">		spin_unlock(&amp;head-&gt;lock);</span><br><span class="line">		<span class="keyword">return</span> -ENOENT;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//几乎不会走这个分支吧</span></span><br><span class="line">	<span class="keyword">if</span> (tb-&gt;port != port) &#123;</span><br><span class="line">		l3mdev = inet_sk_bound_l3mdev(sk);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* <span class="doctag">NOTE:</span> using tproxy and redirecting skbs to a proxy</span></span><br><span class="line"><span class="comment">		 * on a different listener port breaks the assumption</span></span><br><span class="line"><span class="comment">		 * that the listener socket&#x27;s icsk_bind_hash is the same</span></span><br><span class="line"><span class="comment">		 * as that of the child socket. We have to look up or</span></span><br><span class="line"><span class="comment">		 * create a new bind bucket for the child here. */</span></span><br><span class="line">		inet_bind_bucket_for_each(tb, &amp;head-&gt;chain) &#123;</span><br><span class="line">			<span class="keyword">if</span> (inet_bind_bucket_match(tb, net, port, l3mdev))</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">if</span> (!tb) &#123;</span><br><span class="line">			tb = inet_bind_bucket_create(table-&gt;bind_bucket_cachep,</span><br><span class="line">						     net, head, port, l3mdev);</span><br><span class="line">			<span class="keyword">if</span> (!tb) &#123;</span><br><span class="line">				spin_unlock(&amp;head2-&gt;lock);</span><br><span class="line">				spin_unlock(&amp;head-&gt;lock);</span><br><span class="line">				<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">			&#125;</span><br><span class="line">			created_inet_bind_bucket = <span class="literal">true</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		update_fastreuse = <span class="literal">true</span>;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">goto</span> bhash2_find;</span><br><span class="line">	<span class="comment">//这里是端口相同ip地址不同的情况进入这个分支 比如父sock监听在0.0.0.0:8080新的sock实际使用的是 192.168.1.1:8080</span></span><br><span class="line">	<span class="comment">//这里注意：如果新sock和listensock地址都相同那也不进入这个分支</span></span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (!inet_bind2_bucket_addr_match(tb2, child)) &#123; </span><br><span class="line">		l3mdev = inet_sk_bound_l3mdev(sk);</span><br><span class="line"></span><br><span class="line">bhash2_find:</span><br><span class="line">		<span class="comment">//遍历 bhash2 的桶中查找是否有一个条目可以匹配地址和ip</span></span><br><span class="line">		tb2 = inet_bind2_bucket_find(head2, net, port, l3mdev, child);</span><br><span class="line">		<span class="keyword">if</span> (!tb2) &#123;</span><br><span class="line">			<span class="comment">//没有的话就创建一个</span></span><br><span class="line">			tb2 = inet_bind2_bucket_create(table-&gt;bind2_bucket_cachep,</span><br><span class="line">						       net, head2, port,</span><br><span class="line">						       l3mdev, child);</span><br><span class="line">			<span class="keyword">if</span> (!tb2)</span><br><span class="line">				<span class="keyword">goto</span> error;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> (update_fastreuse)</span><br><span class="line">		<span class="comment">//更新fastreuse字段</span></span><br><span class="line">		inet_csk_update_fastreuse(tb, child);</span><br><span class="line">	<span class="comment">//将子sock和 tb 和tb2关联起来</span></span><br><span class="line">	inet_bind_hash(child, tb, tb2, port);</span><br><span class="line">	spin_unlock(&amp;head2-&gt;lock);</span><br><span class="line">	spin_unlock(&amp;head-&gt;lock);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">error:</span><br><span class="line">	<span class="keyword">if</span> (created_inet_bind_bucket)</span><br><span class="line">		inet_bind_bucket_destroy(table-&gt;bind_bucket_cachep, tb);</span><br><span class="line">	spin_unlock(&amp;head2-&gt;lock);</span><br><span class="line">	spin_unlock(&amp;head-&gt;lock);</span><br><span class="line">	<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/09/22/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6ack%EF%BC%88%E4%B8%89%EF%BC%89/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1311,7 +1344,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">61</span>
+          <span class="site-state-item-count">63</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
