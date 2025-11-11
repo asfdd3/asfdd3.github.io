@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="bbr_update_bw中调用bbr_lt_bw_sampling会检测是否需要开启长期采样机制（是否稳定丢包），是否使用长期bw由bbr_lt_bw_interval_done决定，具体代码如下所示： 1234567891011121314151617181920212223static void bbr_lt_bw_interval_done(struct sock *sk, u32 bw)">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TCP拥塞控制-BBR算法（二）">
+<meta property="og:url" content="http://example.com/2025/11/11/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-BBR%E7%AE%97%E6%B3%95%EF%BC%88%E4%BA%8C%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="bbr_update_bw中调用bbr_lt_bw_sampling会检测是否需要开启长期采样机制（是否稳定丢包），是否使用长期bw由bbr_lt_bw_interval_done决定，具体代码如下所示： 1234567891011121314151617181920212223static void bbr_lt_bw_interval_done(struct sock *sk, u32 bw)">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-11-11T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-11-11T15:20:50.196Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP拥塞控制">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/11/11/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-BBR%E7%AE%97%E6%B3%95%EF%BC%88%E4%BA%8C%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TCP拥塞控制-BBR算法（二） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/11/11/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-BBR%E7%AE%97%E6%B3%95%EF%BC%88%E4%BA%8C%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TCP拥塞控制-BBR算法（二）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-11-11 22:00:00 / 修改时间：23:20:50" itemprop="dateCreated datePublished" datetime="2025-11-11T22:00:00+08:00">2025-11-11</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/11/11/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-BBR%E7%AE%97%E6%B3%95%EF%BC%88%E4%BA%8C%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/11/11/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-BBR%E7%AE%97%E6%B3%95%EF%BC%88%E4%BA%8C%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p><code>bbr_update_bw</code>中调用<code>bbr_lt_bw_sampling</code>会检测是否需要开启长期采样机制（是否稳定丢包），是否使用长期<code>bw</code>由<code>bbr_lt_bw_interval_done</code>决定，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">bbr_lt_bw_interval_done</span><span class="params">(<span class="keyword">struct</span> sock *sk, u32 bw)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bbr</span> *<span class="title">bbr</span> =</span> inet_csk_ca(sk);</span><br><span class="line">	u32 diff;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (bbr-&gt;lt_bw) &#123;  <span class="comment">/* do we have bw from a previous interval? */</span></span><br><span class="line">		<span class="comment">/* Is new bw close to the lt_bw from the previous interval? */</span></span><br><span class="line">		diff = <span class="built_in">abs</span>(bw - bbr-&gt;lt_bw);</span><br><span class="line">		<span class="keyword">if</span> ((diff * BBR_UNIT &lt;= bbr_lt_bw_ratio * bbr-&gt;lt_bw) ||   <span class="comment">//和上次比相差不大</span></span><br><span class="line">		    (bbr_rate_bytes_per_sec(sk, diff, BBR_UNIT) &lt;= <span class="comment">//两次带宽样本的绝对差值</span></span><br><span class="line">		     bbr_lt_bw_diff)) &#123; <span class="comment">//4kb per sec</span></span><br><span class="line">			<span class="comment">/* All criteria are met; estimate we&#x27;re policed. */</span></span><br><span class="line">			bbr-&gt;lt_bw = (bw + bbr-&gt;lt_bw) &gt;&gt; <span class="number">1</span>;  <span class="comment">/* avg 2 intvls */</span> <span class="comment">//平均</span></span><br><span class="line">			bbr-&gt;lt_use_bw = <span class="number">1</span>; <span class="comment">//使用长期bw</span></span><br><span class="line">			bbr-&gt;pacing_gain = BBR_UNIT;  <span class="comment">/* try to avoid drops */</span></span><br><span class="line">			bbr-&gt;lt_rtt_cnt = <span class="number">0</span>;</span><br><span class="line">			<span class="keyword">return</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	bbr-&gt;lt_bw = bw; <span class="comment">//包/us</span></span><br><span class="line">	bbr_reset_lt_bw_sampling_interval(sk); <span class="comment">//reset 长期采样</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>bbr_lt_bw_interval_done</code>中核心逻辑为比较当前周期测得的带宽 <code>bw</code> 与上一次 <code>bbr-&gt;lt_bw</code>判断带宽变化是否稳定</p>
+<p>如果稳定，则启用长期带宽模式，否则保存<code>bw</code>后复位长期采样信息。</p>
+<p>回到<code>bbr_update_bw</code>中，计算完成是否使用长期采样带宽后，根据本采样的信息，计算<code>bw</code>，注意这里<code>bw</code>的单位是<code>packet</code>&#x2F;<code>us</code>，接下来根据<code>is_app_limited</code>和<code>bbr_max_bw</code>判断是否需要更新最大带宽，如果需要则调用<code>minmax_running_max</code>更新最大的的带宽。至此，<code>bbr_update_model</code>中计算<code>bw</code>的工作就完成了。</p>
+<p>接下来是调用<code>bbr_update_ack_aggregation</code>计算聚合<code>ack</code>的数量，计算的目的是动态补偿 <code>cwnd</code>。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//计算可能的聚合的ack数量</span></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">bbr_update_ack_aggregation</span><span class="params">(<span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">				       <span class="type">const</span> <span class="keyword">struct</span> rate_sample *rs)</span></span><br><span class="line">&#123;</span><br><span class="line">	u32 epoch_us, expected_acked, extra_acked;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bbr</span> *<span class="title">bbr</span> =</span> inet_csk_ca(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="comment">//合法性检查</span></span><br><span class="line">	<span class="keyword">if</span> (!bbr_extra_acked_gain || rs-&gt;acked_sacked &lt;= <span class="number">0</span> ||</span><br><span class="line">	    rs-&gt;delivered &lt; <span class="number">0</span> || rs-&gt;interval_us &lt;= <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//新的rtt轮次</span></span><br><span class="line">	<span class="keyword">if</span> (bbr-&gt;round_start) &#123;</span><br><span class="line">		bbr-&gt;extra_acked_win_rtts = min(<span class="number">0x1F</span>,</span><br><span class="line">						bbr-&gt;extra_acked_win_rtts + <span class="number">1</span>);</span><br><span class="line">		<span class="keyword">if</span> (bbr-&gt;extra_acked_win_rtts &gt;= bbr_extra_acked_win_rtts) &#123; <span class="comment">//5轮新的rtt就切换窗口槽</span></span><br><span class="line">			bbr-&gt;extra_acked_win_rtts = <span class="number">0</span>;</span><br><span class="line">			bbr-&gt;extra_acked_win_idx = bbr-&gt;extra_acked_win_idx ? <span class="comment">//设置使用的是哪个窗口 这里是交替使用？ </span></span><br><span class="line">						   <span class="number">0</span> : <span class="number">1</span>;</span><br><span class="line">			bbr-&gt;extra_acked[bbr-&gt;extra_acked_win_idx] = <span class="number">0</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Compute how many packets we expected to be delivered over epoch. */</span></span><br><span class="line">	<span class="comment">////收报时间戳 - 统计ack聚合开始的时间戳</span></span><br><span class="line">	epoch_us = tcp_stamp_us_delta(tp-&gt;delivered_mstamp,  </span><br><span class="line">				      bbr-&gt;ack_epoch_mstamp);			</span><br><span class="line">	expected_acked = ((u64)bbr_bw(sk) * epoch_us) / BW_UNIT; <span class="comment">//计算期望的包数</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Reset the aggregation epoch if ACK rate is below expected rate or</span></span><br><span class="line"><span class="comment">	 * significantly large no. of ack received since epoch (potentially</span></span><br><span class="line"><span class="comment">	 * quite old epoch).</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (bbr-&gt;ack_epoch_acked &lt;= expected_acked ||   <span class="comment">//实际 ACK 的包数 ≤ 理论应当 ACK 的包数。</span></span><br><span class="line">	    (bbr-&gt;ack_epoch_acked + rs-&gt;acked_sacked &gt;=   <span class="comment">//如果自从本 epoch 开始累计收到的 ACK 数太多</span></span><br><span class="line">	     bbr_ack_epoch_acked_reset_thresh)) &#123;</span><br><span class="line">		bbr-&gt;ack_epoch_acked = <span class="number">0</span>;					<span class="comment">//清除计数</span></span><br><span class="line">		bbr-&gt;ack_epoch_mstamp = tp-&gt;delivered_mstamp; <span class="comment">//重新开始</span></span><br><span class="line">		expected_acked = <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Compute excess data delivered, beyond what was expected. */</span></span><br><span class="line">    <span class="comment">//累计的ack计数</span></span><br><span class="line">	bbr-&gt;ack_epoch_acked = <span class="type">min_t</span>(u32, <span class="number">0xFFFFF</span>,</span><br><span class="line">				     bbr-&gt;ack_epoch_acked + rs-&gt;acked_sacked); </span><br><span class="line">	extra_acked = bbr-&gt;ack_epoch_acked - expected_acked; 	<span class="comment">//累计的减去期望的，是聚合的</span></span><br><span class="line">	extra_acked = min(extra_acked, tcp_snd_cwnd(tp));		<span class="comment">//钳制一下</span></span><br><span class="line">	<span class="keyword">if</span> (extra_acked &gt; bbr-&gt;extra_acked[bbr-&gt;extra_acked_win_idx])</span><br><span class="line">		bbr-&gt;extra_acked[bbr-&gt;extra_acked_win_idx] = extra_acked;  <span class="comment">///更新聚合ack的窗口</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述<code>bbr_update_ack_aggregation</code><strong>中通过计算某一统计周期内实际收到的 ACK 数量与按带宽预期应收到的数量之差</strong>，得到聚合ack的数量，表示当发现 ACK 被集中返回时，BBR 会记录历史最大聚合量，并在计算<code>cwnd</code>时加上这部分补偿，以便在 ACK 间隔期间仍能继续发送数据，避免发送停顿和带宽利用率下降。</p>
+<p>计算完<code>bw</code>和聚合<code>ack</code>的数量之后，会处理稳态阶段下相位的变换，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">bbr_update_cycle_phase</span><span class="params">(<span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">				   <span class="type">const</span> <span class="keyword">struct</span> rate_sample *rs)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bbr</span> *<span class="title">bbr</span> =</span> inet_csk_ca(sk);</span><br><span class="line">	<span class="comment">//稳态阶段，且需要进入到下一个</span></span><br><span class="line">	<span class="keyword">if</span> (bbr-&gt;mode == BBR_PROBE_BW &amp;&amp; bbr_is_next_cycle_phase(sk, rs))</span><br><span class="line">		bbr_advance_cycle_phase(sk);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码首先判断当前<code>bbr</code>的状态是否时<code>BBR_PROBE_BW</code>，如果是调用<code>bbr_is_next_cycle_phase</code>怕段是否需要切换相位，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* End cycle phase if it&#x27;s time and/or we hit the phase&#x27;s in-flight target. */</span></span><br><span class="line"><span class="type">static</span> <span class="type">bool</span> <span class="title function_">bbr_is_next_cycle_phase</span><span class="params">(<span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">				    <span class="type">const</span> <span class="keyword">struct</span> rate_sample *rs)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bbr</span> *<span class="title">bbr</span> =</span> inet_csk_ca(sk);</span><br><span class="line">	<span class="comment">//从本相位开始的时间（cycle_mstamp）到现在（delivered_mstamp）是否已超过一个 min_rtt</span></span><br><span class="line">	<span class="type">bool</span> is_full_length =</span><br><span class="line">		tcp_stamp_us_delta(tp-&gt;delivered_mstamp, bbr-&gt;cycle_mstamp) &gt;</span><br><span class="line">		bbr-&gt;min_rtt_us;</span><br><span class="line">	u32 inflight, bw;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* The pacing_gain of 1.0 paces at the estimated bw to try to fully</span></span><br><span class="line"><span class="comment">	 * use the pipe without increasing the queue.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//正常速率 ，貌似使用ltbw的时候才会设置</span></span><br><span class="line">	<span class="keyword">if</span> (bbr-&gt;pacing_gain == BBR_UNIT)</span><br><span class="line">		<span class="keyword">return</span> is_full_length;		<span class="comment">/* just use wall clock time */</span></span><br><span class="line">	<span class="comment">//实际在途中的数据包</span></span><br><span class="line">	inflight = bbr_packets_in_net_at_edt(sk, rs-&gt;prior_in_flight);</span><br><span class="line">	bw = bbr_max_bw(sk); <span class="comment">//获取bw</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* A pacing_gain &gt; 1.0 probes for bw by trying to raise inflight to at</span></span><br><span class="line"><span class="comment">	 * least pacing_gain*BDP; this may take more than min_rtt if min_rtt is</span></span><br><span class="line"><span class="comment">	 * small (e.g. on a LAN). We do not persist if packets are lost, since</span></span><br><span class="line"><span class="comment">	 * a path with small buffers may not hold that much.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (bbr-&gt;pacing_gain &gt; BBR_UNIT)						<span class="comment">//速率增长阶段</span></span><br><span class="line">		<span class="keyword">return</span> is_full_length &amp;&amp;							<span class="comment">//到切换周期了</span></span><br><span class="line">			(rs-&gt;losses ||  <span class="comment">/* perhaps pacing_gain*BDP won&#x27;t fit */</span> <span class="comment">//出现丢包</span></span><br><span class="line">			 inflight &gt;= bbr_inflight(sk, bw, bbr-&gt;pacing_gain)); </span><br><span class="line"></span><br><span class="line">	<span class="comment">/* A pacing_gain &lt; 1.0 tries to drain extra queue we added if bw</span></span><br><span class="line"><span class="comment">	 * probing didn&#x27;t find more bw. If inflight falls to match BDP then we</span></span><br><span class="line"><span class="comment">	 * estimate queue is drained; persisting would underutilize the pipe.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">return</span> is_full_length ||		<span class="comment">//相位时间到了，或者没到但是当前在途数据量已经回落到或低于正常BDP水平</span></span><br><span class="line">		inflight &lt;= bbr_inflight(sk, bw, BBR_UNIT);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>bbr_is_next_cycle_phase</code>首先判断当前相位持续的时间是否已经持续了一个最小<code>rtt</code>，接下来判断<code>pacing_gain</code>是否为1，貌似只有使用长期带宽才会设置，接下来调用<code>bbr_packets_in_net_at_edt</code>计算实际实际在途中数据包的数量，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> u32 <span class="title function_">bbr_packets_in_net_at_edt</span><span class="params">(<span class="keyword">struct</span> sock *sk, u32 inflight_now)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bbr</span> *<span class="title">bbr</span> =</span> inet_csk_ca(sk);</span><br><span class="line">	u64 now_ns, edt_ns, interval_us;</span><br><span class="line">	u32 interval_delivered, inflight_at_edt;</span><br><span class="line"></span><br><span class="line">	now_ns = tp-&gt;tcp_clock_cache; 											<span class="comment">//缓存的时间</span></span><br><span class="line">	edt_ns = max(tp-&gt;tcp_wstamp_ns, now_ns); 								<span class="comment">//发包的时间</span></span><br><span class="line">	interval_us = div_u64(edt_ns - now_ns, NSEC_PER_USEC);<span class="comment">//发包的时间减去缓存的时间</span></span><br><span class="line">	interval_delivered = (u64)bbr_bw(sk) * interval_us &gt;&gt; BW_SCALE;			 <span class="comment">//数据包应该发出去的数量</span></span><br><span class="line">	inflight_at_edt = inflight_now;											 <span class="comment">//保存一下当前在途中的段数</span></span><br><span class="line">	<span class="keyword">if</span> (bbr-&gt;pacing_gain &gt; BBR_UNIT)              <span class="comment">/* increasing inflight */</span> <span class="comment">//处于探测带宽阶段</span></span><br><span class="line">		inflight_at_edt += bbr_tso_segs_goal(sk);  <span class="comment">/* include EDT skb */</span> <span class="comment">//</span></span><br><span class="line">	<span class="keyword">if</span> (interval_delivered &gt;= inflight_at_edt) 								<span class="comment">//这里类似是排空</span></span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">	<span class="keyword">return</span> inflight_at_edt - interval_delivered;							<span class="comment">//这个应该是网络中实际在飞行的包数</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>bbr_packets_in_net_at_edt</code>核心思想就是通过时间的差值（从之前缓存的时间到包发出时刻）与<code>bw</code>计算间隔时间的应该发出去的包的数量，与网络中当前在途中的数目相减计算实际在途中的数目(<strong>排除的就是在协议栈没有真正发出去的数据包吧</strong>)。</p>
+<p>回到<code>bbr_is_next_cycle_phase</code>中计算完实际在途的数据包后，获取当前的<code>bbr</code>的最大<code>bw</code>，接下来判断如果处于探测带宽阶段，且<strong>时间到</strong>且满足 <strong>出现丢包</strong> 或 <strong>在途量已达到目标</strong>（根据最小<code>rtt</code>计算得来）则需要切换相位。</p>
+<p>否则的话，如果时间到了或者在途量≤1BDP，也会切换相位。</p>
+<p>切换相位的代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">bbr_advance_cycle_phase</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bbr</span> *<span class="title">bbr</span> =</span> inet_csk_ca(sk);</span><br><span class="line">	<span class="comment">//这里和理论不太一样，这里有可能随机的 这个更合理！</span></span><br><span class="line">	bbr-&gt;cycle_idx = (bbr-&gt;cycle_idx + <span class="number">1</span>) &amp; (CYCLE_LEN - <span class="number">1</span>);</span><br><span class="line">	bbr-&gt;cycle_mstamp = tp-&gt;delivered_mstamp; <span class="comment">//当前 gain 周期（phase）的开始时间</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>bbr_update_model</code>判定是否需要完成相位变换后，会调用<code>bbr_check_full_bw_reached</code>判断<strong>链路是否已经被填满</strong>，通过比较当前带宽采样值与过去最大带宽 <code>full_bw</code> 的变化趋势：若连续 3 个 RTT 都未超过 25% 增长，则认为已经探测到带宽上线，后续会进入排空阶段。</p>
+<p><code>bbr_check_drain</code>为上述判断是否达到上限带宽之后调用的函数，用于判断是否需要切换到排空阶段，或者在排空阶段下是否需要切换回稳态。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* If pipe is probably full, drain the queue and then enter steady-state. */</span></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">bbr_check_drain</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">const</span> <span class="keyword">struct</span> rate_sample *rs)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bbr</span> *<span class="title">bbr</span> =</span> inet_csk_ca(sk);</span><br><span class="line">	<span class="comment">//BBR_STARTUP 且已经达到最大带宽</span></span><br><span class="line">	<span class="keyword">if</span> (bbr-&gt;mode == BBR_STARTUP &amp;&amp; bbr_full_bw_reached(sk)) &#123;</span><br><span class="line">		bbr-&gt;mode = BBR_DRAIN;	<span class="comment">/* drain queue we created */</span></span><br><span class="line">		tcp_sk(sk)-&gt;snd_ssthresh =  <span class="comment">//设置慢启动阈值，就为最大带宽</span></span><br><span class="line">				bbr_inflight(sk, bbr_max_bw(sk), BBR_UNIT);</span><br><span class="line">	&#125;	<span class="comment">/* fall through to check if in-flight is already small: */</span></span><br><span class="line">	<span class="keyword">if</span> (bbr-&gt;mode == BBR_DRAIN &amp;&amp; <span class="comment">//网络中实际的数据包，小于正常管道的容量</span></span><br><span class="line">	    bbr_packets_in_net_at_edt(sk, tcp_packets_in_flight(tcp_sk(sk))) &lt;=</span><br><span class="line">	    bbr_inflight(sk, bbr_max_bw(sk), BBR_UNIT))</span><br><span class="line">		bbr_reset_probe_bw_mode(sk);  <span class="comment">/* we estimate queue is drained */</span> <span class="comment">//这里设置为为了稳态</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>bbr_check_drain()</code> 负责检测 BBR 是否需要从 <code>Startup</code> 切换到 <code>Drain</code> 阶段，以及何时从 <code>Drain</code> 切换到稳态 <code>ProbeBW</code>。<br> 当 <code>BBR</code> 判断已经到达了上限带宽，就会进入 <code>Drain</code> 阶段。当在<code>Drain</code>检测到在途数据量下降到等于或低于 1×BDP 时，说明管道已恢复到正常水位，BBR 便进入稳态。</p>
+<p>之后在<code>bbr_update_model</code>中会进一步调用<code>bbr_update_min_rtt</code>，更新最小<code>rtt</code>和决定是否进入<code>BBR_PROBE_RTT</code>状态，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">bbr_update_min_rtt</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">const</span> <span class="keyword">struct</span> rate_sample *rs)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bbr</span> *<span class="title">bbr</span> =</span> inet_csk_ca(sk);</span><br><span class="line">	<span class="type">bool</span> filter_expired;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Track min RTT seen in the min_rtt_win_sec filter window: */</span></span><br><span class="line">	<span class="comment">//记录的最小rtt的时间是否已经过期了  这里阈值是10s</span></span><br><span class="line">	filter_expired = after(tcp_jiffies32,</span><br><span class="line">			       bbr-&gt;min_rtt_stamp + bbr_min_rtt_win_sec * HZ);</span><br><span class="line">	<span class="keyword">if</span> (rs-&gt;rtt_us &gt;= <span class="number">0</span> &amp;&amp;</span><br><span class="line">	    (rs-&gt;rtt_us &lt; bbr-&gt;min_rtt_us ||</span><br><span class="line">	     (filter_expired &amp;&amp; !rs-&gt;is_ack_delayed))) &#123;</span><br><span class="line">		bbr-&gt;min_rtt_us = rs-&gt;rtt_us;  					<span class="comment">//更新最小rtt</span></span><br><span class="line">		bbr-&gt;min_rtt_stamp = tcp_jiffies32; </span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//进入PROBE_RTT模式</span></span><br><span class="line">	<span class="keyword">if</span> (bbr_probe_rtt_mode_ms &gt; <span class="number">0</span> &amp;&amp; filter_expired &amp;&amp;</span><br><span class="line">	    !bbr-&gt;idle_restart &amp;&amp; bbr-&gt;mode != BBR_PROBE_RTT) &#123;</span><br><span class="line">		bbr-&gt;mode = BBR_PROBE_RTT;  <span class="comment">/* dip, drain queue */</span> 			<span class="comment">//设置为BBR_PROBE_RTT</span></span><br><span class="line">		bbr_save_cwnd(sk);  <span class="comment">/* note cwnd so we can restore it */</span> 	<span class="comment">//保存拥塞窗口</span></span><br><span class="line">		bbr-&gt;probe_rtt_done_stamp = <span class="number">0</span>;  							<span class="comment">//表示 PROBE_RTT模式刚开始</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (bbr-&gt;mode == BBR_PROBE_RTT) &#123;</span><br><span class="line">		<span class="comment">/* Ignore low rate samples during this mode. */</span></span><br><span class="line">		<span class="comment">//这里直接标记为应用受限</span></span><br><span class="line">		tp-&gt;app_limited = </span><br><span class="line">			(tp-&gt;delivered + tcp_packets_in_flight(tp)) ? : <span class="number">1</span>;</span><br><span class="line">		<span class="comment">/* Maintain min packets in flight for max(200 ms, 1 round). */</span></span><br><span class="line">		<span class="keyword">if</span> (!bbr-&gt;probe_rtt_done_stamp &amp;&amp;  <span class="comment">//刚开始probe阶段</span></span><br><span class="line">		    tcp_packets_in_flight(tp) &lt;= bbr_cwnd_min_target) &#123; 	<span class="comment">//在途数据包小于四个</span></span><br><span class="line">			bbr-&gt;probe_rtt_done_stamp = tcp_jiffies32 +  			<span class="comment">//设置结束时间</span></span><br><span class="line">				msecs_to_jiffies(bbr_probe_rtt_mode_ms);</span><br><span class="line">			bbr-&gt;probe_rtt_round_done = <span class="number">0</span>;   						<span class="comment">// 重置回合完成标志</span></span><br><span class="line">			bbr-&gt;next_rtt_delivered = tp-&gt;delivered;  				<span class="comment">//用于检测rtt round</span></span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> (bbr-&gt;probe_rtt_done_stamp) &#123;</span><br><span class="line">			<span class="keyword">if</span> (bbr-&gt;round_start)  									<span class="comment">//新一轮的开始</span></span><br><span class="line">				bbr-&gt;probe_rtt_round_done = <span class="number">1</span>; 					    <span class="comment">//标记新一轮的结束</span></span><br><span class="line">			<span class="keyword">if</span> (bbr-&gt;probe_rtt_round_done)  						<span class="comment">//如果一个rtt结束了</span></span><br><span class="line">				bbr_check_probe_rtt_done(sk);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">/* Restart after idle ends only once we process a new S/ACK for data */</span></span><br><span class="line">	<span class="keyword">if</span> (rs-&gt;delivered &gt; <span class="number">0</span>)</span><br><span class="line">		bbr-&gt;idle_restart = <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>bbr_update_min_rtt</code>首先判断最小<code>rtt</code>是否已经过期，如果最小<code>rtt</code>已经过期了，或者<code>rrt</code>更小，且不是延迟<code>ack</code>则更新最小的<code>rtt</code>，接下来判断如果<code>rtt</code>已经过期，且当前不是<code>BBR_PROBE_RTT</code>模式，则设置当前状态为<code>BBR_PROBE_RTT</code>并保存当前的<code>cwnd</code></p>
+<p><strong>如果设置为<code>BBR_PROBE_RTT</code>状态，则直接置为<code>app_limited</code>标记为应用受限，之后当在途量降到 4个 包后开始计时（约 200ms）并等待至少 1 个包计时 RTT，满足后通过 <code>bbr_check_probe_rtt_done()</code> 退出 <code>PROBE_RTT</code></strong>，回到原模式，或者回到<code>start up</code>阶段。<code>bbr_check_probe_rtt_done</code>代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">bbr_check_probe_rtt_done</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bbr</span> *<span class="title">bbr</span> =</span> inet_csk_ca(sk);</span><br><span class="line">	<span class="comment">//已设置结束时间戳，但是时间还诶到</span></span><br><span class="line">	<span class="keyword">if</span> (!(bbr-&gt;probe_rtt_done_stamp &amp;&amp;</span><br><span class="line">	      after(tcp_jiffies32, bbr-&gt;probe_rtt_done_stamp)))</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//重置最小RTT的更新时间戳，确保10秒内不会再次进入PROBE_RTT模式。</span></span><br><span class="line">	bbr-&gt;min_rtt_stamp = tcp_jiffies32;  <span class="comment">/* wait a while until PROBE_RTT */</span></span><br><span class="line">	tcp_snd_cwnd_set(tp, max(tcp_snd_cwnd(tp), bbr-&gt;prior_cwnd)); <span class="comment">//还原回去原来的窗口</span></span><br><span class="line">	bbr_reset_mode(sk); <span class="comment">//切换到稳态或者startup</span></span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">//rtt probe调用</span></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">bbr_reset_mode</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">if</span> (!bbr_full_bw_reached(sk)) <span class="comment">//通常是true吧</span></span><br><span class="line">		bbr_reset_startup_mode(sk); <span class="comment">//不是ture 进入到BBR_STARTUP状态</span></span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		bbr_reset_probe_bw_mode(sk); <span class="comment">//通常走这个分支</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>最后，会根据当前处于哪个状态来设置具体的<code>pacing_gain</code>和<code>cwnd_gain</code>，进而影响发包速率和窗口的大小。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">bbr_update_gains</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bbr</span> *<span class="title">bbr</span> =</span> inet_csk_ca(sk);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">switch</span> (bbr-&gt;mode) &#123;</span><br><span class="line">	<span class="keyword">case</span> BBR_STARTUP:</span><br><span class="line">		bbr-&gt;pacing_gain = bbr_high_gain; <span class="comment">//2.885</span></span><br><span class="line">		bbr-&gt;cwnd_gain	 = bbr_high_gain; <span class="comment">//2.885</span></span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> BBR_DRAIN:</span><br><span class="line">		bbr-&gt;pacing_gain = bbr_drain_gain;	<span class="comment">/* slow, to drain */</span> <span class="comment">//上面的倒数</span></span><br><span class="line">		bbr-&gt;cwnd_gain	 = bbr_high_gain;	<span class="comment">/* keep cwnd */</span></span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> BBR_PROBE_BW:</span><br><span class="line">		bbr-&gt;pacing_gain = (bbr-&gt;lt_use_bw ?</span><br><span class="line">				    BBR_UNIT :					<span class="comment">//1</span></span><br><span class="line">				    bbr_pacing_gain[bbr-&gt;cycle_idx]); <span class="comment">//8个相位的值</span></span><br><span class="line">		bbr-&gt;cwnd_gain	 = bbr_cwnd_gain;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> BBR_PROBE_RTT:</span><br><span class="line">		bbr-&gt;pacing_gain = BBR_UNIT; <span class="comment">//1</span></span><br><span class="line">		bbr-&gt;cwnd_gain	 = BBR_UNIT;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		WARN_ONCE(<span class="number">1</span>, <span class="string">&quot;BBR bad mode: %u\n&quot;</span>, bbr-&gt;mode);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6/" rel="tag"># TCP拥塞控制</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/11/09/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-BBR%E7%AE%97%E6%B3%95%EF%BC%88%E4%B8%80%EF%BC%89/" rel="prev" title="TCP拥塞控制-BBR算法（一）">
+      <i class="fa fa-chevron-left"></i> TCP拥塞控制-BBR算法（一）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">66</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">16</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
