@@ -193,6 +193,199 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/28/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%BA%8C%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/05/28/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%BA%8C%EF%BC%89/" class="post-title-link" itemprop="url">x86汇编学习(二)</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-05-28 22:00:00" itemprop="dateCreated datePublished" datetime="2025-05-28T22:00:00+08:00">2025-05-28</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-05-31 01:39:48" itemprop="dateModified" datetime="2025-05-31T01:39:48+08:00">2025-05-31</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/05/28/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%BA%8C%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/28/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%BA%8C%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="汇编指令学习"><a href="#汇编指令学习" class="headerlink" title="汇编指令学习"></a>汇编指令学习</h2><h2 id="MOV指令"><a href="#MOV指令" class="headerlink" title="MOV指令"></a>MOV指令</h2><p> 下表列出的是最简单形式的数据传送指令-MOV类。这些指令把数据从源位置复制到目的位置，不做任何变化。 MOV 类由四条指令组成： movb、 movw、 movl 和 movq。这些指令都执行同样的操作；主要区别在千它们操作的数据大小不同：分别是 1、 2 、 4 和 8 字节。</p>
+<table>
+<thead>
+<tr>
+<th>指令</th>
+<th>效果</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>MOV S, D</td>
+<td>D ← S</td>
+<td>传送</td>
+</tr>
+<tr>
+<td>movb</td>
+<td></td>
+<td>传送字节</td>
+</tr>
+<tr>
+<td>movw</td>
+<td></td>
+<td>传送字</td>
+</tr>
+<tr>
+<td>movl</td>
+<td></td>
+<td>传送双字</td>
+</tr>
+<tr>
+<td>movq</td>
+<td></td>
+<td>传送四字</td>
+</tr>
+<tr>
+<td>movabsq I, R</td>
+<td>R ← I</td>
+<td>传送绝对的四字</td>
+</tr>
+</tbody></table>
+<p>源操作数指定的值是一个立即数，存储在寄存器中或者内存中。目的操作数指定一个 位置，要么是一个寄存器或者，要么是一个内存地址。 <strong>x86-64 加了一条限制，传送指令的 两个操作数不能都指向内存位置。将一个值从一个内存位置复制到另一个内存位置需要两条指令</strong>——第一条指令将源值加载到寄存器中，第二条将该寄存器值写入目的位置。</p>
+<p><strong>下面的 MOV指令示例给出了源和目的类型的五种可能的组合。第一个是源操作数，第二个是目的操作数：</strong></p>
+<table>
+<thead>
+<tr>
+<th>序号</th>
+<th>指令</th>
+<th>源类型 → 目的类型</th>
+<th>字节数</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td><code>movl $0x4050, %eax</code></td>
+<td>Immediate → Register</td>
+<td>4 bytes</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>movw %bp, %sp</code></td>
+<td>Register → Register</td>
+<td>2 bytes</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>movb (%rdi, %rcx), %al</code></td>
+<td>Memory → Register</td>
+<td>1 byte</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>movb $-17, (%rsp)</code></td>
+<td>Immediate → Memory</td>
+<td>1 byte</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>movq %rax, -12(%rbp)</code></td>
+<td>Register → Memory</td>
+<td>8 bytes</td>
+</tr>
+</tbody></table>
+<h3 id="数据扩展传送指令"><a href="#数据扩展传送指令" class="headerlink" title="数据扩展传送指令"></a>数据扩展传送指令</h3><p>当你把一个小的数据（如 1 字节）存入一个大的寄存器（如 4 字节）时，需要决定怎么填补高位。 这个过程叫“<strong>扩展（Extend）</strong>”，有两种方式：</p>
+<table>
+<thead>
+<tr>
+<th>扩展方式</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>零扩展（Zero-Extend）</strong></td>
+<td>高位填 <code>0</code>，不改变原数</td>
+</tr>
+<tr>
+<td><strong>符号扩展（Sign-Extend）</strong></td>
+<td>高位按符号位（最高位）填充，保持数值含义</td>
+</tr>
+</tbody></table>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/05/28/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E4%BA%8C%EF%BC%89/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/27/socket%E4%B8%8E%E6%96%87%E4%BB%B6%E6%8F%8F%E8%BF%B0%E7%AC%A6%E7%9A%84%E6%98%A0%E5%B0%84/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1117,129 +1310,10 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/13/socket%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/05/13/socket%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8/" class="post-title-link" itemprop="url">socket系统调用</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2025-05-13 22:00:00" itemprop="dateCreated datePublished" datetime="2025-05-13T22:00:00+08:00">2025-05-13</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-05-26 21:40:43" itemprop="dateModified" datetime="2025-05-26T21:40:43+08:00">2025-05-26</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/05/13/socket%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/13/socket%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="简介"><a href="#简介" class="headerlink" title="简介"></a>简介</h2><p>socket 是网络编程中最基本的系统调用之一，用于创建一个网络通信的“端点”（即套接字，socket）。</p>
-<h2 id="一、函数原型"><a href="#一、函数原型" class="headerlink" title="一、函数原型"></a>一、函数原型</h2><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">socket</span><span class="params">(<span class="type">int</span> domain, <span class="type">int</span> type, <span class="type">int</span> protocol)</span>;</span><br></pre></td></tr></table></figure>
-
-<table>
-<thead>
-<tr>
-<th>参数</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><code>domain</code></td>
-<td>协议族，比如：<code>AF_INET</code> 表示 IPv4</td>
-</tr>
-<tr>
-<td><code>type</code></td>
-<td>套接字类型，比如：<code>SOCK_STREAM</code> 表示 TCP</td>
-</tr>
-<tr>
-<td><code>protocol</code></td>
-<td>指定使用的协议，通常填 0 让系统自动选择</td>
-</tr>
-</tbody></table>
-<h2 id="二、函数调用流程"><a href="#二、函数调用流程" class="headerlink" title="二、函数调用流程"></a>二、函数调用流程</h2><p>用户态程序调用 socket()<br>        ↓<br>glibc 中封装的socket接口<br>        ↓<br>内部通过 syscall 指令<br>        ↓<br>进入内核，执行 sys_socket()</p>
-<h2 id="三、代码分析"><a href="#三、代码分析" class="headerlink" title="三、代码分析"></a>三、代码分析</h2><h3 id="1-glibc层代码分析"><a href="#1-glibc层代码分析" class="headerlink" title="1. glibc层代码分析"></a>1. glibc层代码分析</h3><p>代码位置：glibc-2.40\sysdeps\unix\sysv\linux\socket.c</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/05/13/socket%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
-    <a class="extend prev" rel="prev" href="/page/6/"><i class="fa fa-angle-left" aria-label="上一页"></i></a><a class="page-number" href="/">1</a><span class="space">&hellip;</span><a class="page-number" href="/page/6/">6</a><span class="page-number current">7</span>
+    <a class="extend prev" rel="prev" href="/page/6/"><i class="fa fa-angle-left" aria-label="上一页"></i></a><a class="page-number" href="/">1</a><span class="space">&hellip;</span><a class="page-number" href="/page/6/">6</a><span class="page-number current">7</span><a class="page-number" href="/page/8/">8</a><a class="extend next" rel="next" href="/page/8/"><i class="fa fa-angle-right" aria-label="下一页"></i></a>
   </nav>
 
 
@@ -1305,7 +1379,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">70</span>
+          <span class="site-state-item-count">71</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
