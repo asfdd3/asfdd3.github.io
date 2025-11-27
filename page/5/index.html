@@ -193,6 +193,107 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/07/28/tcp%E5%A5%97%E6%8E%A5%E5%AD%97%E7%9A%84%E5%88%9D%E5%A7%8B%E5%8C%96/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/07/28/tcp%E5%A5%97%E6%8E%A5%E5%AD%97%E7%9A%84%E5%88%9D%E5%A7%8B%E5%8C%96/" class="post-title-link" itemprop="url">TCP套接字的初始化</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-07-28 22:00:00 / 修改时间：23:48:22" itemprop="dateCreated datePublished" datetime="2025-07-28T22:00:00+08:00">2025-07-28</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/07/28/tcp%E5%A5%97%E6%8E%A5%E5%AD%97%E7%9A%84%E5%88%9D%E5%A7%8B%E5%8C%96/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/07/28/tcp%E5%A5%97%E6%8E%A5%E5%AD%97%E7%9A%84%E5%88%9D%E5%A7%8B%E5%8C%96/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="TCP套接字的初始化"><a href="#TCP套接字的初始化" class="headerlink" title="TCP套接字的初始化"></a>TCP套接字的初始化</h2><p>在用户调用<code>socket()</code> 后，对于AF_INET协议族，会调用<code>inet_create</code> 而<code>inet_create</code> 中会调用具体协议的<code>init</code>函数，对于TCP来说就是<code>tcp_v4_init_sock</code></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">inet_create</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> socket *sock, <span class="type">int</span> protocol,</span></span><br><span class="line"><span class="params">		       <span class="type">int</span> kern)</span></span><br><span class="line">&#123;</span><br><span class="line"></span><br><span class="line">···</span><br><span class="line">	<span class="comment">//这里是特定协议的初始化逻辑</span></span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_prot-&gt;init) &#123;</span><br><span class="line">		err = sk-&gt;sk_prot-&gt;init(sk);</span><br><span class="line">		<span class="keyword">if</span> (err) &#123;</span><br><span class="line">			sk_common_release(sk);</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">···</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_v4_init_sock </code> 具体实现如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">tcp_v4_init_sock</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line"></span><br><span class="line">	tcp_init_sock(sk);</span><br><span class="line"></span><br><span class="line">	icsk-&gt;icsk_af_ops = &amp;ipv4_specific;<span class="comment">//ip层和tcp层直接的桥梁的ops</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_TCP_MD5SIG</span></span><br><span class="line">	tcp_sk(sk)-&gt;af_specific = &amp;tcp_sock_ipv4_specific;<span class="comment">//tcp的一些ops</span></span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_v4_init_sock</code>  中调用<code>tcp_init_sock</code> 进一步完成初始化，除此之外还设置了与<code>ip</code>层相关的<code>ops</code>集合，其中包括<code>ip</code>层的发包函数，校验和的计算，三次握手中用到的回调函数，以及路由和MTU的设置等。具体代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock_af_ops</span> <span class="title">ipv4_specific</span> =</span> &#123;</span><br><span class="line">	.queue_xmit	   = ip_queue_xmit, 					<span class="comment">//交付给ip层的接口</span></span><br><span class="line">	.send_check	   = tcp_v4_send_check,					<span class="comment">//计算校验和</span></span><br><span class="line">	.rebuild_header	   = inet_sk_rebuild_header,		<span class="comment">//建连 或者重传 调用，查看是否有有效的路由信息</span></span><br><span class="line">	.sk_rx_dst_set	   = inet_sk_rx_dst_set,			<span class="comment">//设置dst 建连完成后会调用，其他地方好像没有了</span></span><br><span class="line">	.conn_request	   = tcp_v4_conn_request,			<span class="comment">//listen状态下，处理syn的回调</span></span><br><span class="line">	.syn_recv_sock	   = tcp_v4_syn_recv_sock,			<span class="comment">//完成建链 创建socket</span></span><br><span class="line">	.net_header_len	   = <span class="keyword">sizeof</span>(<span class="keyword">struct</span> iphdr),</span><br><span class="line">	.setsockopt	   = ip_setsockopt,</span><br><span class="line">	.getsockopt	   = ip_getsockopt,</span><br><span class="line">	.addr2sockaddr	   = inet_csk_addr2sockaddr,		<span class="comment">//好像没有地方用</span></span><br><span class="line">	.sockaddr_len	   = <span class="keyword">sizeof</span>(<span class="keyword">struct</span> sockaddr_in),</span><br><span class="line">	.mtu_reduced	   = tcp_v4_mtu_reduced,			<span class="comment">//icmp中会调用</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_init_sock</code> 中，初始化了乱序队列和重传队列，初始化多个定时器，设置了拥塞算法相关的字段，设置了有写空间的回回调以及色设置<code>mss</code>的回调。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_init_sock</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line"></span><br><span class="line">	tp-&gt;out_of_order_queue = RB_ROOT;  <span class="comment">//初始化红黑树</span></span><br><span class="line">	sk-&gt;tcp_rtx_queue = RB_ROOT;		<span class="comment">//初始化重传队列</span></span><br><span class="line">	tcp_init_xmit_timers(sk);			<span class="comment">//初始化tcp的定时器</span></span><br><span class="line">	INIT_LIST_HEAD(&amp;tp-&gt;tsq_node);	<span class="comment">//初始化tsq 这个node是放到软中断中的</span></span><br><span class="line">	INIT_LIST_HEAD(&amp;tp-&gt;tsorted_sent_queue);		<span class="comment">//按时间发送</span></span><br><span class="line"></span><br><span class="line">	icsk-&gt;icsk_rto = TCP_TIMEOUT_INIT;	<span class="comment">//初始的重传超时时间 1</span></span><br><span class="line">	icsk-&gt;icsk_rto_min = TCP_RTO_MIN;	<span class="comment">//最小的重传超时时间 200ms</span></span><br><span class="line">	icsk-&gt;icsk_delack_max = TCP_DELACK_MAX; <span class="comment">//延迟ack</span></span><br><span class="line">	tp-&gt;mdev_us = jiffies_to_usecs(TCP_TIMEOUT_INIT); <span class="comment">//rtt相关</span></span><br><span class="line">	minmax_reset(&amp;tp-&gt;rtt_min, tcp_jiffies32, ~<span class="number">0U</span>); <span class="comment">//初始化历史链接中rtt的min</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* So many TCP implementations out there (incorrectly) count the</span></span><br><span class="line"><span class="comment">	 * initial SYN frame in their delayed-ACK and congestion control</span></span><br><span class="line"><span class="comment">	 * algorithms that we must have the following bandaid to talk</span></span><br><span class="line"><span class="comment">	 * efficiently to them.  -DaveM</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	tcp_snd_cwnd_set(tp, TCP_INIT_CWND);				<span class="comment">//初始化cwnd 10个mss</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* There&#x27;s a bubble in the pipe until at least the first ACK. */</span></span><br><span class="line">	tp-&gt;app_limited = ~<span class="number">0U</span>;									<span class="comment">//这个字段表示应用程序未持续填充数据</span></span><br><span class="line">	tp-&gt;rate_app_limited = <span class="number">1</span>;								<span class="comment">// bbr算法会yong到</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* See draft-stevens-tcpca-spec-01 for discussion of the</span></span><br><span class="line"><span class="comment">	 * initialization of these values.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	tp-&gt;snd_ssthresh = TCP_INFINITE_SSTHRESH;  				<span class="comment">//慢启动阈值</span></span><br><span class="line">	tp-&gt;snd_cwnd_clamp = ~<span class="number">0</span>;								<span class="comment">//拥塞窗口最大值</span></span><br><span class="line">	tp-&gt;mss_cache = TCP_MSS_DEFAULT;						<span class="comment">//初始哈uMSS</span></span><br><span class="line"></span><br><span class="line">	tp-&gt;reordering = READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_reordering);  <span class="comment">//容许的最大乱续程度 初始化为3</span></span><br><span class="line">	tcp_assign_congestion_control(sk);			<span class="comment">//设置拥塞算法的ops</span></span><br><span class="line"></span><br><span class="line">	tp-&gt;tsoffset = <span class="number">0</span>;							<span class="comment">//tcp时间戳选项会用到</span></span><br><span class="line">	tp-&gt;rack.reo_wnd_steps = <span class="number">1</span>;					<span class="comment">//乱续窗口动态增长的步长</span></span><br><span class="line"></span><br><span class="line">	sk-&gt;sk_write_space = sk_stream_write_space; 	<span class="comment">//有写空间的回调</span></span><br><span class="line">	sock_set_flag(sk, SOCK_USE_WRITE_QUEUE);</span><br><span class="line"></span><br><span class="line">	icsk-&gt;icsk_sync_mss = tcp_sync_mss;			<span class="comment">//更新mss的回调</span></span><br><span class="line"></span><br><span class="line">	WRITE_ONCE(sk-&gt;sk_sndbuf, READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_wmem[<span class="number">1</span>]));</span><br><span class="line">	WRITE_ONCE(sk-&gt;sk_rcvbuf, READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_rmem[<span class="number">1</span>]));</span><br><span class="line">	tcp_scaling_ratio_init(sk);					<span class="comment">//初始化窗口的缩放因子</span></span><br><span class="line"></span><br><span class="line">	set_bit(SOCK_SUPPORT_ZC, &amp;sk-&gt;sk_socket-&gt;flags);</span><br><span class="line">	sk_sockets_allocated_inc(sk);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码中的<code>tcp_init_xmit_timers</code> 设置了5个定时器，其中包括重传定时器，延迟ack定时器，保活定时器，pacing定时器，和压缩ack定时器，其中重传定时器，虽然只注册了一个定时器，但内部会根据pending位的不同处理不同的任务 其中包括rack，tlp探测，超时重传，零窗口探测。具体代码如下：</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/07/28/tcp%E5%A5%97%E6%8E%A5%E5%AD%97%E7%9A%84%E5%88%9D%E5%A7%8B%E5%8C%96/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/07/24/TCP%E5%8D%8F%E8%AE%AE%E5%88%9D%E5%A7%8B%E5%8C%96/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1140,131 +1241,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/23/%E9%93%BE%E6%8E%A5(%E4%B8%80)/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/06/23/%E9%93%BE%E6%8E%A5(%E4%B8%80)/" class="post-title-link" itemprop="url">链接(一)</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2025-06-23 22:00:00" itemprop="dateCreated datePublished" datetime="2025-06-23T22:00:00+08:00">2025-06-23</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-06-25 23:48:22" itemprop="dateModified" datetime="2025-06-25T23:48:22+08:00">2025-06-25</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/06/23/%E9%93%BE%E6%8E%A5(%E4%B8%80)/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/06/23/%E9%93%BE%E6%8E%A5(%E4%B8%80)/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h1 id="链接"><a href="#链接" class="headerlink" title="链接"></a>链接</h1><p><strong>链接（Linking）是一个将多个代码和数据片段（来自编译器生成的目标文件）收集并组合为一个单一文件</strong>的过程，这个文件可以被<strong>加载到内存中执行</strong>。</p>
-<p> 链接的目标文件可以是：</p>
-<ul>
-<li>可执行文件</li>
-<li>共享库（动态库）</li>
-<li>或中间的可重定位文件</li>
-</ul>
-<p>链接可以发生在不同的阶段：</p>
-<table>
-<thead>
-<tr>
-<th>链接阶段</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><strong>链接时（Link-time）</strong></td>
-<td>最常见的，指用 <code>ld</code> 或 <code>gcc</code> 把多个 <code>.o</code>、<code>.a</code>、<code>.so</code> 链接为一个可执行文件或库。</td>
-</tr>
-<tr>
-<td><strong>加载时（Load-time）</strong></td>
-<td>程序被操作系统加载到内存时，动态链接器（如 <code>/lib64/ld-linux.so.2</code>）把 <code>.so</code> 文件装载并绑定符号。</td>
-</tr>
-<tr>
-<td><strong>运行时（Run-time）</strong></td>
-<td>程序运行过程中自行调用 <code>dlopen()</code> &#x2F; <code>dlsym()</code> 等函数动态加载库并解析符号。</td>
-</tr>
-</tbody></table>
-<h2 id="静态链接"><a href="#静态链接" class="headerlink" title="静态链接"></a>静态链接</h2><p><strong>静态链接</strong>是指链接器将所有需要的代码、数据和库函数<strong>一次性合并到一个最终的可执行文件中</strong>，使这个文件在运行时<strong>不再依赖外部库</strong></p>
-<p>举例：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// main.c</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">add</span><span class="params">(<span class="type">int</span> a, <span class="type">int</span> b)</span>;</span><br><span class="line"><span class="type">int</span> <span class="title function_">main</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> add(<span class="number">2</span>, <span class="number">3</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/06/23/%E9%93%BE%E6%8E%A5(%E4%B8%80)/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1334,7 +1310,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">71</span>
+          <span class="site-state-item-count">72</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
