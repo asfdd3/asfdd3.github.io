@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="tcp_write_xmit中判断完是否会由于nagle算法和tso推迟发送后接下来会基于对端窗口和nagle算法调用tcp_mss_split_point计算一次发包的最大长度（这个值在下面会和skb的len比较，如果小于len就会拆包）具体代码如下所示： 1234567891011121314151617181920212223242526272829303132static unsigned">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TCP输出 tcp_write_xmit（三）">
+<meta property="og:url" content="http://example.com/2025/11/30/tcp_write_xmit(%E4%B8%89)/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="tcp_write_xmit中判断完是否会由于nagle算法和tso推迟发送后接下来会基于对端窗口和nagle算法调用tcp_mss_split_point计算一次发包的最大长度（这个值在下面会和skb的len比较，如果小于len就会拆包）具体代码如下所示： 1234567891011121314151617181920212223242526272829303132static unsigned">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-11-30T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-11-30T14:32:56.163Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP输出">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/11/30/tcp_write_xmit(%E4%B8%89)/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TCP输出 tcp_write_xmit（三） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/11/30/tcp_write_xmit(%E4%B8%89)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TCP输出 tcp_write_xmit（三）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-11-30 22:00:00 / 修改时间：22:32:56" itemprop="dateCreated datePublished" datetime="2025-11-30T22:00:00+08:00">2025-11-30</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/11/30/tcp_write_xmit(%E4%B8%89)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/11/30/tcp_write_xmit(%E4%B8%89)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p><code>tcp_write_xmit</code>中判断完是否会由于<code>nagle</code>算法和<code>tso</code>推迟发送后接下来会基于对端窗口和<code>nagle</code>算法调用<code>tcp_mss_split_point</code>计算一次发包的最大长度（这个值在下面会和<code>skb</code>的<code>len</code>比较，如果小于<code>len</code>就会拆包）具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">unsigned</span> <span class="type">int</span> <span class="title function_">tcp_mss_split_point</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">					<span class="type">const</span> <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">					<span class="type">unsigned</span> <span class="type">int</span> mss_now,</span></span><br><span class="line"><span class="params">					<span class="type">unsigned</span> <span class="type">int</span> max_segs,</span></span><br><span class="line"><span class="params">					<span class="type">int</span> nonagle)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	u32 partial, needed, window, max_len;</span><br><span class="line"></span><br><span class="line">	window = tcp_wnd_end(tp) - TCP_SKB_CB(skb)-&gt;seq; <span class="comment">//接收窗口剩余空间</span></span><br><span class="line">	max_len = mss_now * max_segs;					<span class="comment">//这里是cwnd</span></span><br><span class="line">	<span class="comment">//如果小于可用窗口的大小，且不是最后一个数据包，直接返回</span></span><br><span class="line">	<span class="keyword">if</span> (likely(max_len &lt;= window &amp;&amp; skb != tcp_write_queue_tail(sk)))</span><br><span class="line">		<span class="keyword">return</span> max_len;</span><br><span class="line">	<span class="comment">//计算实际需要长度</span></span><br><span class="line">	needed = min(skb-&gt;len, window);</span><br><span class="line">	<span class="comment">//最大长度检查</span></span><br><span class="line">	<span class="keyword">if</span> (max_len &lt;= needed)</span><br><span class="line">		<span class="keyword">return</span> max_len;</span><br><span class="line">	<span class="comment">//计算最后一段是否是不完整的 MSS</span></span><br><span class="line">	partial = needed % mss_now;</span><br><span class="line">	<span class="comment">/* If last segment is not a full MSS, check if Nagle rules allow us</span></span><br><span class="line"><span class="comment">	 * to include this last segment in this skb.</span></span><br><span class="line"><span class="comment">	 * Otherwise, we&#x27;ll split the skb at last MSS boundary</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//nagle算法检查</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_nagle_check(partial != <span class="number">0</span>, tp, nonagle))</span><br><span class="line">		<span class="keyword">return</span> needed - partial;</span><br><span class="line">	<span class="comment">//返回实际需要的长度</span></span><br><span class="line">	<span class="keyword">return</span> needed;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_mss_split_point</code><strong>首先计算对端接收窗口的剩余空间，然后计算拥塞窗口剩余空间</strong>，<strong>如果拥塞窗口大小小于对端通告窗口大小，且不是最后一个数据包，直接返回拥塞窗口大小，表示直接发送一个大包，注意通常都走这里</strong>。</p>
+<p>否则需要计算真正可发送的长度（受窗口限制），实际可发送最大长度&#x3D; min(当前包长度, 对端窗口剩余) 如果这个值大于拥塞窗口的大小，那就发送拥塞窗口大小的长度，否则计算最后没有对齐的一部分的大小，并进行<code>nagle</code>算法的判断。如果需要 Nagle则返回 <code>needed - partial</code></p>
+<p>上述计算完成可以发送的大小后，则需要和当前数据包的长度进行比较，如果数据包的长度超过了上述计算的长度，则<strong>需要调用<code>tso_fragment</code>在四层就进行分段</strong>，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">tso_fragment</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb, <span class="type">unsigned</span> <span class="type">int</span> len,</span></span><br><span class="line"><span class="params">			<span class="type">unsigned</span> <span class="type">int</span> mss_now, <span class="type">gfp_t</span> gfp)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> nlen = skb-&gt;len - len; <span class="comment">//新包的长度（剩余部分）</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">buff</span>;</span></span><br><span class="line">	u8 flags;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* All of a TSO frame must be composed of paged data.  */</span></span><br><span class="line">	<span class="comment">//这里很重要，负载必须要在非线性部分</span></span><br><span class="line">	DEBUG_NET_WARN_ON_ONCE(skb-&gt;len != skb-&gt;data_len);</span><br><span class="line">	<span class="comment">//申请一个数据包</span></span><br><span class="line">	buff = tcp_stream_alloc_skb(sk, gfp, <span class="literal">true</span>);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(!buff))</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">	skb_copy_decrypted(buff, skb);</span><br><span class="line">	mptcp_skb_ext_copy(buff, skb);</span><br><span class="line">	<span class="comment">//更新内存记账 </span></span><br><span class="line">	sk_wmem_queued_add(sk, buff-&gt;truesize);</span><br><span class="line">	sk_mem_charge(sk, buff-&gt;truesize);</span><br><span class="line">	buff-&gt;truesize += nlen;</span><br><span class="line">	skb-&gt;truesize -= nlen;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Correct the sequence numbers. */</span></span><br><span class="line">	<span class="comment">//设置序列号</span></span><br><span class="line">	TCP_SKB_CB(buff)-&gt;seq = TCP_SKB_CB(skb)-&gt;seq + len;</span><br><span class="line">	TCP_SKB_CB(buff)-&gt;end_seq = TCP_SKB_CB(skb)-&gt;end_seq;</span><br><span class="line">	TCP_SKB_CB(skb)-&gt;end_seq = TCP_SKB_CB(buff)-&gt;seq;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* PSH and FIN should only be set in the second packet. */</span></span><br><span class="line">	<span class="comment">//设置标志位</span></span><br><span class="line">	flags = TCP_SKB_CB(skb)-&gt;tcp_flags;</span><br><span class="line">	TCP_SKB_CB(skb)-&gt;tcp_flags = flags &amp; ~(TCPHDR_FIN | TCPHDR_PSH);</span><br><span class="line">	TCP_SKB_CB(buff)-&gt;tcp_flags = flags;</span><br><span class="line"></span><br><span class="line">	tcp_skb_fragment_eor(skb, buff);</span><br><span class="line">	<span class="comment">//真正的分割数据包</span></span><br><span class="line">	skb_split(skb, buff, len);</span><br><span class="line">	tcp_fragment_tstamp(skb, buff);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Fix up tso_factor for both original and new SKB.  */</span></span><br><span class="line">	<span class="comment">//重新计算GSO信息</span></span><br><span class="line">	tcp_set_skb_tso_segs(skb, mss_now);</span><br><span class="line">	tcp_set_skb_tso_segs(buff, mss_now);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Link BUFF into the send queue. */</span></span><br><span class="line">	__skb_header_release(buff);</span><br><span class="line">	<span class="comment">//新 SKB 插入到原 SKB 之后的发送队列中！</span></span><br><span class="line">	tcp_insert_write_queue_after(skb, buff, sk, TCP_FRAG_IN_WRITE_QUEUE);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tso_fragment</code>的逻辑中上来就先判断判断负载是否都只存在于非线性部分，<strong>这里就是数据包为什么需要用<code>page</code>来管理的关键，当需要拆分数据包时，仅通过操作指针就可以完成！</strong></p>
+<p><code>tso_fragment</code>中首先申请数据包，之后更新内存记账等相关字段，并设置当前数据包的序列号和标志位，调用<code>skb_split</code>完成执行 SKB 数据分页拆分，调用<code>tcp_set_skb_tso_segs</code>重新设置GSO字段，之后将新 <code>skb</code> 插入到原 <code>skb</code> 之后的发送队列中，更新GSO字段的代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">tcp_set_skb_tso_segs</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="type">unsigned</span> <span class="type">int</span> mss_now)</span></span><br><span class="line">&#123;</span><br><span class="line"><span class="comment">//设置tcp_gso_size 和gso_segs</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;len &lt;= mss_now) &#123;</span><br><span class="line">		<span class="comment">/* Avoid the costly divide in the normal</span></span><br><span class="line"><span class="comment">		 * non-TSO case.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//设置段数为1</span></span><br><span class="line">		tcp_skb_pcount_set(skb, <span class="number">1</span>);</span><br><span class="line">		<span class="comment">//设置gso size</span></span><br><span class="line">		TCP_SKB_CB(skb)-&gt;tcp_gso_size = <span class="number">0</span>;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		tcp_skb_pcount_set(skb, DIV_ROUND_UP(skb-&gt;len, mss_now)); <span class="comment">//设置有多少个段</span></span><br><span class="line">		TCP_SKB_CB(skb)-&gt;tcp_gso_size = mss_now; <span class="comment">//设置每个段有多少个字节</span></span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>完成数据包的拆分后(如果需要拆分)，则**接下来会判断是否因TSQ机制(限制单个套接字占用协议栈过多资源)，**暂停发送，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">bool</span> <span class="title function_">tcp_small_queue_check</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">const</span> <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">				  <span class="type">unsigned</span> <span class="type">int</span> factor)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> limit;</span><br><span class="line">	<span class="comment">//取两者中的 较大值，作为limit</span></span><br><span class="line">	limit = <span class="type">max_t</span>(<span class="type">unsigned</span> <span class="type">long</span>, </span><br><span class="line">		      <span class="number">2</span> * skb-&gt;truesize,<span class="comment">//当前数据包大小的两倍，2个帧</span></span><br><span class="line">		      sk-&gt;sk_pacing_rate &gt;&gt; READ_ONCE(sk-&gt;sk_pacing_shift));			 <span class="comment">//默认是10 ，1ms能发送的字节数目</span></span><br><span class="line">	<span class="comment">//如果没有启用流量整形，使用系统配置的默认输出限制,bbr就不会进入这个分支</span></span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_pacing_status == SK_PACING_NONE)</span><br><span class="line">		limit = <span class="type">min_t</span>(<span class="type">unsigned</span> <span class="type">long</span>, limit,</span><br><span class="line">			      READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_limit_output_bytes))	<span class="comment">//默认 16 × 64K把 limit 封顶</span></span><br><span class="line">	limit &lt;&lt;= factor;															<span class="comment">//重传因子调整 发送通路中是0</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (static_branch_unlikely(&amp;tcp_tx_delay_enabled) &amp;&amp;   						<span class="comment">//false</span></span><br><span class="line">	    tcp_sk(sk)-&gt;tcp_tx_delay) &#123;</span><br><span class="line">		u64 extra_bytes = (u64)sk-&gt;sk_pacing_rate * tcp_sk(sk)-&gt;tcp_tx_delay;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* TSQ is based on skb truesize sum (sk_wmem_alloc), so we</span></span><br><span class="line"><span class="comment">		 * approximate our needs assuming an ~100% skb-&gt;truesize overhead.</span></span><br><span class="line"><span class="comment">		 * USEC_PER_SEC is approximated by 2^20.</span></span><br><span class="line"><span class="comment">		 * do_div(extra_bytes, USEC_PER_SEC/2) is replaced by a right shift.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		extra_bytes &gt;&gt;= (<span class="number">20</span> - <span class="number">1</span>);</span><br><span class="line">		limit += extra_bytes;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//当前sk 中协议栈的数据包已经超过了限制</span></span><br><span class="line">	<span class="keyword">if</span> (refcount_read(&amp;sk-&gt;sk_wmem_alloc) &gt; limit) &#123;</span><br><span class="line">		<span class="comment">/* Always send skb if rtx queue is empty or has one skb.</span></span><br><span class="line"><span class="comment">		 * No need to wait for TX completion to call us back,</span></span><br><span class="line"><span class="comment">		 * after softirq/tasklet schedule.</span></span><br><span class="line"><span class="comment">		 * This helps when TX completions are delayed too much.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//如果重传队列为空或只有一个包，允许发送</span></span><br><span class="line">		<span class="keyword">if</span> (tcp_rtx_queue_empty_or_single_skb(sk))</span><br><span class="line">			<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">		<span class="comment">//标记该 socket 已被 TSQ 机制限制</span></span><br><span class="line">		set_bit(TSQ_THROTTLED, &amp;sk-&gt;sk_tsq_flags);</span><br><span class="line">		<span class="comment">/* It is possible TX completion already happened</span></span><br><span class="line"><span class="comment">		 * before we set TSQ_THROTTLED, so we must</span></span><br><span class="line"><span class="comment">		 * test again the condition.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		smp_mb__after_atomic();</span><br><span class="line">		<span class="keyword">if</span> (refcount_read(&amp;sk-&gt;sk_wmem_alloc) &gt; limit)</span><br><span class="line">			<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_small_queue_check</code> 是TSQ机制的核心，通过监控单个 socket 已经交给网卡队列&#x2F;<code>qdisc</code> 的内存量（<code>sk_wmem_alloc</code>），结合 skb 大小、pacing 速率和系统上限，动态决定是否暂时阻塞该 socket 的后续发送，在不影响重传的前提下有效缩短队列、改善 RTT、公平性。上述触发TSQ的机制是设置了<code>TSQ_THROTTLED</code>SKB的析构函数中会判断这个标志位，如果<code>set</code>了则会调度TSQ的软中段任务，在软中断上下文中发送数据包。</p>
+<p>通过TSQ机制检查后会调用<code>tcp_transmit_skb</code>完成正真的发包，之后调用<code>tcp_event_new_data_sent</code>更新一系列字段，并加入重传队列，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">tcp_event_new_data_sent</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> prior_packets = tp-&gt;packets_out;</span><br><span class="line"></span><br><span class="line">	WRITE_ONCE(tp-&gt;snd_nxt, TCP_SKB_CB(skb)-&gt;end_seq); <span class="comment">//更新下一个待发送的序列号</span></span><br><span class="line"></span><br><span class="line">	__skb_unlink(skb, &amp;sk-&gt;sk_write_queue);       <span class="comment">//unlink</span></span><br><span class="line">	tcp_rbtree_insert(&amp;sk-&gt;tcp_rtx_queue, skb);   <span class="comment">//加入重传队列</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;highest_sack == <span class="literal">NULL</span>)</span><br><span class="line">		tp-&gt;highest_sack = skb; 						<span class="comment">//设置highsack</span></span><br><span class="line"></span><br><span class="line">	tp-&gt;packets_out += tcp_skb_pcount(skb); 			<span class="comment">//计算段数 </span></span><br><span class="line">	<span class="keyword">if</span> (!prior_packets || icsk-&gt;icsk_pending == ICSK_TIME_LOSS_PROBE)</span><br><span class="line">		tcp_rearm_rto(sk);								<span class="comment">//没有在途中的数据包</span></span><br><span class="line"></span><br><span class="line">	NET_ADD_STATS(sock_net(sk), LINUX_MIB_TCPORIGDATASENT,</span><br><span class="line">		      tcp_skb_pcount(skb));</span><br><span class="line">	<span class="comment">//如果有空间了，是否唤醒用户态的进程</span></span><br><span class="line">	tcp_check_space(sk);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_event_new_data_sent</code>在 TCP 把一个 <code>skb</code> 正式发送出去后，更新 <code>snd_nxt</code>、将数据包加入重传队列、增加在途计数、重新设置 RTO 定时器、统计发送量，并在可能的情况下唤醒被发送缓冲区限制的应用。</p>
+<p>接下进入<code>tcp_write_xmit</code>的收尾工作，<code>while</code>大循环结束后首先记录记录接收窗口限制时间段，然后判断是否拥塞窗口受限，如果是的或则调用<code>tcp_cwnd_validate</code>进行塞窗口验证和状态时间记录，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">tcp_cwnd_validate</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">bool</span> is_cwnd_limited)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">tcp_congestion_ops</span> *<span class="title">ca_ops</span> =</span> inet_csk(sk)-&gt;icsk_ca_ops;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Track the strongest available signal of the degree to which the cwnd</span></span><br><span class="line"><span class="comment">	 * is fully utilized. If cwnd-limited then remember that fact for the</span></span><br><span class="line"><span class="comment">	 * current window. If not cwnd-limited then track the maximum number of</span></span><br><span class="line"><span class="comment">	 * outstanding packets in the current window. (If cwnd-limited then we</span></span><br><span class="line"><span class="comment">	 * chose to not update tp-&gt;max_packets_out to avoid an extra else</span></span><br><span class="line"><span class="comment">	 * clause with no functional impact.)</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (!before(tp-&gt;snd_una, tp-&gt;cwnd_usage_seq) ||   <span class="comment">//判断是不是“新的一轮窗口周期”</span></span><br><span class="line">	    is_cwnd_limited ||											<span class="comment">//是否是 cwnd-limited</span></span><br><span class="line">	    (!tp-&gt;is_cwnd_limited &amp;&amp;									<span class="comment">//非 cwnd-limited 但看到了更大的在途包数量</span></span><br><span class="line">	     tp-&gt;packets_out &gt; tp-&gt;max_packets_out)) &#123;</span><br><span class="line">		tp-&gt;is_cwnd_limited = is_cwnd_limited;						<span class="comment">//设置cwnd</span></span><br><span class="line">		tp-&gt;max_packets_out = tp-&gt;packets_out;						<span class="comment">//设置周期内最大在途数量</span></span><br><span class="line">		tp-&gt;cwnd_usage_seq = tp-&gt;snd_nxt;							<span class="comment">//计算这一个周期起始序列号的位置</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (tcp_is_cwnd_limited(sk)) &#123;									<span class="comment">//判断is_cwnd_limited 网络被喂满</span></span><br><span class="line">		<span class="comment">/* Network is feed fully. */</span></span><br><span class="line">		tp-&gt;snd_cwnd_used = <span class="number">0</span>;										<span class="comment">//表示从现在开始重新记录</span></span><br><span class="line">		tp-&gt;snd_cwnd_stamp = tcp_jiffies32;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="comment">/* Network starves. */</span></span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;packets_out &gt; tp-&gt;snd_cwnd_used)					<span class="comment">//如果当前在途包数 packets_out 比之前记录的 snd_cwnd_used 更大，就更新</span></span><br><span class="line">			tp-&gt;snd_cwnd_used = tp-&gt;packets_out;					</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_slow_start_after_idle) &amp;&amp; <span class="comment">//默认是0，通常不进入这个分支</span></span><br><span class="line">		    (s32)(tcp_jiffies32 - tp-&gt;snd_cwnd_stamp) &gt;= inet_csk(sk)-&gt;icsk_rto &amp;&amp;  <span class="comment">//相当于长时间用户没有给大量的数据了</span></span><br><span class="line">		    !ca_ops-&gt;cong_control)</span><br><span class="line">			tcp_cwnd_application_limited(sk);						<span class="comment">//cwnd太大了 用不了这么多 变小cwnd</span></span><br><span class="line"></span><br><span class="line">		<span class="comment">/* The following conditions together indicate the starvation</span></span><br><span class="line"><span class="comment">		 * is caused by insufficient sender buffer:</span></span><br><span class="line"><span class="comment">		 * 1) just sent some data (see tcp_write_xmit)</span></span><br><span class="line"><span class="comment">		 * 2) not cwnd limited (this else condition)</span></span><br><span class="line"><span class="comment">		 * 3) no more data to send (tcp_write_queue_empty())</span></span><br><span class="line"><span class="comment">		 * 4) application is hitting buffer limit (SOCK_NOSPACE)</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="keyword">if</span> (tcp_write_queue_empty(sk) &amp;&amp; sk-&gt;sk_socket &amp;&amp;   </span><br><span class="line">		    test_bit(SOCK_NOSPACE, &amp;sk-&gt;sk_socket-&gt;flags) &amp;&amp;</span><br><span class="line">		    (<span class="number">1</span> &lt;&lt; sk-&gt;sk_state) &amp; (TCPF_ESTABLISHED | TCPF_CLOSE_WAIT))</span><br><span class="line">			tcp_chrono_start(sk, TCP_CHRONO_SNDBUF_LIMITED);    <span class="comment">//记录这个时间，表示是发送端用户发送速率不够</span></span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>最后，如果本轮发包中成功发送了数据，并且当前显示拥塞控制或者快恢复状态则记录发出去的包鼠，<strong>并启动<code>TLP</code>定时器.</strong></p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E8%BE%93%E5%87%BA/" rel="tag"># TCP输出</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/11/27/tcp_write_xmit(%E4%BA%8C)/" rel="prev" title="TCP输出 tcp_write_xmit（二）">
+      <i class="fa fa-chevron-left"></i> TCP输出 tcp_write_xmit（二）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">73</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">17</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

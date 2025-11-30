@@ -193,6 +193,107 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/11/30/tcp_write_xmit(%E4%B8%89)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/11/30/tcp_write_xmit(%E4%B8%89)/" class="post-title-link" itemprop="url">TCP输出 tcp_write_xmit（三）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-11-30 22:00:00 / 修改时间：22:32:56" itemprop="dateCreated datePublished" datetime="2025-11-30T22:00:00+08:00">2025-11-30</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/11/30/tcp_write_xmit(%E4%B8%89)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/11/30/tcp_write_xmit(%E4%B8%89)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p><code>tcp_write_xmit</code>中判断完是否会由于<code>nagle</code>算法和<code>tso</code>推迟发送后接下来会基于对端窗口和<code>nagle</code>算法调用<code>tcp_mss_split_point</code>计算一次发包的最大长度（这个值在下面会和<code>skb</code>的<code>len</code>比较，如果小于<code>len</code>就会拆包）具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">unsigned</span> <span class="type">int</span> <span class="title function_">tcp_mss_split_point</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">					<span class="type">const</span> <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">					<span class="type">unsigned</span> <span class="type">int</span> mss_now,</span></span><br><span class="line"><span class="params">					<span class="type">unsigned</span> <span class="type">int</span> max_segs,</span></span><br><span class="line"><span class="params">					<span class="type">int</span> nonagle)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	u32 partial, needed, window, max_len;</span><br><span class="line"></span><br><span class="line">	window = tcp_wnd_end(tp) - TCP_SKB_CB(skb)-&gt;seq; <span class="comment">//接收窗口剩余空间</span></span><br><span class="line">	max_len = mss_now * max_segs;					<span class="comment">//这里是cwnd</span></span><br><span class="line">	<span class="comment">//如果小于可用窗口的大小，且不是最后一个数据包，直接返回</span></span><br><span class="line">	<span class="keyword">if</span> (likely(max_len &lt;= window &amp;&amp; skb != tcp_write_queue_tail(sk)))</span><br><span class="line">		<span class="keyword">return</span> max_len;</span><br><span class="line">	<span class="comment">//计算实际需要长度</span></span><br><span class="line">	needed = min(skb-&gt;len, window);</span><br><span class="line">	<span class="comment">//最大长度检查</span></span><br><span class="line">	<span class="keyword">if</span> (max_len &lt;= needed)</span><br><span class="line">		<span class="keyword">return</span> max_len;</span><br><span class="line">	<span class="comment">//计算最后一段是否是不完整的 MSS</span></span><br><span class="line">	partial = needed % mss_now;</span><br><span class="line">	<span class="comment">/* If last segment is not a full MSS, check if Nagle rules allow us</span></span><br><span class="line"><span class="comment">	 * to include this last segment in this skb.</span></span><br><span class="line"><span class="comment">	 * Otherwise, we&#x27;ll split the skb at last MSS boundary</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//nagle算法检查</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_nagle_check(partial != <span class="number">0</span>, tp, nonagle))</span><br><span class="line">		<span class="keyword">return</span> needed - partial;</span><br><span class="line">	<span class="comment">//返回实际需要的长度</span></span><br><span class="line">	<span class="keyword">return</span> needed;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_mss_split_point</code><strong>首先计算对端接收窗口的剩余空间，然后计算拥塞窗口剩余空间</strong>，<strong>如果拥塞窗口大小小于对端通告窗口大小，且不是最后一个数据包，直接返回拥塞窗口大小，表示直接发送一个大包，注意通常都走这里</strong>。</p>
+<p>否则需要计算真正可发送的长度（受窗口限制），实际可发送最大长度&#x3D; min(当前包长度, 对端窗口剩余) 如果这个值大于拥塞窗口的大小，那就发送拥塞窗口大小的长度，否则计算最后没有对齐的一部分的大小，并进行<code>nagle</code>算法的判断。如果需要 Nagle则返回 <code>needed - partial</code></p>
+<p>上述计算完成可以发送的大小后，则需要和当前数据包的长度进行比较，如果数据包的长度超过了上述计算的长度，则<strong>需要调用<code>tso_fragment</code>在四层就进行分段</strong>，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">tso_fragment</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb, <span class="type">unsigned</span> <span class="type">int</span> len,</span></span><br><span class="line"><span class="params">			<span class="type">unsigned</span> <span class="type">int</span> mss_now, <span class="type">gfp_t</span> gfp)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> nlen = skb-&gt;len - len; <span class="comment">//新包的长度（剩余部分）</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">buff</span>;</span></span><br><span class="line">	u8 flags;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* All of a TSO frame must be composed of paged data.  */</span></span><br><span class="line">	<span class="comment">//这里很重要，负载必须要在非线性部分</span></span><br><span class="line">	DEBUG_NET_WARN_ON_ONCE(skb-&gt;len != skb-&gt;data_len);</span><br><span class="line">	<span class="comment">//申请一个数据包</span></span><br><span class="line">	buff = tcp_stream_alloc_skb(sk, gfp, <span class="literal">true</span>);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(!buff))</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">	skb_copy_decrypted(buff, skb);</span><br><span class="line">	mptcp_skb_ext_copy(buff, skb);</span><br><span class="line">	<span class="comment">//更新内存记账 </span></span><br><span class="line">	sk_wmem_queued_add(sk, buff-&gt;truesize);</span><br><span class="line">	sk_mem_charge(sk, buff-&gt;truesize);</span><br><span class="line">	buff-&gt;truesize += nlen;</span><br><span class="line">	skb-&gt;truesize -= nlen;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Correct the sequence numbers. */</span></span><br><span class="line">	<span class="comment">//设置序列号</span></span><br><span class="line">	TCP_SKB_CB(buff)-&gt;seq = TCP_SKB_CB(skb)-&gt;seq + len;</span><br><span class="line">	TCP_SKB_CB(buff)-&gt;end_seq = TCP_SKB_CB(skb)-&gt;end_seq;</span><br><span class="line">	TCP_SKB_CB(skb)-&gt;end_seq = TCP_SKB_CB(buff)-&gt;seq;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* PSH and FIN should only be set in the second packet. */</span></span><br><span class="line">	<span class="comment">//设置标志位</span></span><br><span class="line">	flags = TCP_SKB_CB(skb)-&gt;tcp_flags;</span><br><span class="line">	TCP_SKB_CB(skb)-&gt;tcp_flags = flags &amp; ~(TCPHDR_FIN | TCPHDR_PSH);</span><br><span class="line">	TCP_SKB_CB(buff)-&gt;tcp_flags = flags;</span><br><span class="line"></span><br><span class="line">	tcp_skb_fragment_eor(skb, buff);</span><br><span class="line">	<span class="comment">//真正的分割数据包</span></span><br><span class="line">	skb_split(skb, buff, len);</span><br><span class="line">	tcp_fragment_tstamp(skb, buff);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Fix up tso_factor for both original and new SKB.  */</span></span><br><span class="line">	<span class="comment">//重新计算GSO信息</span></span><br><span class="line">	tcp_set_skb_tso_segs(skb, mss_now);</span><br><span class="line">	tcp_set_skb_tso_segs(buff, mss_now);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Link BUFF into the send queue. */</span></span><br><span class="line">	__skb_header_release(buff);</span><br><span class="line">	<span class="comment">//新 SKB 插入到原 SKB 之后的发送队列中！</span></span><br><span class="line">	tcp_insert_write_queue_after(skb, buff, sk, TCP_FRAG_IN_WRITE_QUEUE);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tso_fragment</code>的逻辑中上来就先判断判断负载是否都只存在于非线性部分，<strong>这里就是数据包为什么需要用<code>page</code>来管理的关键，当需要拆分数据包时，仅通过操作指针就可以完成！</strong></p>
+<p><code>tso_fragment</code>中首先申请数据包，之后更新内存记账等相关字段，并设置当前数据包的序列号和标志位，调用<code>skb_split</code>完成执行 SKB 数据分页拆分，调用<code>tcp_set_skb_tso_segs</code>重新设置GSO字段，之后将新 <code>skb</code> 插入到原 <code>skb</code> 之后的发送队列中，更新GSO字段的代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">tcp_set_skb_tso_segs</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="type">unsigned</span> <span class="type">int</span> mss_now)</span></span><br><span class="line">&#123;</span><br><span class="line"><span class="comment">//设置tcp_gso_size 和gso_segs</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;len &lt;= mss_now) &#123;</span><br><span class="line">		<span class="comment">/* Avoid the costly divide in the normal</span></span><br><span class="line"><span class="comment">		 * non-TSO case.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//设置段数为1</span></span><br><span class="line">		tcp_skb_pcount_set(skb, <span class="number">1</span>);</span><br><span class="line">		<span class="comment">//设置gso size</span></span><br><span class="line">		TCP_SKB_CB(skb)-&gt;tcp_gso_size = <span class="number">0</span>;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		tcp_skb_pcount_set(skb, DIV_ROUND_UP(skb-&gt;len, mss_now)); <span class="comment">//设置有多少个段</span></span><br><span class="line">		TCP_SKB_CB(skb)-&gt;tcp_gso_size = mss_now; <span class="comment">//设置每个段有多少个字节</span></span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>完成数据包的拆分后(如果需要拆分)，则**接下来会判断是否因TSQ机制(限制单个套接字占用协议栈过多资源)，**暂停发送，具体代码如下所示：</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/11/30/tcp_write_xmit(%E4%B8%89)/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/11/27/tcp_write_xmit(%E4%BA%8C)/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1117,110 +1218,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/11/04/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-cubic%E6%8B%A5%E5%A1%9E%E7%AE%97%E6%B3%95%EF%BC%88%E4%BA%8C%EF%BC%89/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/11/04/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-cubic%E6%8B%A5%E5%A1%9E%E7%AE%97%E6%B3%95%EF%BC%88%E4%BA%8C%EF%BC%89/" class="post-title-link" itemprop="url">TCP拥塞控制-CUBIC算法(二)</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2025-11-04 22:00:00" itemprop="dateCreated datePublished" datetime="2025-11-04T22:00:00+08:00">2025-11-04</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-11-02 23:04:11" itemprop="dateModified" datetime="2025-11-02T23:04:11+08:00">2025-11-02</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/11/04/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-cubic%E6%8B%A5%E5%A1%9E%E7%AE%97%E6%B3%95%EF%BC%88%E4%BA%8C%EF%BC%89/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/11/04/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-cubic%E6%8B%A5%E5%A1%9E%E7%AE%97%E6%B3%95%EF%BC%88%E4%BA%8C%EF%BC%89/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p><code>cubictcp_cong_avoid</code>中如果当前不在慢启动阶段，则会调用<code>bictcp_update</code>计算拥塞窗口，具体代如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br></pre></td><td class="code"><pre><span class="line"> */</span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">bictcp_update</span><span class="params">(<span class="keyword">struct</span> bictcp *ca, u32 cwnd, u32 acked)</span></span><br><span class="line">&#123;</span><br><span class="line">	u32 delta, bic_target, max_cnt;</span><br><span class="line">	u64 offs, t;</span><br><span class="line">	<span class="comment">//ack的总数</span></span><br><span class="line">	ca-&gt;ack_cnt += acked;	<span class="comment">/* count the number of ACKed packets */</span></span><br><span class="line">	<span class="comment">//拥塞窗口没有变化，且时间太短了</span></span><br><span class="line">	<span class="keyword">if</span> (ca-&gt;last_cwnd == cwnd &amp;&amp;</span><br><span class="line">	    (s32)(tcp_jiffies32 - ca-&gt;last_time) &lt;= HZ / <span class="number">32</span>)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* The CUBIC function can update ca-&gt;cnt at most once per jiffy.</span></span><br><span class="line"><span class="comment">	 * On all cwnd reduction events, ca-&gt;epoch_start is set to 0,</span></span><br><span class="line"><span class="comment">	 * which will force a recalculation of ca-&gt;cnt.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//是否处于一个增长周期 且在同一个时间片内，意思就是每个jiffy最多计算一次Cubic</span></span><br><span class="line">	<span class="keyword">if</span> (ca-&gt;epoch_start &amp;&amp; tcp_jiffies32 == ca-&gt;last_time)</span><br><span class="line">		<span class="keyword">goto</span> tcp_friendliness;</span><br><span class="line"></span><br><span class="line">	ca-&gt;last_cwnd = cwnd;  <span class="comment">//记录当前拥塞窗口</span></span><br><span class="line">	ca-&gt;last_time = tcp_jiffies32; <span class="comment">//记录当前时间戳</span></span><br><span class="line">	<span class="comment">//== 0表示上次发生过拥塞</span></span><br><span class="line">	<span class="keyword">if</span> (ca-&gt;epoch_start == <span class="number">0</span>) &#123;</span><br><span class="line">		ca-&gt;epoch_start = tcp_jiffies32;	<span class="comment">/* record beginning */</span> <span class="comment">//记录新周期开始的时间戳</span></span><br><span class="line">		ca-&gt;ack_cnt = acked;			<span class="comment">/* start counting */</span> <span class="comment">//传入的ack数目</span></span><br><span class="line">		ca-&gt;tcp_cwnd = cwnd;			<span class="comment">/* syn with cubic */</span> <span class="comment">//保存当前的拥塞窗口</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (ca-&gt;last_max_cwnd &lt;= cwnd) &#123;  <span class="comment">//历史最大窗口是否小于本次的拥塞窗口</span></span><br><span class="line">			ca-&gt;bic_K = <span class="number">0</span>;       		<span class="comment">//立即开始快速增长？</span></span><br><span class="line">			ca-&gt;bic_origin_point = cwnd; <span class="comment">//当前窗口为起点</span></span><br><span class="line">		&#125; <span class="keyword">else</span> &#123; <span class="comment">//低于最大的拥塞窗口</span></span><br><span class="line">			<span class="comment">/* Compute new K based on</span></span><br><span class="line"><span class="comment">			 * (wmax-cwnd) * (srtt&gt;&gt;3 / HZ) / c * 2^(3*bictcp_HZ)</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="comment">//从当前窗口恢复到历史最大窗口所需的预估时间</span></span><br><span class="line">			ca-&gt;bic_K = cubic_root(cube_factor</span><br><span class="line">					       * (ca-&gt;last_max_cwnd - cwnd));</span><br><span class="line">			ca-&gt;bic_origin_point = ca-&gt;last_max_cwnd;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* cubic function - calc*/</span></span><br><span class="line">	<span class="comment">/* calculate c * time^3 / rtt,</span></span><br><span class="line"><span class="comment">	 *  while considering overflow in calculation of time^3</span></span><br><span class="line"><span class="comment">	 * (so time^3 is done by using 64 bit)</span></span><br><span class="line"><span class="comment">	 * and without the support of division of 64bit numbers</span></span><br><span class="line"><span class="comment">	 * (so all divisions are done by using 32 bit)</span></span><br><span class="line"><span class="comment">	 *  also NOTE the unit of those veriables</span></span><br><span class="line"><span class="comment">	 *	  time  = (t - K) / 2^bictcp_HZ</span></span><br><span class="line"><span class="comment">	 *	  c = bic_scale &gt;&gt; 10</span></span><br><span class="line"><span class="comment">	 * rtt  = (srtt &gt;&gt; 3) / HZ</span></span><br><span class="line"><span class="comment">	 * !!! The following code does not have overflow problems,</span></span><br><span class="line"><span class="comment">	 * if the cwnd &lt; 1 million packets !!!</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//当前增长周期开始到现在经过的时间</span></span><br><span class="line">	t = (s32)(tcp_jiffies32 - ca-&gt;epoch_start);</span><br><span class="line">	<span class="comment">//加一个最小rtt 是干什么的</span></span><br><span class="line">	t += usecs_to_jiffies(ca-&gt;delay_min);</span><br><span class="line">	<span class="comment">/* change the unit from HZ to bictcp_HZ */</span></span><br><span class="line">	t &lt;&lt;= BICTCP_HZ;</span><br><span class="line">	do_div(t, HZ);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (t &lt; ca-&gt;bic_K)		<span class="comment">//计算/* t - K */</span></span><br><span class="line">		offs = ca-&gt;bic_K - t;</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		offs = t - ca-&gt;bic_K;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* c/rtt * (t-K)^3 */</span></span><br><span class="line">	<span class="comment">//相当于delta = C × (t - K)³</span></span><br><span class="line">	delta = (cube_rtt_scale * offs * offs * offs) &gt;&gt; (<span class="number">10</span>+<span class="number">3</span>*BICTCP_HZ);  <span class="comment">//这个是计算窗口差值</span></span><br><span class="line">	<span class="keyword">if</span> (t &lt; ca-&gt;bic_K)                            <span class="comment">/* below origin*/</span></span><br><span class="line">		bic_target = ca-&gt;bic_origin_point - delta; <span class="comment">//恢复</span></span><br><span class="line">	<span class="keyword">else</span>                                          <span class="comment">/* above origin*/</span></span><br><span class="line">		bic_target = ca-&gt;bic_origin_point + delta; <span class="comment">//超越</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* cubic function - calc bictcp_cnt*/</span></span><br><span class="line">	<span class="keyword">if</span> (bic_target &gt; cwnd) &#123;</span><br><span class="line">		<span class="comment">//计算多少个ack增加拥塞窗口</span></span><br><span class="line">		ca-&gt;cnt = cwnd / (bic_target - cwnd);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123; <span class="comment">//不正常的情况，极慢</span></span><br><span class="line">		ca-&gt;cnt = <span class="number">100</span> * cwnd;              <span class="comment">/* very small increment*/</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * The initial growth of cubic function may be too conservative</span></span><br><span class="line"><span class="comment">	 * when the available bandwidth is still unknown.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	 <span class="comment">//如果刚开始，确保增长的别太慢</span></span><br><span class="line">	<span class="keyword">if</span> (ca-&gt;last_max_cwnd == <span class="number">0</span> &amp;&amp; ca-&gt;cnt &gt; <span class="number">20</span>)</span><br><span class="line">		ca-&gt;cnt = <span class="number">20</span>;	<span class="comment">/* increase cwnd 5% per RTT */</span></span><br><span class="line"></span><br><span class="line">tcp_friendliness:</span><br><span class="line">	<span class="comment">/* TCP Friendly */</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_friendliness) &#123;</span><br><span class="line">		u32 scale = beta_scale;	</span><br><span class="line">		<span class="comment">//计算reno 多少ack加拥塞窗口</span></span><br><span class="line">		delta = (cwnd * scale) &gt;&gt; <span class="number">3</span>; <span class="comment">//每 RTT +1 cwnd？ 这里不太懂</span></span><br><span class="line">		<span class="keyword">while</span> (ca-&gt;ack_cnt &gt; delta) &#123;		<span class="comment">/* update tcp cwnd */</span></span><br><span class="line">			ca-&gt;ack_cnt -= delta;</span><br><span class="line">			ca-&gt;tcp_cwnd++;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//比reno还慢，用reno的</span></span><br><span class="line">		<span class="keyword">if</span> (ca-&gt;tcp_cwnd &gt; cwnd) &#123;	<span class="comment">/* if bic is slower than tcp */</span></span><br><span class="line">			delta = ca-&gt;tcp_cwnd - cwnd;</span><br><span class="line">			max_cnt = cwnd / delta;</span><br><span class="line">			<span class="keyword">if</span> (ca-&gt;cnt &gt; max_cnt)</span><br><span class="line">				ca-&gt;cnt = max_cnt;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* The maximum rate of cwnd increase CUBIC allows is 1 packet per</span></span><br><span class="line"><span class="comment">	 * 2 packets ACKed, meaning cwnd grows at 1.5x per RTT.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">    <span class="comment">//至少收到两个ack 窗口才能加1 </span></span><br><span class="line">	ca-&gt;cnt = max(ca-&gt;cnt, <span class="number">2U</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<h2 id="bictcp-update"><a href="#bictcp-update" class="headerlink" title="bictcp_update"></a><code>bictcp_update</code></h2><p>为CUBIC算法的核心，核心思想为：<strong>根据当前时间、上一次的最大窗口、现在的 cwnd，把 CUBIC 曲线算出来，得到“下一段时间 cwnd 应该以多快的速度涨”，这个“多快”就是 <code>ca-&gt;cnt</code>（拥塞窗口增长的速率）。</strong></p>
-<p><code>bictcp_update</code>中首先判断是否需要进行计算，如果距离上次计算拥塞窗口的时间很短，就直接返回。如果当前已经在一个增长周期里，且这次时间戳跟上次完全一样， 那这次就<strong>不算立方曲线部分，直接走 TCP 兼容</strong>。</p>
-<p>否则的话判断根据<code>epoch_start</code> 是否为0，判断是否需要计算新的<code>cubic</code>曲线，也就是发生过拥塞（或者第一次进入拥塞避免），这里分两种情况进行处理，如果当前窗口已经达到或超过历史峰值，	K为 0，立方曲线从当前时刻开始。如果历史最大值 &gt; 当前窗口，则计算K的值， 表示<strong>预计要经过多久（时间偏移）才能恢复到上次最大窗口</strong>。</p>
-<p>得到了K之后，会根据t - K以及C来计算<code>delta</code>这个<code>delta</code>就是窗口的变化量(是超越还是恢复)，接下来计算多少个ack增加拥塞窗口（如果处于刚开阶段，还会修正一下确保增长不过于缓慢）。</p>
-<p>接下来进入<code>tcp</code>的友好处理逻辑：</p>
-<p><strong>算法会同时维护一个虚 Reno 拥塞窗口（<code>tcp_cwnd</code>）来模拟传统 Reno 的线性增长过程</strong>计算出在 Reno 模型下，大约需要多少个 ACK 才能让 cwnd 增加 1。</p>
-<p><strong>如果发现 CUBIC 的实际窗口 (<code>cwnd</code>) 比 Reno 模拟窗口 (<code>tcp_cwnd</code>) 小，说明 CUBIC 增长太慢，于是计算两者差距并调低 <code>ca-&gt;cnt</code></strong></p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/11/04/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-cubic%E6%8B%A5%E5%A1%9E%E7%AE%97%E6%B3%95%EF%BC%88%E4%BA%8C%EF%BC%89/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1290,7 +1287,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">72</span>
+          <span class="site-state-item-count">73</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
