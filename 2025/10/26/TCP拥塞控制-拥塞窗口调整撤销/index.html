@@ -28,7 +28,7 @@
 <meta property="og:description" content="TCP 在网络发生丢包时，会进入拥塞控制阶段（比如进入 Recovery 或 Loss 状态），此时通常会减小拥塞窗口（cwnd）以降低发送速率。 但有时候，丢包判断是误判的 —— 实际上网络并没有拥塞，只是出现了乱序或延迟。 这时，如果后续收到的 ACK 能证明之前的“丢包”判断是错误的，TCP 会撤销之前的 cwnd 减小，也就是 cwnd undo。 从Loss拥塞状态撤销tcp_proce">
 <meta property="og:locale" content="zh_CN">
 <meta property="article:published_time" content="2025-10-26T14:00:00.000Z">
-<meta property="article:modified_time" content="2025-10-26T14:30:30.139Z">
+<meta property="article:modified_time" content="2025-10-28T12:46:57.297Z">
 <meta property="article:author" content="zhangm">
 <meta property="article:tag" content="TCP">
 <meta property="article:tag" content="TCP拥塞控制">
@@ -219,10 +219,16 @@
                 <i class="far fa-calendar"></i>
               </span>
               <span class="post-meta-item-text">发表于</span>
-              
 
-              <time title="创建时间：2025-10-26 22:00:00 / 修改时间：22:30:30" itemprop="dateCreated datePublished" datetime="2025-10-26T22:00:00+08:00">2025-10-26</time>
+              <time title="创建时间：2025-10-26 22:00:00" itemprop="dateCreated datePublished" datetime="2025-10-26T22:00:00+08:00">2025-10-26</time>
             </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-10-28 20:46:57" itemprop="dateModified" datetime="2025-10-28T20:46:57+08:00">2025-10-28</time>
+              </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
                 <i class="far fa-folder"></i>
@@ -397,7 +403,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">73</span>
+          <span class="site-state-item-count">74</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>

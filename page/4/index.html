@@ -193,6 +193,112 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/09/01/tcp%20listen/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/09/01/tcp%20listen/" class="post-title-link" itemprop="url">TCP建立连接-listen</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-09-01 22:00:00" itemprop="dateCreated datePublished" datetime="2025-09-01T22:00:00+08:00">2025-09-01</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-09-09 21:37:45" itemprop="dateModified" datetime="2025-09-09T21:37:45+08:00">2025-09-09</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/09/01/tcp%20listen/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/09/01/tcp%20listen/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="TCP-listen"><a href="#TCP-listen" class="headerlink" title="TCP listen"></a>TCP listen</h2><p><code>listen</code> 是服务端套接字进入监听状态的系统调用，它把一个通过 <code>socket</code> 和 <code>bind</code> 创建好的套接字标记为“被动套接字”，用来接受客户端的连接请求。调用时需要指定 backlog 参数，用来缓存尚未被应用层 <code>accept()</code> 取走的连接请求的上限。</p>
+<p>用户态程序通过<code>glibc</code>调用<code>listen</code>系统调用后，最终会调用到内核的<code>__sys_listen</code>由它完成套接字与地址的绑定逻辑，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//这里的backlog表示已经完成三次握手但是没有被accept的最大数量</span></span><br><span class="line"><span class="type">int</span> __sys_listen(<span class="type">int</span> fd, <span class="type">int</span> backlog)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">socket</span> *<span class="title">sock</span>;</span></span><br><span class="line">	<span class="type">int</span> err, fput_needed;</span><br><span class="line">	<span class="type">int</span> somaxconn;</span><br><span class="line">	<span class="comment">//根据fd找到对应的socket结构</span></span><br><span class="line">	sock = sockfd_lookup_light(fd, &amp;err, &amp;fput_needed);</span><br><span class="line">	<span class="keyword">if</span> (sock) &#123;</span><br><span class="line">		somaxconn = READ_ONCE(sock_net(sock-&gt;sk)-&gt;core.sysctl_somaxconn);</span><br><span class="line">		<span class="keyword">if</span> ((<span class="type">unsigned</span> <span class="type">int</span>)backlog &gt; somaxconn)</span><br><span class="line">			backlog = somaxconn;</span><br><span class="line">		<span class="comment">//安全相关的钩子</span></span><br><span class="line">		err = security_socket_listen(sock, backlog);</span><br><span class="line">		<span class="keyword">if</span> (!err)</span><br><span class="line">		<span class="comment">//调用套接字层的listen回调</span></span><br><span class="line">			err = READ_ONCE(sock-&gt;ops)-&gt;listen(sock, backlog);</span><br><span class="line">		<span class="comment">//释放引用计数</span></span><br><span class="line">		fput_light(sock-&gt;file, fput_needed);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码通过文件描述符获取<code>socket</code>结构体，之后从内核参数 <code>sysctl_somaxconn</code> 里读出系统允许的最大 backlog 值，如果用户传的 backlog 比它大，就缩小到 <code>somaxconn</code> ，然后调用了套接字层的<code>listen</code>，对应的具体实现如下所示:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">inet_listen</span><span class="params">(<span class="keyword">struct</span> socket *sock, <span class="type">int</span> backlog)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span> =</span> sock-&gt;sk;</span><br><span class="line">	<span class="type">int</span> err = -EINVAL;</span><br><span class="line"></span><br><span class="line">	lock_sock(sk);</span><br><span class="line">	<span class="comment">//检查当前socket状态和到接子的类型</span></span><br><span class="line">	<span class="keyword">if</span> (sock-&gt;state != SS_UNCONNECTED || sock-&gt;type != SOCK_STREAM)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	err = __inet_listen_sk(sk, backlog);</span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">	release_sock(sk);</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p> <code>inet_listen</code> 首先获取套接字对应的 <code>struct sock</code>随后检查当前 socket 是否处于未连接状态且类型为 <code>SOCK_STREAM</code>，只有符合条件的 TCP 流式套接字才能进入监听；若条件不满足直接返回错误，否则调用内部函数 <code>__inet_listen_sk</code> 去完成具体的监听初始化工作。具体代码如下所示:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __inet_listen_sk(<span class="keyword">struct</span> sock *sk, <span class="type">int</span> backlog)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span> old_state = sk-&gt;sk_state;</span><br><span class="line">	<span class="type">int</span> err, tcp_fastopen;</span><br><span class="line">	<span class="comment">//必须是close或者listen状态</span></span><br><span class="line">	<span class="keyword">if</span> (!((<span class="number">1</span> &lt;&lt; old_state) &amp; (TCPF_CLOSE | TCPF_LISTEN)))</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line">	<span class="comment">//这里设置了全连接队列的大小	</span></span><br><span class="line">	WRITE_ONCE(sk-&gt;sk_max_ack_backlog, backlog);</span><br><span class="line">	<span class="comment">/* Really, if the socket is already in listen state</span></span><br><span class="line"><span class="comment">	 * we can only allow the backlog to be adjusted.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//close状态就进入这分支</span></span><br><span class="line">	<span class="keyword">if</span> (old_state != TCP_LISTEN) &#123;</span><br><span class="line">		<span class="comment">/* Enable TFO w/o requiring TCP_FASTOPEN socket option.</span></span><br><span class="line"><span class="comment">		 * Note that only TCP sockets (SOCK_STREAM) will reach here.</span></span><br><span class="line"><span class="comment">		 * Also fastopen backlog may already been set via the option</span></span><br><span class="line"><span class="comment">		 * because the socket was in TCP_LISTEN state previously but</span></span><br><span class="line"><span class="comment">		 * was shutdown() rather than close().</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//初始化TFO相关，系统参数默认是1 表示客户端开启</span></span><br><span class="line">		tcp_fastopen = READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_fastopen);</span><br><span class="line">		<span class="comment">//默认应该不会进入这个分支</span></span><br><span class="line">		<span class="keyword">if</span> ((tcp_fastopen &amp; TFO_SERVER_WO_SOCKOPT1) &amp;&amp;</span><br><span class="line">		    (tcp_fastopen &amp; TFO_SERVER_ENABLE) &amp;&amp;</span><br><span class="line">		    !inet_csk(sk)-&gt;icsk_accept_queue.fastopenq.max_qlen) &#123;</span><br><span class="line">			fastopen_queue_tune(sk, backlog);</span><br><span class="line">			tcp_fastopen_init_key_once(sock_net(sk));</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		err = inet_csk_listen_start(sk);</span><br><span class="line">		<span class="keyword">if</span> (err)</span><br><span class="line">			<span class="keyword">return</span> err;</span><br><span class="line">		<span class="comment">//bpf钩子</span></span><br><span class="line">		tcp_call_bpf(sk, BPF_SOCK_OPS_TCP_LISTEN_CB, <span class="number">0</span>, <span class="literal">NULL</span>);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这段代码是内核里将 TCP 套接字切换到监听状态的核心路径：首先校验当前状态必须是 <code>CLOSE</code> 或 <code>LISTEN</code>，然后把传入的 <code>backlog</code> 写入 <code>sk-&gt;sk_max_ack_backlog</code> 作为<strong>全连接队列上限</strong>，随后调用 <code>inet_csk_listen_start(sk)</code> 真正把 socket 放入监听哈希表。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//tcplisten调进来osk为空</span></span><br><span class="line"><span class="type">int</span> __inet_hash(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sock *osk)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_hashinfo</span> *<span class="title">hashinfo</span> =</span> tcp_or_dccp_get_hashinfo(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_listen_hashbucket</span> *<span class="title">ilb2</span>;</span></span><br><span class="line">	<span class="type">int</span> err = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//处理非监听状态的套接子，直接加入ehash中</span></span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_state != TCP_LISTEN) &#123;</span><br><span class="line">		local_bh_disable();</span><br><span class="line">		inet_ehash_nolisten(sk, osk, <span class="literal">NULL</span>);</span><br><span class="line">		local_bh_enable();</span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	WARN_ON(!sk_unhashed(sk));</span><br><span class="line">	<span class="comment">//这里根据ip和端口找到listenhash桶（注意这里桶下面直接挂的是socket）</span></span><br><span class="line">	ilb2 = inet_lhash2_bucket_sk(hashinfo, sk);</span><br><span class="line"></span><br><span class="line">	spin_lock(&amp;ilb2-&gt;lock);</span><br><span class="line">	<span class="comment">//套接字是否启用了reuseport</span></span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_reuseport) &#123;</span><br><span class="line">		<span class="comment">//将当前的套接字加入端口重用组</span></span><br><span class="line">		err = inet_reuseport_add_sock(sk, ilb2);</span><br><span class="line">		<span class="keyword">if</span> (err)</span><br><span class="line">			<span class="keyword">goto</span> unlock;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//将套接字插入listenhash表</span></span><br><span class="line">	<span class="keyword">if</span> (IS_ENABLED(CONFIG_IPV6) &amp;&amp; sk-&gt;sk_reuseport &amp;&amp;</span><br><span class="line">		sk-&gt;sk_family == AF_INET6)</span><br><span class="line">		__sk_nulls_add_node_tail_rcu(sk, &amp;ilb2-&gt;nulls_head);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		__sk_nulls_add_node_rcu(sk, &amp;ilb2-&gt;nulls_head);</span><br><span class="line">	sock_set_flag(sk, SOCK_RCU_FREE);</span><br><span class="line">	sock_prot_inuse_add(sock_net(sk), sk-&gt;sk_prot, <span class="number">1</span>);</span><br><span class="line">unlock:</span><br><span class="line">	spin_unlock(&amp;ilb2-&gt;lock);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/09/01/tcp%20listen/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/08/30/TCP%20BIND2/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -535,7 +641,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-08-23 19:20:01" itemprop="dateModified" datetime="2025-08-23T19:20:01+08:00">2025-08-23</time>
+                <time title="修改时间：2025-08-25 21:13:52" itemprop="dateModified" datetime="2025-08-25T21:13:52+08:00">2025-08-25</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -744,7 +850,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-08-17 00:15:26" itemprop="dateModified" datetime="2025-08-17T00:15:26+08:00">2025-08-17</time>
+                <time title="修改时间：2025-08-18 21:56:53" itemprop="dateModified" datetime="2025-08-18T21:56:53+08:00">2025-08-18</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -1111,111 +1217,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/08/05/tcp%E6%95%B0%E6%8D%AE%E5%8C%85%E9%87%8D%E4%BC%A0/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/08/05/tcp%E6%95%B0%E6%8D%AE%E5%8C%85%E9%87%8D%E4%BC%A0/" class="post-title-link" itemprop="url">TCP重传__tcp_retransmit_skb</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2025-08-05 22:00:00" itemprop="dateCreated datePublished" datetime="2025-08-05T22:00:00+08:00">2025-08-05</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-08-06 00:10:43" itemprop="dateModified" datetime="2025-08-06T00:10:43+08:00">2025-08-06</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/08/05/tcp%E6%95%B0%E6%8D%AE%E5%8C%85%E9%87%8D%E4%BC%A0/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/08/05/tcp%E6%95%B0%E6%8D%AE%E5%8C%85%E9%87%8D%E4%BC%A0/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="tcp-retransmit-skb"><a href="#tcp-retransmit-skb" class="headerlink" title="__tcp_retransmit_skb"></a>__tcp_retransmit_skb</h2><p>当TCP的超时重传定时器到期后，会调用<code>tcp_retransmit_skb</code>进行重传。</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_retransmit_timer</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	...</span><br><span class="line">	<span class="keyword">if</span> (tcp_retransmit_skb(sk, tcp_rtx_queue_head(sk), <span class="number">1</span>) &gt; <span class="number">0</span>) &#123;</span><br><span class="line">	...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p><code>tcp_retransmit_skb</code>中会调用<code>__tcp_retransmit_skb</code>完成真正的重传，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">tcp_retransmit_skb</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb, <span class="type">int</span> segs)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="type">int</span> err = __tcp_retransmit_skb(sk, skb, segs);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (err == <span class="number">0</span>) &#123;</span><br><span class="line"><span class="meta">#<span class="keyword">if</span> FASTRETRANS_DEBUG &gt; 0</span></span><br><span class="line">		<span class="keyword">if</span> (TCP_SKB_CB(skb)-&gt;sacked &amp; TCPCB_SACKED_RETRANS) &#123;</span><br><span class="line">			net_dbg_ratelimited(<span class="string">&quot;retrans_out leaked\n&quot;</span>);</span><br><span class="line">		&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">		TCP_SKB_CB(skb)-&gt;sacked |= TCPCB_RETRANS;</span><br><span class="line">		<span class="comment">//更新重传出去数量，tcp_ack中会减</span></span><br><span class="line">		tp-&gt;retrans_out += tcp_skb_pcount(skb);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Save stamp of the first (attempted) retransmit. */</span></span><br><span class="line">	<span class="comment">//记录首次的重传时间</span></span><br><span class="line">	<span class="keyword">if</span> (!tp-&gt;retrans_stamp)</span><br><span class="line">		tp-&gt;retrans_stamp = tcp_skb_timestamp(skb);</span><br><span class="line">	<span class="comment">//初始化的是是-1 用于拥塞欻港口</span></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;undo_retrans &lt; <span class="number">0</span>)</span><br><span class="line">		tp-&gt;undo_retrans = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//记录重传的段数</span></span><br><span class="line">	tp-&gt;undo_retrans += tcp_skb_pcount(skb);</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>由上述可知<code>tcp_retransmit_skb</code>仅仅是调用了<code>__tcp_retransmit_skb</code>然后后更新了<code>tcp_sock</code>部分字段。真正的关键的操作在<code>__tcp_retransmit_skb</code>中</p>
-<p><code>__tcp_retransmit_skb</code>的关键逻辑为，首先通过<code>fclone</code>标志来判断当前重传的数据包是否已经在本机的队列中，因为重传的时候会设置clone标志位，而重传的数据包可以直接使用<code>fclone</code>出来的结构体，所以说可以通过这个标志位来判断数据包是否已经重传。</p>
-<p>然后根据数据包的序列号对这个数据包进行处理，如果当前数据包的序列号已经被部分确认了，那就需要裁剪这个<code>skb</code>了。（裁剪这个<code>skb</code>的时候会调用<code>tcp</code>管理内存的相关接口）</p>
-<p>然后查看路由是否有效（即<code>dst</code>是否存在）在超过retry1，后可能会进行黑洞检测，这时候的<code>dst</code>可能就被<code>rst</code>了</p>
-<p>重新计算当前的<code>mss</code>，然后计算当前可用发送窗口的大小和当前可以发送的<code>len</code>（使用segs和<code>mss</code>的乘机计算）。这里分为两种情况，如果<code>skb</code>的<code>len</code>大于计算的得到<code>len</code>，在这里就需要执行分段了，否则的话（也就是小于的情况）会尝试合并数据包。</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/08/05/tcp%E6%95%B0%E6%8D%AE%E5%8C%85%E9%87%8D%E4%BC%A0/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1285,7 +1286,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">73</span>
+          <span class="site-state-item-count">74</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>

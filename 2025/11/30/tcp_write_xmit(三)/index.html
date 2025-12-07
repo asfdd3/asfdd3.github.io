@@ -28,7 +28,7 @@
 <meta property="og:description" content="tcp_write_xmit中判断完是否会由于nagle算法和tso推迟发送后接下来会基于对端窗口和nagle算法调用tcp_mss_split_point计算一次发包的最大长度（这个值在下面会和skb的len比较，如果小于len就会拆包）具体代码如下所示： 1234567891011121314151617181920212223242526272829303132static unsigned">
 <meta property="og:locale" content="zh_CN">
 <meta property="article:published_time" content="2025-11-30T14:00:00.000Z">
-<meta property="article:modified_time" content="2025-11-30T14:32:56.163Z">
+<meta property="article:modified_time" content="2025-11-30T14:33:17.590Z">
 <meta property="article:author" content="zhangm">
 <meta property="article:tag" content="TCP">
 <meta property="article:tag" content="TCP输出">
@@ -221,7 +221,7 @@
               <span class="post-meta-item-text">发表于</span>
               
 
-              <time title="创建时间：2025-11-30 22:00:00 / 修改时间：22:32:56" itemprop="dateCreated datePublished" datetime="2025-11-30T22:00:00+08:00">2025-11-30</time>
+              <time title="创建时间：2025-11-30 22:00:00 / 修改时间：22:33:17" itemprop="dateCreated datePublished" datetime="2025-11-30T22:00:00+08:00">2025-11-30</time>
             </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -311,7 +311,10 @@
     <a href="/2025/11/27/tcp_write_xmit(%E4%BA%8C)/" rel="prev" title="TCP输出 tcp_write_xmit（二）">
       <i class="fa fa-chevron-left"></i> TCP输出 tcp_write_xmit（二）
     </a></div>
-      <div class="post-nav-item"></div>
+      <div class="post-nav-item">
+    <a href="/2025/12/07/tcp%E5%8F%91%E5%8C%85tcp_transmit_skb/" rel="next" title="TCP输出 __tcp_transmit_skb(一)">
+      TCP输出 __tcp_transmit_skb(一) <i class="fa fa-chevron-right"></i>
+    </a></div>
     </div>
       </footer>
     
@@ -384,7 +387,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">73</span>
+          <span class="site-state-item-count">74</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
