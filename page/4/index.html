@@ -193,6 +193,114 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/09/03/TCP%20ACCEPT/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/09/03/TCP%20ACCEPT/" class="post-title-link" itemprop="url">TCP建立连接-accept</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-09-03 22:00:00" itemprop="dateCreated datePublished" datetime="2025-09-03T22:00:00+08:00">2025-09-03</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-09-09 21:37:34" itemprop="dateModified" datetime="2025-09-09T21:37:34+08:00">2025-09-09</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/09/03/TCP%20ACCEPT/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/09/03/TCP%20ACCEPT/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>在 TCP 中，<code>accept</code> 是服务端监听套接字完成三次握手后，用来“接收”新连接的关键系统调用。它的作用是从内核的全连接队列（已经握手成功的连接请求队列）中取出一个连接，并为其创建一个新的 socket，交给应用层使用。这样，监听 socket 继续保持监听状态，而新返回的 socket 专门用于与客户端的数据交互。简单来说，<code>accept</code> 是服务端真正进入与客户端“对话”的起点，它标志着从“等待连接”到“建立会话”的转换。</p>
+<p>用户态程序通过<code>glibc</code>调用<code>accept</code>系统调用后，最终会调用到内核的<code>__sys_accept4</code>，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __sys_accept4(<span class="type">int</span> fd, <span class="keyword">struct</span> sockaddr __user *upeer_sockaddr,</span><br><span class="line">		  <span class="type">int</span> __user *upeer_addrlen, <span class="type">int</span> flags)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> ret = -EBADF;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fd</span> <span class="title">f</span>;</span></span><br><span class="line">	<span class="comment">//根据传入的fd拿到fd结构体</span></span><br><span class="line">	f = fdget(fd);</span><br><span class="line">	<span class="keyword">if</span> (f.file) &#123;</span><br><span class="line">		ret = __sys_accept4_file(f.file, upeer_sockaddr,</span><br><span class="line">					 upeer_addrlen, flags);</span><br><span class="line">		fdput(f);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码根据监听套接字的文件描述转换成<code>struct file *</code>调用 <code>__sys_accept4_file()</code> 来执行真正的 accept 核心逻辑，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> __sys_accept4_file(<span class="keyword">struct</span> file *file, <span class="keyword">struct</span> sockaddr __user *upeer_sockaddr,</span><br><span class="line">			      <span class="type">int</span> __user *upeer_addrlen, <span class="type">int</span> flags)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">file</span> *<span class="title">newfile</span>;</span></span><br><span class="line">	<span class="type">int</span> newfd;</span><br><span class="line">	<span class="comment">//检查标志位是否合法</span></span><br><span class="line">	<span class="keyword">if</span> (flags &amp; ~(SOCK_CLOEXEC | SOCK_NONBLOCK))</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (SOCK_NONBLOCK != O_NONBLOCK &amp;&amp; (flags &amp; SOCK_NONBLOCK))</span><br><span class="line">		flags = (flags &amp; ~SOCK_NONBLOCK) | O_NONBLOCK;</span><br><span class="line">	<span class="comment">//这里先获取一个没有使用的fd，下面会跟一个文件相关联</span></span><br><span class="line">	newfd = get_unused_fd_flags(flags);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(newfd &lt; <span class="number">0</span>))</span><br><span class="line">		<span class="keyword">return</span> newfd;</span><br><span class="line">	<span class="comment">//真正的accpet，这里返回了一个file，传入的file为用户fd关联的file</span></span><br><span class="line">	newfile = do_accept(file, <span class="number">0</span>, upeer_sockaddr, upeer_addrlen,</span><br><span class="line">			    flags);</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR(newfile)) &#123;</span><br><span class="line">		put_unused_fd(newfd);</span><br><span class="line">		<span class="keyword">return</span> PTR_ERR(newfile);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//将上面获取的fd与返回的newfile关联并返回给用户</span></span><br><span class="line">	fd_install(newfd, newfile);</span><br><span class="line">	<span class="keyword">return</span> newfd;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>__sys_accept4_file</code>做了三件事情，首先获取一个<code>fd</code>也就是要返回给用户的<code>fd</code>，然后调用<code>do_accept</code>返回一个<code>file</code>（也相当于socket），最后将获取到的<code>file</code>和<code>fd</code>关联起来。<code>do_accept</code>实现代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> file *<span class="title function_">do_accept</span><span class="params">(<span class="keyword">struct</span> file *file, <span class="type">unsigned</span> file_flags,</span></span><br><span class="line"><span class="params">		       <span class="keyword">struct</span> sockaddr __user *upeer_sockaddr,</span></span><br><span class="line"><span class="params">		       <span class="type">int</span> __user *upeer_addrlen, <span class="type">int</span> flags)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">socket</span> *<span class="title">sock</span>, *<span class="title">newsock</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">file</span> *<span class="title">newfile</span>;</span></span><br><span class="line">	<span class="type">int</span> err, len;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sockaddr_storage</span> <span class="title">address</span>;</span></span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">proto_ops</span> *<span class="title">ops</span>;</span></span><br><span class="line">	<span class="comment">//通过accpet 传入的listensock的私有结构中拿到socket</span></span><br><span class="line">	sock = sock_from_file(file);</span><br><span class="line">	<span class="keyword">if</span> (!sock)</span><br><span class="line">		<span class="keyword">return</span> ERR_PTR(-ENOTSOCK);</span><br><span class="line">	<span class="comment">//申请一个inode和socket结构体</span></span><br><span class="line">	newsock = sock_alloc();</span><br><span class="line">	<span class="keyword">if</span> (!newsock)</span><br><span class="line">		<span class="keyword">return</span> ERR_PTR(-ENFILE);</span><br><span class="line">	ops = READ_ONCE(sock-&gt;ops);</span><br><span class="line">	<span class="comment">//设置新socket的ops</span></span><br><span class="line">	newsock-&gt;type = sock-&gt;type;</span><br><span class="line">	newsock-&gt;ops = ops;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * We don&#x27;t need try_module_get here, as the listening socket (sock)</span></span><br><span class="line"><span class="comment">	 * has the protocol module (sock-&gt;ops-&gt;owner) held.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	__module_get(ops-&gt;owner);</span><br><span class="line">	<span class="comment">//创建一个file结构体(也就是把上面申请的socket的结构提挂到file的私有结构上)</span></span><br><span class="line">	newfile = sock_alloc_file(newsock, flags, sock-&gt;sk-&gt;sk_prot_creator-&gt;name);</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR(newfile))</span><br><span class="line">		<span class="keyword">return</span> newfile;</span><br><span class="line">	<span class="comment">//安全相关的钩子</span></span><br><span class="line">	err = security_socket_accept(sock, newsock);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> out_fd;</span><br><span class="line">	<span class="comment">//调用套接子的accept回调，对于tcp就是inet_accept</span></span><br><span class="line">	err = ops-&gt;accept(sock, newsock, sock-&gt;file-&gt;f_flags | file_flags,</span><br><span class="line">					<span class="literal">false</span>);</span><br><span class="line">	<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> out_fd;</span><br><span class="line">	<span class="comment">//是否需要获取对端ip地址</span></span><br><span class="line">	<span class="keyword">if</span> (upeer_sockaddr) &#123;</span><br><span class="line">		len = ops-&gt;getname(newsock, (<span class="keyword">struct</span> sockaddr *)&amp;address, <span class="number">2</span>);</span><br><span class="line">		<span class="keyword">if</span> (len &lt; <span class="number">0</span>) &#123;</span><br><span class="line">			err = -ECONNABORTED;</span><br><span class="line">			<span class="keyword">goto</span> out_fd;</span><br><span class="line">		&#125;</span><br><span class="line">		err = move_addr_to_user(&amp;address,</span><br><span class="line">					len, upeer_sockaddr, upeer_addrlen);</span><br><span class="line">		<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">			<span class="keyword">goto</span> out_fd;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* File flags are not inherited via accept() unlike another OSes. */</span></span><br><span class="line">	<span class="comment">//这里返回的是file 外面会关联fd和这个file</span></span><br><span class="line">	<span class="keyword">return</span> newfile;</span><br><span class="line">out_fd:</span><br><span class="line">	fput(newfile);</span><br><span class="line">	<span class="keyword">return</span> ERR_PTR(err);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>do_accept</code>中首先根据外面传入的<code>file</code>拿到监听的<code>socket</code>，之后申请一个新的<code>socket</code>并创建一个新的<code>file</code>结构(给建立连接的套接字)，然后调用套接字层的<code>accept</code>函数并传入上述新的<code>sock</code>，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">inet_accept</span><span class="params">(<span class="keyword">struct</span> socket *sock, <span class="keyword">struct</span> socket *newsock, <span class="type">int</span> flags,</span></span><br><span class="line"><span class="params">		<span class="type">bool</span> kern)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk1</span> =</span> sock-&gt;sk, *sk2;</span><br><span class="line">	<span class="type">int</span> err = -EINVAL;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* IPV6_ADDRFORM can change sk-&gt;sk_prot under us. */</span></span><br><span class="line">	<span class="comment">//调用监听套接字的accept对于tcp来说就是inet_csk_accept</span></span><br><span class="line">	sk2 = READ_ONCE(sk1-&gt;sk_prot)-&gt;accept(sk1, flags, &amp;err, kern);</span><br><span class="line">	<span class="keyword">if</span> (!sk2)</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line"></span><br><span class="line">	lock_sock(sk2);</span><br><span class="line">	<span class="comment">//这里关联了socket和sock结构</span></span><br><span class="line">	__inet_accept(sock, newsock, sk2);</span><br><span class="line">	release_sock(sk2);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>套接字层的<code>accept</code>回调的逻辑很简单，首先调用具体<code>sock</code>的<code>accept</code>（对于<code>tcp</code>来说就是<code>inet_csk_accept</code>），获取到的返回值为一个已经建立连接的<code>sock</code>，然后调用<code>inet_csk_accept</code>，将这个<code>sock</code>和参数传进来的<code>socket</code>相关联（注意：这个函数外层会将<code>file</code>，<code>fd</code>，<code>socket</code>三者关联，<strong>也就是说除了sock结构，其他的三个都是在调用accept时候创建的</strong>）。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/09/03/TCP%20ACCEPT/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/09/01/tcp%20listen/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1119,104 +1227,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/08/07/%E5%BB%B6%E8%BF%9Fack%E5%AE%9A%E6%97%B6%E5%99%A8/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/08/07/%E5%BB%B6%E8%BF%9Fack%E5%AE%9A%E6%97%B6%E5%99%A8/" class="post-title-link" itemprop="url">TCP 延迟确认定时器</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2025-08-07 22:00:00 / 修改时间：23:11:39" itemprop="dateCreated datePublished" datetime="2025-08-07T22:00:00+08:00">2025-08-07</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/08/07/%E5%BB%B6%E8%BF%9Fack%E5%AE%9A%E6%97%B6%E5%99%A8/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/08/07/%E5%BB%B6%E8%BF%9Fack%E5%AE%9A%E6%97%B6%E5%99%A8/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="TCP延迟确认定时器（Delayed-ACK-Timer）"><a href="#TCP延迟确认定时器（Delayed-ACK-Timer）" class="headerlink" title="TCP延迟确认定时器（Delayed ACK Timer）"></a><strong>TCP延迟确认定时器</strong>（Delayed ACK Timer）</h2><p>延迟确认定时器是TCP协议栈用来<strong>推迟发送ACK报文</strong>的一种机制。 它的目标是：<strong>减少纯ACK包数量，提升网络效率</strong>，尤其适用于交互式和小包频繁的应用场景。</p>
-<h3 id="延迟定时器的初始化"><a href="#延迟定时器的初始化" class="headerlink" title="延迟定时器的初始化"></a>延迟定时器的初始化</h3><p>tcp的延迟定时器在初始化<code>sock</code>的时候完成，代码如下：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_init_xmit_timers</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">    ...</span><br><span class="line">	inet_csk_init_xmit_timers(sk, &amp;tcp_write_timer, &amp;tcp_delack_timer,</span><br><span class="line">				  &amp;tcp_keepalive_timer);</span><br><span class="line">	...</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<p>第二个参数为延迟确认定时器的回调函数，<code>tcp_delack_timer</code>如果用户没有持有sock，则会调用<code>tcp_delack_timer_handler</code>处理重传逻辑，具体的逻辑为，如果存在压缩ack则跳转到压缩ack的逻辑中。否则进入正常的处理流程，首先会判断是否位pingPong模式，如果不是<code>pingpong</code>模式，则继续增加下次的超时时间，因为属于单向发送数据所以可以延迟的更久，如果不是pingpong模式，则会退出<code>pingpong</code>模式，因为pingpong模式是不会走到这定时器逻辑中的，因为<code>pingpong</code>模式都是捎带<code>ack</code>，所以说这里要退出pingpong模式吧。</p>
-<p>无论是上述那种情况，最终都会刷新时间戳，调用<code>tcp_send_ack</code>发送数据包。</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Called with BH disabled */</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">tcp_delack_timer_handler</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line"></span><br><span class="line">	<span class="comment">//不需要处理的状态，直接返回</span></span><br><span class="line">	<span class="keyword">if</span> ((<span class="number">1</span> &lt;&lt; sk-&gt;sk_state) &amp; (TCPF_CLOSE | TCPF_LISTEN))</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Handling the sack compression case */</span></span><br><span class="line">	<span class="comment">//处理压缩ack 如果收到了乱序数据包就会增加，</span></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;compressed_ack) &#123;</span><br><span class="line">		<span class="comment">//跟新tp的时间戳字段</span></span><br><span class="line">		tcp_mstamp_refresh(tp);</span><br><span class="line">		<span class="comment">//处理压缩ack</span></span><br><span class="line">		tcp_sack_compress_send_ack(sk);</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//没有这个标志，直接返回， 这个标志是在tcp_send_delayed_ack（接收路径上）设置的，表示已经启动的定时器</span></span><br><span class="line">	<span class="keyword">if</span> (!(icsk-&gt;icsk_ack.pending &amp; ICSK_ACK_TIMER))</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//如果没到时间就重新设置一下</span></span><br><span class="line">	<span class="keyword">if</span> (time_after(icsk-&gt;icsk_ack.timeout, jiffies)) &#123;</span><br><span class="line">		sk_reset_timer(sk, &amp;icsk-&gt;icsk_delack_timer, icsk-&gt;icsk_ack.timeout);</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//清楚标志位</span></span><br><span class="line">	icsk-&gt;icsk_ack.pending &amp;= ~ICSK_ACK_TIMER;</span><br><span class="line">	<span class="comment">//判断是否有ack要发送，这个是在收包的时候inet_csk_schedule_ack设置的,判断pending和上面的区别是已经有ack了</span></span><br><span class="line">	<span class="keyword">if</span> (inet_csk_ack_scheduled(sk)) &#123;</span><br><span class="line">		<span class="comment">//是否是pingpong模式。pingpong模式就是交互模式，通过时间判断是否是进入pingpong，在发包的时候判断的</span></span><br><span class="line">		<span class="keyword">if</span> (!inet_csk_in_pingpong_mode(sk)) &#123;</span><br><span class="line">			<span class="comment">/* Delayed ACK missed: inflate ATO. */</span></span><br><span class="line">			<span class="comment">//不是pingbong模式，就是批量数据流，这里左移让下次更久！合理， 但是不能超过rto</span></span><br><span class="line">			icsk-&gt;icsk_ack.ato = min(icsk-&gt;icsk_ack.ato &lt;&lt; <span class="number">1</span>, icsk-&gt;icsk_rto);</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			<span class="comment">/* Delayed ACK missed: leave pingpong mode and</span></span><br><span class="line"><span class="comment">			 * deflate ATO.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="comment">//退出pingpong模式，因为是交互式场景，应该随着数据发ack？</span></span><br><span class="line">			inet_csk_exit_pingpong_mode(sk);</span><br><span class="line">			<span class="comment">//40ms</span></span><br><span class="line">			icsk-&gt;icsk_ack.ato      = TCP_ATO_MIN;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//刷新时间戳</span></span><br><span class="line">		tcp_mstamp_refresh(tp);</span><br><span class="line">		<span class="comment">//真正发送ack</span></span><br><span class="line">		tcp_send_ack(sk);</span><br><span class="line">		<span class="comment">//增加统计计数</span></span><br><span class="line">		__NET_INC_STATS(sock_net(sk), LINUX_MIB_DELAYEDACKS);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>上述处理压缩ack的代码逻辑如下：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_sack_compress_send_ack</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="comment">//直接返回</span></span><br><span class="line">	<span class="keyword">if</span> (!tp-&gt;compressed_ack)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//取消压缩ack的定时器</span></span><br><span class="line">	<span class="keyword">if</span> (hrtimer_try_to_cancel(&amp;tp-&gt;compressed_ack_timer) == <span class="number">1</span>)</span><br><span class="line">		__sock_put(sk);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Since we have to send one ack finally,</span></span><br><span class="line"><span class="comment">	 * substract one from tp-&gt;compressed_ack to keep</span></span><br><span class="line"><span class="comment">	 * LINUX_MIB_TCPACKCOMPRESSED accurate.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//更新统计计数</span></span><br><span class="line">	NET_ADD_STATS(sock_net(sk), LINUX_MIB_TCPACKCOMPRESSED,</span><br><span class="line">		      tp-&gt;compressed_ack - <span class="number">1</span>);</span><br><span class="line">	<span class="comment">//清零</span></span><br><span class="line">	tp-&gt;compressed_ack = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//立即发送ack</span></span><br><span class="line">	tcp_send_ack(sk);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/08/07/%E5%BB%B6%E8%BF%9Fack%E5%AE%9A%E6%97%B6%E5%99%A8/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1286,7 +1296,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">74</span>
+          <span class="site-state-item-count">75</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
