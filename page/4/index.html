@@ -193,6 +193,114 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/09/07/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6syn%EF%BC%88%E4%B8%80%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/09/07/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6syn%EF%BC%88%E4%B8%80%EF%BC%89/" class="post-title-link" itemprop="url">TCP三次握手-接收syn段 (一)</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-09-07 22:00:00" itemprop="dateCreated datePublished" datetime="2025-09-07T22:00:00+08:00">2025-09-07</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-09-09 21:37:49" itemprop="dateModified" datetime="2025-09-09T21:37:49+08:00">2025-09-09</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/09/07/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6syn%EF%BC%88%E4%B8%80%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/09/07/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6syn%EF%BC%88%E4%B8%80%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>本节内容分析TCP三次握手被动打开，即接收syn包的的处理流程，具体来说，当协议栈<code>IP</code>层收到数据包后，在<code>ip_local_deliver_finish</code>中会根据不同的<code>protocol</code>类型分发给不同的处理函数，对于<code>TCP</code>报文，则全都会调用<code>tcp_v4_rcv</code>进一步处理，<code>tcp_v4_rcv</code>则是在<code>inet_init</code>中注册的。</p>
+<p>下面看一下<code>tcp_v4_rcv</code>针对<code>syn</code>包的处理，下面省略了其他状态的处理，只展示接收<code>syn</code>包相关的处理逻辑，具体代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">tcp_v4_rcv</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> dev_net(skb-&gt;dev);</span><br><span class="line">	<span class="class"><span class="keyword">enum</span> <span class="title">skb_drop_reason</span> <span class="title">drop_reason</span>;</span></span><br><span class="line">	<span class="type">int</span> sdif = inet_sdif(skb);</span><br><span class="line">	<span class="type">int</span> dif = inet_iif(skb);</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">iphdr</span> *<span class="title">iph</span>;</span></span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">tcphdr</span> *<span class="title">th</span>;</span></span><br><span class="line">	<span class="type">bool</span> refcounted;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span>;</span></span><br><span class="line">	<span class="type">int</span> ret;</span><br><span class="line"></span><br><span class="line">	drop_reason = SKB_DROP_REASON_NOT_SPECIFIED;</span><br><span class="line">	<span class="comment">//不是发给本机的包，直接丢</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;pkt_type != PACKET_HOST)</span><br><span class="line">		<span class="keyword">goto</span> discard_it;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Count it even if it&#x27;s bad */</span></span><br><span class="line">	__TCP_INC_STATS(net, TCP_MIB_INSEGS);</span><br><span class="line">	<span class="comment">//拉一下tcp头，确保线性部分至少有TCP头</span></span><br><span class="line">	<span class="keyword">if</span> (!pskb_may_pull(skb, <span class="keyword">sizeof</span>(<span class="keyword">struct</span> tcphdr)))</span><br><span class="line">		<span class="keyword">goto</span> discard_it;</span><br><span class="line"></span><br><span class="line">	th = (<span class="type">const</span> <span class="keyword">struct</span> tcphdr *)skb-&gt;data;</span><br><span class="line">	<span class="comment">//坏包</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(th-&gt;doff &lt; <span class="keyword">sizeof</span>(<span class="keyword">struct</span> tcphdr) / <span class="number">4</span>)) &#123;</span><br><span class="line">		drop_reason = SKB_DROP_REASON_PKT_TOO_SMALL;</span><br><span class="line">		<span class="keyword">goto</span> bad_packet;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//把选项部分也拉到线性部分</span></span><br><span class="line">	<span class="keyword">if</span> (!pskb_may_pull(skb, th-&gt;doff * <span class="number">4</span>))</span><br><span class="line">		<span class="keyword">goto</span> discard_it;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* An explanation is required here, I think.</span></span><br><span class="line"><span class="comment">	 * Packet length and doff are validated by header prediction,</span></span><br><span class="line"><span class="comment">	 * provided case of th-&gt;doff==0 is eliminated.</span></span><br><span class="line"><span class="comment">	 * So, we defer the checks. */</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (skb_checksum_init(skb, IPPROTO_TCP, inet_compute_pseudo))</span><br><span class="line">		<span class="keyword">goto</span> csum_error;</span><br><span class="line"></span><br><span class="line">	th = (<span class="type">const</span> <span class="keyword">struct</span> tcphdr *)skb-&gt;data;</span><br><span class="line">	iph = ip_hdr(skb);</span><br><span class="line">lookup:</span><br><span class="line">	<span class="comment">//查找数据包所属的sock</span></span><br><span class="line">	sk = __inet_lookup_skb(net-&gt;ipv4.tcp_death_row.hashinfo,</span><br><span class="line">			       skb, __tcp_hdrlen(th), th-&gt;source,</span><br><span class="line">			       th-&gt;dest, sdif, &amp;refcounted);</span><br><span class="line">	<span class="keyword">if</span> (!sk)</span><br><span class="line">		<span class="keyword">goto</span> no_tcp_socket;</span><br><span class="line"></span><br><span class="line">process:</span><br><span class="line">	...</span><br><span class="line"></span><br><span class="line">	<span class="comment">//处理三次握手被动打开接收syn段</span></span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_state == TCP_LISTEN) &#123;</span><br><span class="line">		ret = tcp_v4_do_rcv(sk, skb);</span><br><span class="line">		<span class="keyword">goto</span> put_and_return;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	...</span><br><span class="line"></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码中，涉及到接收到<code>syn</code>包的处理，主要就两个地方，<strong>一是调用<code>__inet_lookup_skb</code>来查找数据包所关联的<code>sock</code></strong>，由于处理<code>syn</code>包自然找到的是监听的<code>sock</code>。<strong>二是调用<code>tcp_v4_do_rcv</code>进行进一步处理</strong>。下面看一下<code>__inet_lookup_skb</code>是如何找到<code>sock</code>的，具体代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *__<span class="title">inet_lookup_skb</span>(<span class="keyword">struct</span> <span class="title">inet_hashinfo</span> *<span class="title">hashinfo</span>,</span></span><br><span class="line"><span class="class">					     <span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>,</span></span><br><span class="line"><span class="class">					     <span class="title">int</span> <span class="title">doff</span>,</span></span><br><span class="line"><span class="class">					     <span class="title">const</span> __<span class="title">be16</span> <span class="title">sport</span>,</span></span><br><span class="line"><span class="class">					     <span class="title">const</span> __<span class="title">be16</span> <span class="title">dport</span>,</span></span><br><span class="line"><span class="class">					     <span class="title">const</span> <span class="title">int</span> <span class="title">sdif</span>,</span></span><br><span class="line"><span class="class">					     <span class="title">bool</span> *<span class="title">refcounted</span>)</span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> dev_net(skb_dst(skb)-&gt;dev);</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">iphdr</span> *<span class="title">iph</span> =</span> ip_hdr(skb);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span>;</span></span><br><span class="line">	<span class="comment">//相当于一个快速路径，先看看skb有没有已经关联了一个sk(ip_rcvfinish中会设置)</span></span><br><span class="line">	sk = inet_steal_sock(net, skb, doff, iph-&gt;saddr, sport, iph-&gt;daddr, dport,</span><br><span class="line">			     refcounted, inet_ehashfn);</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR(sk))</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="keyword">if</span> (sk)</span><br><span class="line">		<span class="keyword">return</span> sk;</span><br><span class="line">	<span class="comment">//传入源ip目的ip源port目的port 注意：这里的hash表其实隐含了协议类型</span></span><br><span class="line">	<span class="comment">//所以通常说是五元组找sk？？？？？</span></span><br><span class="line">	<span class="keyword">return</span> __inet_lookup(net, hashinfo, skb,</span><br><span class="line">			     doff, iph-&gt;saddr, sport,</span><br><span class="line">			     iph-&gt;daddr, dport, inet_iif(skb), sdif,</span><br><span class="line">			     refcounted);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>__inet_lookup_skb</code>中首先调用<code>inet_steal_sock</code>来尝试从<code>skb</code>的结构体中直接拿到<code>sock</code>（相当于一个快速路径），如果找到了，就直接返回了。注意：这里的<code>sock</code>和<code>skb</code>是查路由的时候关联上的，但是第一个syn包能不能走这个快速路径不知道，<code>inet_steal_sock</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> sock *<span class="title function_">inet_steal_sock</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sk_buff *skb, <span class="type">int</span> doff,</span></span><br><span class="line"><span class="params">			     <span class="type">const</span> __be32 saddr, <span class="type">const</span> __be16 sport,</span></span><br><span class="line"><span class="params">			     <span class="type">const</span> __be32 daddr, <span class="type">const</span> __be16 dport,</span></span><br><span class="line"><span class="params">			     <span class="type">bool</span> *refcounted, <span class="type">inet_ehashfn_t</span> *ehashfn)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span>, *<span class="title">reuse_sk</span>;</span></span><br><span class="line">	<span class="type">bool</span> prefetched;</span><br><span class="line">	<span class="comment">//尝试从skb中获取sk，是不是ip层查路由时候拿到的？</span></span><br><span class="line">	sk = skb_steal_sock(skb, refcounted, &amp;prefetched);</span><br><span class="line">	<span class="keyword">if</span> (!sk)</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="comment">//这里大概率走这个分支吧，因为prefetched 为false？</span></span><br><span class="line">	<span class="keyword">if</span> (!prefetched || !sk_fullsock(sk))</span><br><span class="line">		<span class="keyword">return</span> sk;</span><br><span class="line">	<span class="comment">//TCP非listen状态的处理</span></span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_protocol == IPPROTO_TCP) &#123;</span><br><span class="line">		<span class="keyword">if</span> (sk-&gt;sk_state != TCP_LISTEN)</span><br><span class="line">			<span class="keyword">return</span> sk;</span><br><span class="line">	<span class="comment">//UDP处理</span></span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (sk-&gt;sk_protocol == IPPROTO_UDP) &#123;</span><br><span class="line">		<span class="keyword">if</span> (sk-&gt;sk_state != TCP_CLOSE)</span><br><span class="line">			<span class="keyword">return</span> sk;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> sk;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	reuse_sk = inet_lookup_reuseport(net, sk, skb, doff,</span><br><span class="line">					 saddr, sport, daddr, ntohs(dport),</span><br><span class="line">					 ehashfn);</span><br><span class="line">	<span class="keyword">if</span> (!reuse_sk)</span><br><span class="line">		<span class="keyword">return</span> sk;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* We&#x27;ve chosen a new reuseport sock which is never refcounted. This</span></span><br><span class="line"><span class="comment">	 * implies that sk also isn&#x27;t refcounted.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	WARN_ON_ONCE(*refcounted);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> reuse_sk;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>inet_steal_sock</code>中的主要逻辑为调用<code>skb_steal_sock</code>尝试从 <code>skb</code> 里直接“偷”出一个已经绑定的 socket。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="keyword">struct</span> sock *</span><br><span class="line"><span class="title function_">skb_steal_sock</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="type">bool</span> *refcounted, <span class="type">bool</span> *prefetched)</span></span><br><span class="line">&#123;	</span><br><span class="line">	<span class="comment">//当前的skb是否挂了sk</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;sk) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span> =</span> skb-&gt;sk;</span><br><span class="line"></span><br><span class="line">		*refcounted = <span class="literal">true</span>;</span><br><span class="line">		<span class="comment">//是否预取的，bpf可能会预取？，否则应该是false</span></span><br><span class="line">		*prefetched = skb_sk_is_prefetched(skb);</span><br><span class="line">		<span class="keyword">if</span> (*prefetched)</span><br><span class="line">		<span class="comment">//根据sk的状态返回是否需要引用计数，只有完整的状态会返回true(非timewait和new_syn_recv)</span></span><br><span class="line">			*refcounted = sk_is_refcounted(sk);</span><br><span class="line">		skb-&gt;destructor = <span class="literal">NULL</span>; <span class="comment">//怕里面有清掉sock的操作？</span></span><br><span class="line">		skb-&gt;sk = <span class="literal">NULL</span>; <span class="comment">//因为这个sock已经被偷走了？所以不能关联这个skb了？</span></span><br><span class="line">		<span class="keyword">return</span> sk;</span><br><span class="line">	&#125;</span><br><span class="line">	*prefetched = <span class="literal">false</span>;</span><br><span class="line">	*refcounted = <span class="literal">false</span>;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>skb_steal_sock</code>做的事情很简单，其实就是根据<code>skb</code>获取一个<code>sock</code>，注意获取<code>sock</code>后，解除了<code>skb</code>和这个<code>sock</code>的关联。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/09/07/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6syn%EF%BC%88%E4%B8%80%EF%BC%89/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/09/03/TCP%20ACCEPT/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1127,106 +1235,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/08/11/%E9%9B%B6%E7%AA%97%E5%8F%A3%E6%8E%A2%E6%B5%8B%E5%AE%9A%E6%97%B6%E5%99%A8/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/08/11/%E9%9B%B6%E7%AA%97%E5%8F%A3%E6%8E%A2%E6%B5%8B%E5%AE%9A%E6%97%B6%E5%99%A8/" class="post-title-link" itemprop="url">TCP 零窗口探测定时器</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2025-08-11 22:00:00 / 修改时间：23:15:00" itemprop="dateCreated datePublished" datetime="2025-08-11T22:00:00+08:00">2025-08-11</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/08/11/%E9%9B%B6%E7%AA%97%E5%8F%A3%E6%8E%A2%E6%B5%8B%E5%AE%9A%E6%97%B6%E5%99%A8/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/08/11/%E9%9B%B6%E7%AA%97%E5%8F%A3%E6%8E%A2%E6%B5%8B%E5%AE%9A%E6%97%B6%E5%99%A8/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="零窗口探测定时器"><a href="#零窗口探测定时器" class="headerlink" title="零窗口探测定时器"></a>零窗口探测定时器</h2><p>TCP 零窗口探测定时器是在对端通告窗口为 0 时启动的，用来<strong>周期性发送探测包</strong>，检查对端窗口是否重新打开。<br> 定时器到期时会发一个零长度或过时序号的 ACK 段，逼对端回 ACK，从而获知最新窗口大小。</p>
-<p>零窗口探测定时器和超时重传使用一个定时器，根据不同的pending来区分具体走哪个逻辑，具体如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_write_timer_handler</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	...</span><br><span class="line">	tcp_mstamp_refresh(tcp_sk(sk));</span><br><span class="line">	event = icsk-&gt;icsk_pending;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">switch</span> (event) &#123;</span><br><span class="line">	<span class="keyword">case</span> ICSK_TIME_RETRANS:</span><br><span class="line">		icsk-&gt;icsk_pending = <span class="number">0</span>;</span><br><span class="line">		tcp_retransmit_timer(sk);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> ICSK_TIME_PROBE0:</span><br><span class="line">		icsk-&gt;icsk_pending = <span class="number">0</span>;</span><br><span class="line">		<span class="comment">//零窗口探测</span></span><br><span class="line">		tcp_probe_timer(sk);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p><code>tcp_probe_timer</code> 为零窗口探测到期的处理函数，主要逻辑为首先怕判断发送队列是否为空，或者没有未确认的数据包，这时候根本也不需要零窗口探测，因此直接返回，然后获取最大的探测次数，这里用的是retry2 默认 15次，如果超过次数了，直接<code>err</code> 否则的话调用</p>
-<p><code>tcp_send_probe0</code>发送零窗口探测报文。</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">tcp_probe_timer</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span> =</span> tcp_send_head(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="type">int</span> max_probes;</span><br><span class="line">	<span class="comment">//如果发送队列为空，或者没有在途中的数据包，直接返回</span></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;packets_out || !skb) &#123;</span><br><span class="line">		icsk-&gt;icsk_probes_out = <span class="number">0</span>;</span><br><span class="line">		icsk-&gt;icsk_probes_tstamp = <span class="number">0</span>;</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* RFC 1122 4.2.2.17 requires the sender to stay open indefinitely as</span></span><br><span class="line"><span class="comment">	 * long as the receiver continues to respond probes. We support this by</span></span><br><span class="line"><span class="comment">	 * default and reset icsk_probes_out with incoming ACKs. But if the</span></span><br><span class="line"><span class="comment">	 * socket is orphaned or the user specifies TCP_USER_TIMEOUT, we</span></span><br><span class="line"><span class="comment">	 * kill the socket when the retry count and the time exceeds the</span></span><br><span class="line"><span class="comment">	 * corresponding system limit. We also implement similar policy when</span></span><br><span class="line"><span class="comment">	 * we use RTO to probe window in tcp_retransmit_timer().</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (!icsk-&gt;icsk_probes_tstamp) &#123;</span><br><span class="line">		icsk-&gt;icsk_probes_tstamp = tcp_jiffies32; <span class="comment">//第一次探测的时间戳</span></span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		u32 user_timeout = READ_ONCE(icsk-&gt;icsk_user_timeout); <span class="comment">//set_sock_opt 用户设置的超时时间</span></span><br><span class="line">		<span class="comment">//用户设置的超时时间大于当前时间减去第一个0窗口探测的时间，直接返回err 因为超时了</span></span><br><span class="line">		<span class="keyword">if</span> (user_timeout &amp;&amp;</span><br><span class="line">		    (s32)(tcp_jiffies32 - icsk-&gt;icsk_probes_tstamp) &gt;=</span><br><span class="line">		     msecs_to_jiffies(user_timeout))</span><br><span class="line">		<span class="keyword">goto</span> <span class="built_in">abort</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	max_probes = READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_retries2);</span><br><span class="line">	<span class="comment">//在零窗口探测中走这个分支的概率很小吧！先忽略</span></span><br><span class="line">	<span class="keyword">if</span> (sock_flag(sk, SOCK_DEAD)) &#123;</span><br><span class="line">		<span class="comment">//判断是否存活，为啥要用inet_csk_rto_backoff 这个呢？</span></span><br><span class="line">		<span class="type">const</span> <span class="type">bool</span> alive = inet_csk_rto_backoff(icsk, TCP_RTO_MAX) &lt; TCP_RTO_MAX;</span><br><span class="line">		<span class="comment">//更具是否存活返回一个最大探测次数 如果已经死了， 则大概率返0</span></span><br><span class="line">		max_probes = tcp_orphan_retries(sk, alive);</span><br><span class="line">		<span class="keyword">if</span> (!alive &amp;&amp; icsk-&gt;icsk_backoff &gt;= max_probes)</span><br><span class="line">			<span class="keyword">goto</span> <span class="built_in">abort</span>; <span class="comment">//直接返回err</span></span><br><span class="line">		<span class="comment">//检查是否系统资源不足</span></span><br><span class="line">		<span class="keyword">if</span> (tcp_out_of_resources(sk, <span class="literal">true</span>))</span><br><span class="line">			<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//探测的次数超过retry2了 直接返回err</span></span><br><span class="line">	<span class="keyword">if</span> (icsk-&gt;icsk_probes_out &gt;= max_probes) &#123;</span><br><span class="line"><span class="built_in">abort</span>:		tcp_write_err(sk);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="comment">/* Only send another probe if we didn&#x27;t close things up. */</span></span><br><span class="line">		<span class="comment">//发送零窗口探测报文</span></span><br><span class="line">		tcp_send_probe0(sk);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<p>上述逻辑最终调用<code>tcp_send_probe0</code>进一步处理零窗口探测，在<code>tcp_send_probe0</code>中，会调用<code>tcp_write_wakeup</code>发送实际的数据包，发送之后，会对重传次数，下一次的超时时间进行重新计算，并设置下一次零窗口探测的时间，具体代码逻辑如下：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* A window probe timeout has occurred.  If window is not closed send</span></span><br><span class="line"><span class="comment"> * a partial packet else a zero probe.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">tcp_send_probe0</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> sock_net(sk);</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> timeout;</span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="comment">//发送0窗口探测报文</span></span><br><span class="line">	err = tcp_write_wakeup(sk, LINUX_MIB_TCPWINPROBE);</span><br><span class="line">	<span class="comment">//发送出去的数据包的未确认数量为0,且发送队列为空，认为不需要探测了</span></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;packets_out || tcp_write_queue_empty(sk)) &#123;</span><br><span class="line">		<span class="comment">/* Cancel probe timer, if it is not required. */</span></span><br><span class="line">		icsk-&gt;icsk_probes_out = <span class="number">0</span>;</span><br><span class="line">		icsk-&gt;icsk_backoff = <span class="number">0</span>;</span><br><span class="line">		icsk-&gt;icsk_probes_tstamp = <span class="number">0</span>;<span class="comment">//复位第一次的时间戳</span></span><br><span class="line">		<span class="keyword">return</span>;<span class="comment">//终止探测了！</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//增加0窗口探测次数</span></span><br><span class="line">	icsk-&gt;icsk_probes_out++;</span><br><span class="line">	<span class="comment">//如果发送失败了</span></span><br><span class="line">	<span class="keyword">if</span> (err &lt;= <span class="number">0</span>) &#123;</span><br><span class="line">		<span class="keyword">if</span> (icsk-&gt;icsk_backoff &lt; READ_ONCE(net-&gt;ipv4.sysctl_tcp_retries2))<span class="comment">//小于retry2</span></span><br><span class="line">			icsk-&gt;icsk_backoff++; <span class="comment">//增加退避次数</span></span><br><span class="line">		<span class="comment">//根据上面的退避次数计算一个超时时间</span></span><br><span class="line">		timeout = tcp_probe0_when(sk, TCP_RTO_MAX);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="comment">/* If packet was not sent due to local congestion,</span></span><br><span class="line"><span class="comment">		 * Let senders fight for local resources conservatively.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//发送成功了，设置正常的间隔</span></span><br><span class="line">		timeout = TCP_RESOURCE_PROBE_INTERVAL;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	timeout = tcp_clamp_probe0_to_user_timeout(sk, timeout);</span><br><span class="line">	<span class="comment">//设置下一次零窗口探测时间</span></span><br><span class="line">	tcp_reset_xmit_timer(sk, ICSK_TIME_PROBE0, timeout, TCP_RTO_MAX);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p><code>tcp_write_wakeup</code>是实际调用发送数据包的函数，这里分为两种情况，第一种情况：发送队列数据包不为空，且序列号在右边界内，则首先尝试从发送队列中peek一个skb，然后根据mss等大小对数据包进行处理后直接发送。</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/08/11/%E9%9B%B6%E7%AA%97%E5%8F%A3%E6%8E%A2%E6%B5%8B%E5%AE%9A%E6%97%B6%E5%99%A8/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1296,7 +1304,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">75</span>
+          <span class="site-state-item-count">76</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
@@ -1309,7 +1317,7 @@
       <div class="site-state-item site-state-tags">
             <a href="/tags/">
           
-        <span class="site-state-item-count">17</span>
+        <span class="site-state-item-count">18</span>
         <span class="site-state-item-name">标签</span></a>
       </div>
   </nav>

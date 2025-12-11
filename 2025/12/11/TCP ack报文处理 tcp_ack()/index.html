@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="tcp_ack(）用于处理接收到所有携带ack标志位的数据包，建立连接状态下的所有数据包几乎都携带ack标志位，慢速路径以及快速路径都会调用。 tcp_ack主要目的是根据ack报文调整发送端的状态，整体工作可以分为以下几个部分：  ACK 合法性校验 更新 snd_una &#x2F; 窗口 &#x2F; SACK &#x2F; ECN（确认信息 &amp; 窗口信息） 清理重传队列，更新 RA">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TCP确认 tcp_ack（一）">
+<meta property="og:url" content="http://example.com/2025/12/11/TCP%20ack%E6%8A%A5%E6%96%87%E5%A4%84%E7%90%86%20tcp_ack()/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="tcp_ack(）用于处理接收到所有携带ack标志位的数据包，建立连接状态下的所有数据包几乎都携带ack标志位，慢速路径以及快速路径都会调用。 tcp_ack主要目的是根据ack报文调整发送端的状态，整体工作可以分为以下几个部分：  ACK 合法性校验 更新 snd_una &#x2F; 窗口 &#x2F; SACK &#x2F; ECN（确认信息 &amp; 窗口信息） 清理重传队列，更新 RA">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-12-11T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-12-11T14:02:29.085Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP确认">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/12/11/TCP%20ack%E6%8A%A5%E6%96%87%E5%A4%84%E7%90%86%20tcp_ack()/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TCP确认 tcp_ack（一） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/12/11/TCP%20ack%E6%8A%A5%E6%96%87%E5%A4%84%E7%90%86%20tcp_ack()/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TCP确认 tcp_ack（一）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-12-11 22:00:00 / 修改时间：22:02:29" itemprop="dateCreated datePublished" datetime="2025-12-11T22:00:00+08:00">2025-12-11</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/12/11/TCP%20ack%E6%8A%A5%E6%96%87%E5%A4%84%E7%90%86%20tcp_ack()/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/12/11/TCP%20ack%E6%8A%A5%E6%96%87%E5%A4%84%E7%90%86%20tcp_ack()/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p><strong><code>tcp_ack</code>(）用于处理接收到所有携带ack标志位的数据包，建立连接状态下的所有数据包几乎都携带<code>ack</code>标志位，慢速路径以及快速路径都会调用。</strong></p>
+<p><strong><code>tcp_ack</code>主要目的是根据<code>ack</code>报文调整发送端的状态，整体工作可以分为以下几个部分：</strong></p>
+<ul>
+<li>ACK 合法性校验</li>
+<li>更新 <code>snd_una</code> &#x2F; <code>窗口</code> &#x2F; <code>SACK</code> &#x2F; <code>ECN</code>（确认信息 &amp; 窗口信息）</li>
+<li>清理重传队列，更新 <code>RACK</code> &#x2F; <code>TLP</code> &#x2F; 丢包信息</li>
+<li>判断 ACK 是否可疑（重复 <code>ACK</code>、<code>DSACK</code> 等），触发快速重传&#x2F;恢复逻辑</li>
+<li>拥塞状态转换，调用拥塞算法钩子</li>
+</ul>
+<p>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* This routine deals with incoming acks, but not outgoing ones. */</span></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">tcp_ack</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">const</span> <span class="keyword">struct</span> sk_buff *skb, <span class="type">int</span> flag)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sacktag_state</span> <span class="title">sack_state</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rate_sample</span> <span class="title">rs</span> =</span> &#123; .prior_delivered = <span class="number">0</span> &#125;;</span><br><span class="line">	u32 prior_snd_una = tp-&gt;snd_una; 		<span class="comment">//已经发送未被确认的序列号</span></span><br><span class="line">	<span class="type">bool</span> is_sack_reneg = tp-&gt;is_sack_reneg;  <span class="comment">//是否是sack反悔</span></span><br><span class="line">	u32 ack_seq = TCP_SKB_CB(skb)-&gt;seq;     <span class="comment">//提取数据包的序号</span></span><br><span class="line">	u32 ack = TCP_SKB_CB(skb)-&gt;ack_seq;     <span class="comment">///提取当前数据包确认的序列号</span></span><br><span class="line">	<span class="type">int</span> num_dupack = <span class="number">0</span>;</span><br><span class="line">	<span class="type">int</span> prior_packets = tp-&gt;packets_out;    <span class="comment">//发送出去没有被ack的数量</span></span><br><span class="line">	u32 delivered = tp-&gt;delivered;		   <span class="comment">//被确认的ack总数</span></span><br><span class="line">	u32 lost = tp-&gt;lost;				   <span class="comment">//历史丢包数</span></span><br><span class="line">	<span class="type">int</span> rexmit = REXMIT_NONE; <span class="comment">/* Flag to (re)transmit to recover losses */</span><span class="comment">//是否需要重传的标记</span></span><br><span class="line">	u32 prior_fack;</span><br><span class="line"></span><br><span class="line">	sack_state.first_sackt = <span class="number">0</span>;</span><br><span class="line">	sack_state.rate = &amp;rs;</span><br><span class="line">	sack_state.sack_delivered = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* We very likely will need to access rtx queue. */</span></span><br><span class="line">	<span class="comment">//预取</span></span><br><span class="line">	prefetch(sk-&gt;tcp_rtx_queue.rb_node);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* If the ack is older than previous acks</span></span><br><span class="line"><span class="comment">	 * then we can probably ignore it.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//当前确认的序列号在una之前</span></span><br><span class="line">	<span class="keyword">if</span> (before(ack, prior_snd_una)) &#123;</span><br><span class="line">		<span class="comment">/* RFC 5961 5.2 [Blind Data Injection Attack].[Mitigation] */</span></span><br><span class="line">		<span class="comment">//这个ack太老了(可能是注入攻击)，比往前算一个窗口还要小，那就回一个挑战ack</span></span><br><span class="line">		<span class="keyword">if</span> (before(ack, prior_snd_una - tp-&gt;max_window)) &#123;</span><br><span class="line">			<span class="keyword">if</span> (!(flag &amp; FLAG_NO_CHALLENGE_ACK))</span><br><span class="line">				tcp_send_challenge_ack(sk);</span><br><span class="line">			<span class="keyword">return</span> -SKB_DROP_REASON_TCP_TOO_OLD_ACK;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">goto</span> old_ack; <span class="comment">//返回0，外面也会回复挑战ack</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* If the ack includes data we haven&#x27;t sent yet, discard</span></span><br><span class="line"><span class="comment">	 * this segment (RFC793 Section 3.9).</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//太超前了</span></span><br><span class="line">	<span class="keyword">if</span> (after(ack, tp-&gt;snd_nxt))</span><br><span class="line">		<span class="keyword">return</span> -SKB_DROP_REASON_TCP_ACK_UNSENT_DATA;</span><br><span class="line">	<span class="comment">//确认了新数据</span></span><br><span class="line">	<span class="keyword">if</span> (after(ack, prior_snd_una)) &#123;</span><br><span class="line">		flag |= FLAG_SND_UNA_ADVANCED; <span class="comment">//设置推进ack标志了，下面会用到</span></span><br><span class="line">		icsk-&gt;icsk_retransmits = <span class="number">0</span>;    <span class="comment">//重传清零</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">if</span> IS_ENABLED(CONFIG_TLS_DEVICE)</span></span><br><span class="line">		<span class="keyword">if</span> (static_branch_unlikely(&amp;clean_acked_data_enabled.key))</span><br><span class="line">			<span class="keyword">if</span> (icsk-&gt;icsk_clean_acked)</span><br><span class="line">				icsk-&gt;icsk_clean_acked(sk, ack);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//返回una或者sack最高的序列号</span></span><br><span class="line">	prior_fack = tcp_is_sack(tp) ? tcp_highest_sack_seq(tp) : tp-&gt;snd_una;</span><br><span class="line">	<span class="comment">//设置在途数据包数</span></span><br><span class="line">	rs.prior_in_flight = tcp_packets_in_flight(tp);</span><br><span class="line">	<span class="comment">/* ts_recent update must be made after we are sure that the packet</span></span><br><span class="line"><span class="comment">	 * is in window.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//slowpath会设置这个标志，这里会通过PAWS检查后更新时间戳</span></span><br><span class="line">	<span class="keyword">if</span> (flag &amp; FLAG_UPDATE_TS_RECENT)</span><br><span class="line">		tcp_replace_ts_recent(tp, TCP_SKB_CB(skb)-&gt;seq);</span><br><span class="line">	<span class="comment">//这里是fastpath</span></span><br><span class="line">	<span class="keyword">if</span> ((flag &amp; (FLAG_SLOWPATH | FLAG_SND_UNA_ADVANCED)) ==</span><br><span class="line">	    FLAG_SND_UNA_ADVANCED) &#123;</span><br><span class="line">		<span class="comment">/* Window is constant, pure forward advance.</span></span><br><span class="line"><span class="comment">		 * No more checks are required.</span></span><br><span class="line"><span class="comment">		 * Note, we use the fact that SND.UNA&gt;=SND.WL2.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//更新发送窗口更新时候的序列号，第二个参数是数据包的序号</span></span><br><span class="line">		tcp_update_wl(tp, ack_seq);</span><br><span class="line">		<span class="comment">//更新una和确认的字节数</span></span><br><span class="line">		tcp_snd_una_update(tp, ack);</span><br><span class="line">		<span class="comment">//设置更新窗口标志位</span></span><br><span class="line">		flag |= FLAG_WIN_UPDATE;</span><br><span class="line">		<span class="comment">//调用拥塞算法钩子，如果有</span></span><br><span class="line">		tcp_in_ack_event(sk, CA_ACK_WIN_UPDATE);</span><br><span class="line"></span><br><span class="line">		NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPHPACKS);</span><br><span class="line">	<span class="comment">//这里是走slowpah</span></span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		u32 ack_ev_flags = CA_ACK_SLOWPATH;</span><br><span class="line">		<span class="comment">//标记数据包是否携带数据</span></span><br><span class="line">		<span class="keyword">if</span> (ack_seq != TCP_SKB_CB(skb)-&gt;end_seq)</span><br><span class="line">			flag |= FLAG_DATA;</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPPUREACKS);</span><br><span class="line">		<span class="comment">//这里的第三个参数是确认号， 第四个参数ack_seq是报文的序列号</span></span><br><span class="line">		flag |= tcp_ack_update_window(sk, skb, ack, ack_seq);</span><br><span class="line">		<span class="comment">//处理sack</span></span><br><span class="line">		<span class="keyword">if</span> (TCP_SKB_CB(skb)-&gt;sacked)</span><br><span class="line">			flag |= tcp_sacktag_write_queue(sk, skb, prior_snd_una,</span><br><span class="line">							&amp;sack_state);</span><br><span class="line">		<span class="comment">//发生了拥塞，设置标志位</span></span><br><span class="line">		<span class="keyword">if</span> (tcp_ecn_rcv_ecn_echo(tp, tcp_hdr(skb))) &#123;</span><br><span class="line">			flag |= FLAG_ECE;</span><br><span class="line">			ack_ev_flags |= CA_ACK_ECE;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//有sack确认的段数，需要更新确认的总数，合理</span></span><br><span class="line">		<span class="keyword">if</span> (sack_state.sack_delivered)</span><br><span class="line">			tcp_count_delivered(tp, sack_state.sack_delivered,</span><br><span class="line">					    flag &amp; FLAG_ECE);</span><br><span class="line">		<span class="comment">//窗口是否推进了</span></span><br><span class="line">		<span class="keyword">if</span> (flag &amp; FLAG_WIN_UPDATE)</span><br><span class="line">			ack_ev_flags |= CA_ACK_WIN_UPDATE;</span><br><span class="line">		<span class="comment">//调用拥塞算法的钩子</span></span><br><span class="line">		tcp_in_ack_event(sk, ack_ev_flags);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* This is a deviation from RFC3168 since it states that:</span></span><br><span class="line"><span class="comment">	 * &quot;When the TCP data sender is ready to set the CWR bit after reducing</span></span><br><span class="line"><span class="comment">	 * the congestion window, it SHOULD set the CWR bit only on the first</span></span><br><span class="line"><span class="comment">	 * new data packet that it transmits.&quot;</span></span><br><span class="line"><span class="comment">	 * We accept CWR on pure ACKs to be more robust</span></span><br><span class="line"><span class="comment">	 * with widely-deployed TCP implementations that do this.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//如果是显示拥塞，这里立即设置回复ack的标志位，因为发送端窗口已经很小了，需要立即回复ack</span></span><br><span class="line">	tcp_ecn_accept_cwr(sk, skb);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* We passed data and got it acked, remove any soft error</span></span><br><span class="line"><span class="comment">	 * log. Something worked...</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	WRITE_ONCE(sk-&gt;sk_err_soft, <span class="number">0</span>);</span><br><span class="line">	icsk-&gt;icsk_probes_out = <span class="number">0</span>;</span><br><span class="line">	tp-&gt;rcv_tstamp = tcp_jiffies32;</span><br><span class="line">	<span class="keyword">if</span> (!prior_packets)</span><br><span class="line">		<span class="keyword">goto</span> no_queue;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* See if we can take anything off of the retransmit queue. */</span></span><br><span class="line">	<span class="comment">//清重传队列</span></span><br><span class="line">	flag |= tcp_clean_rtx_queue(sk, skb, prior_fack, prior_snd_una,</span><br><span class="line">				    &amp;sack_state, flag &amp; FLAG_ECE);</span><br><span class="line">	<span class="comment">//根据sack的处理来调整乱续增长因子进而影响丢包判断</span></span><br><span class="line">	tcp_rack_update_reo_wnd(sk, &amp;rs);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;tlp_high_seq)</span><br><span class="line">		tcp_process_tlp_ack(sk, ack, flag); </span><br><span class="line">	<span class="comment">//当前ack是否可疑（	没有确认数据，窗口更新 纯ack sack 或者dsack ）</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_ack_is_dubious(sk, flag)) &#123;</span><br><span class="line">		<span class="comment">//是否是一个纯粹的重复ack（没有确认新数据）</span></span><br><span class="line">		<span class="keyword">if</span> (!(flag &amp; (FLAG_SND_UNA_ADVANCED | </span><br><span class="line">			      FLAG_NOT_DUP | FLAG_DSACKING_ACK))) &#123;</span><br><span class="line">			num_dupack = <span class="number">1</span>;</span><br><span class="line">			<span class="comment">/* Consider if pure acks were aggregated in tcp_add_backlog() */</span></span><br><span class="line">			<span class="comment">//统计纯ack的计数，注意这里协议站可能会聚合纯ack</span></span><br><span class="line">			<span class="keyword">if</span> (!(flag &amp; FLAG_DATA)) </span><br><span class="line">				num_dupack = <span class="type">max_t</span>(u16, <span class="number">1</span>, skb_shinfo(skb)-&gt;gso_segs);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//传入的是snd_una, 重复ack的数量，ack的标志位 ，传入传出rexmit会指导下面的重传</span></span><br><span class="line">		tcp_fastretrans_alert(sk, prior_snd_una, num_dupack, &amp;flag,</span><br><span class="line">				      &amp;rexmit);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* If needed, reset TLP/RTO timer when RACK doesn&#x27;t set. */</span></span><br><span class="line">	<span class="comment">//在清理重传队列的时候可能会设置上这个标志位，比如有新的数据包被确认的时候，或者检测到乱续或者丢包 肯定需要重新设置这个定时器了</span></span><br><span class="line">	<span class="keyword">if</span> (flag &amp; FLAG_SET_XMIT_TIMER)</span><br><span class="line">		tcp_set_xmit_timer(sk);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> ((flag &amp; FLAG_FORWARD_PROGRESS) || !(flag &amp; FLAG_NOT_DUP))</span><br><span class="line">		sk_dst_confirm(sk);</span><br><span class="line">	<span class="comment">//更新统计字段累计收到了多少包</span></span><br><span class="line">	delivered = tcp_newly_delivered(sk, delivered, flag);</span><br><span class="line">	<span class="comment">//更新丢包总数</span></span><br><span class="line">	lost = tp-&gt;lost - lost;			<span class="comment">/* freshly marked lost */</span></span><br><span class="line">	rs.is_ack_delayed = !!(flag &amp; FLAG_ACK_MAYBE_DELAYED);</span><br><span class="line">	<span class="comment">//更新bbr算法用到的字段</span></span><br><span class="line">	tcp_rate_gen(sk, delivered, lost, is_sack_reneg, sack_state.rate);</span><br><span class="line">	tcp_cong_control(sk, ack, delivered, flag, sack_state.rate);</span><br><span class="line">	tcp_xmit_recovery(sk, rexmit);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line">no_queue:</span><br><span class="line">	<span class="comment">/* If data was DSACKed, see if we can undo a cwnd reduction. */</span></span><br><span class="line">	<span class="keyword">if</span> (flag &amp; FLAG_DSACKING_ACK) &#123;</span><br><span class="line">		tcp_fastretrans_alert(sk, prior_snd_una, num_dupack, &amp;flag,</span><br><span class="line">				      &amp;rexmit);</span><br><span class="line">		<span class="comment">////更新统计字段累计收到了多少包</span></span><br><span class="line">		tcp_newly_delivered(sk, delivered, flag);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">/* If this ack opens up a zero window, clear backoff.  It was</span></span><br><span class="line"><span class="comment">	 * being used to time the probes, and is probably far higher than</span></span><br><span class="line"><span class="comment">	 * it needs to be for normal retransmission.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	tcp_ack_probe(sk);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;tlp_high_seq)</span><br><span class="line">		tcp_process_tlp_ack(sk, ack, flag);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line">old_ack:</span><br><span class="line">	<span class="comment">/* If data was SACKed, tag it and see if we should send more data.</span></span><br><span class="line"><span class="comment">	 * If data was DSACKed, see if we can undo a cwnd reduction.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (TCP_SKB_CB(skb)-&gt;sacked) &#123;</span><br><span class="line">		flag |= tcp_sacktag_write_queue(sk, skb, prior_snd_una,</span><br><span class="line">						&amp;sack_state);</span><br><span class="line">		tcp_fastretrans_alert(sk, prior_snd_una, num_dupack, &amp;flag,</span><br><span class="line">				      &amp;rexmit);</span><br><span class="line">		tcp_newly_delivered(sk, delivered, flag);</span><br><span class="line">		tcp_xmit_recovery(sk, rexmit);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_ack</code>中<strong>首先判断数据包确认数据的序列号是否太老了，如果确认的序列号比往前移动一个最大接收窗口的的序号还老，会回一个<code>challenge</code> <code>ack</code></strong> （也可能不回复，有速率限制）。如果这个确认号不是太老的话，则直接<code>goto</code>到最下面，判断是否协携带了<code>sack</code>信息，如果没有携带直接返回0，同时也有可能回<code>challenge ack</code>（取决于是否是建立连接的通路上）。</p>
+<p>如果数据包确认了还没发送的数据，则直接丢弃。</p>
+<p>如果数据包确认了新数据（最常见的情况），则设置推进窗口标志为下面判断<code>slowpath</code>和<code>fastpath</code>会用到。之后判断<strong>如果是慢速路径收上来的数据包，则调用<code>tcp_replace_ts_recent</code>通过PAWS机制决定是否需要更新时间戳</strong>，（这里注意，如果是快速路径上收到 包已经更新过了），具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">tcp_replace_ts_recent</span><span class="params">(<span class="keyword">struct</span> tcp_sock *tp, u32 seq)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//进入这个分支应该是处理异常的数据包，小心的更新时间戳？</span></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;rx_opt.saw_tstamp &amp;&amp; !after(seq, tp-&gt;rcv_wup)) &#123;</span><br><span class="line">		<span class="comment">/* PAWS bug workaround wrt. ACK frames, the PAWS discard</span></span><br><span class="line"><span class="comment">		 * extra check below makes sure this can only happen</span></span><br><span class="line"><span class="comment">		 * for pure ACK frames.  -DaveM</span></span><br><span class="line"><span class="comment">		 *</span></span><br><span class="line"><span class="comment">		 * Not only, also it occurs for expired timestamps.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (tcp_paws_check(&amp;tp-&gt;rx_opt, <span class="number">0</span>))</span><br><span class="line">			tcp_store_ts_recent(tp);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>接下来处理<code>fastpath</code>路径收包的情况，调用<code>tcp_snd_una_update</code>更新发送窗口（<strong>更新<code>una</code></strong>）和确认的总字节数，并设置标志位。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* If we update tp-&gt;snd_una, also update tp-&gt;bytes_acked */</span></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">tcp_snd_una_update</span><span class="params">(<span class="keyword">struct</span> tcp_sock *tp, u32 ack)</span></span><br><span class="line">&#123;</span><br><span class="line">	u32 delta = ack - tp-&gt;snd_una;</span><br><span class="line"></span><br><span class="line">	sock_owned_by_me((<span class="keyword">struct</span> sock *)tp);</span><br><span class="line">	tp-&gt;bytes_acked += delta;</span><br><span class="line">	tp-&gt;snd_una = ack;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>如果走<code>slowpath</code>，则稍微复杂，首先调用<code>tcp_ack_update_window</code>尝试更新窗口，并尝试切换到快速路径，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">tcp_ack_update_window</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">const</span> <span class="keyword">struct</span> sk_buff *skb, u32 ack,</span></span><br><span class="line"><span class="params">				 u32 ack_seq)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="type">int</span> flag = <span class="number">0</span>;</span><br><span class="line">	u32 nwin = ntohs(tcp_hdr(skb)-&gt;window); <span class="comment">//ack报文中通告的窗口大小</span></span><br><span class="line">	<span class="comment">//不是syn包计算窗口缩放后的大小，因为syn包没有窗口缩放</span></span><br><span class="line">	<span class="keyword">if</span> (likely(!tcp_hdr(skb)-&gt;syn))</span><br><span class="line">		nwin &lt;&lt;= tp-&gt;rx_opt.snd_wscale;</span><br><span class="line">	<span class="comment">//判断是否允许窗口更新</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_may_update_window(tp, ack, ack_seq, nwin)) &#123;</span><br><span class="line">		flag |= FLAG_WIN_UPDATE; 		 <span class="comment">//更新了发送窗口</span></span><br><span class="line">		tcp_update_wl(tp, ack_seq); <span class="comment">//记录更新发送窗口的序列号 </span></span><br><span class="line">		<span class="comment">//不同就更新窗口</span></span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;snd_wnd != nwin) &#123;</span><br><span class="line">			tp-&gt;snd_wnd = nwin;</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* Note, it is the only place, where</span></span><br><span class="line"><span class="comment">			 * fast path is recovered for sending TCP.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="comment">//注意发送恢复fast path的唯一位置</span></span><br><span class="line">			tp-&gt;pred_flags = <span class="number">0</span>;</span><br><span class="line">			<span class="comment">//是否切换到fast的path</span></span><br><span class="line">			tcp_fast_path_check(sk);</span><br><span class="line">			<span class="comment">//如果发送队列是空，则判断是否慢启动(由系统参数，拥塞算法等决定)</span></span><br><span class="line">			<span class="keyword">if</span> (!tcp_write_queue_empty(sk))</span><br><span class="line">				tcp_slow_start_after_idle_check(sk);</span><br><span class="line">			<span class="comment">//更新最大值</span></span><br><span class="line">			<span class="keyword">if</span> (nwin &gt; tp-&gt;max_window) &#123;</span><br><span class="line">				tp-&gt;max_window = nwin;</span><br><span class="line">				<span class="comment">//计算mss</span></span><br><span class="line">				tcp_sync_mss(sk, inet_csk(sk)-&gt;icsk_pmtu_cookie);</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//更新snd_una 以及确认的byte数</span></span><br><span class="line">	tcp_snd_una_update(tp, ack);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> flag;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_ack_update_window</code>首先计算对端通告窗口大小，之后<strong>调用<code>tcp_may_update_window</code>判断是否可以进入发送更新窗口的逻辑</strong>，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">bool</span> <span class="title function_">tcp_may_update_window</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> tcp_sock *tp,</span></span><br><span class="line"><span class="params">					<span class="type">const</span> u32 ack, <span class="type">const</span> u32 ack_seq,</span></span><br><span class="line"><span class="params">					<span class="type">const</span> u32 nwin)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span>	after(ack, tp-&gt;snd_una) ||  <span class="comment">//ACK 前进</span></span><br><span class="line">		after(ack_seq, tp-&gt;snd_wl1) ||	<span class="comment">//ACK 没前进 但 Seq 前进</span></span><br><span class="line">		(ack_seq == tp-&gt;snd_wl1 &amp;&amp; (nwin &gt; tp-&gt;snd_wnd || !nwin)); <span class="comment">//相桶，但窗口增大或变为0</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_may_update_window</code>中，如果 ACK 前进 || <strong>ACK 没前进但 SEQ 前进</strong> || SEQ 和上次一样，但窗口变大或窗口变为 0则可以更新发送窗口，并调用<code>tcp_fast_path_check</code>检查下次收报是否可以切换到<code>fastpath</code>，这里注意**:除了三次握手之外，这里是唯一可以设置切换到<code>fastpath</code>的地方**，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">tcp_fast_path_check</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (RB_EMPTY_ROOT(&amp;tp-&gt;out_of_order_queue) &amp;&amp;</span><br><span class="line">	    tp-&gt;rcv_wnd &amp;&amp;</span><br><span class="line">	    <span class="type">atomic_read</span>(&amp;sk-&gt;sk_rmem_alloc) &lt; sk-&gt;sk_rcvbuf &amp;&amp;</span><br><span class="line">	    !tp-&gt;urg_data)</span><br><span class="line">		tcp_fast_path_on(tp);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_fast_path_check</code>如果乱序队列为空，且接收窗口不为0，同时没有紧急数据则开启快速路径，开启快速路径代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">tcp_fast_path_on</span><span class="params">(<span class="keyword">struct</span> tcp_sock *tp)</span></span><br><span class="line">&#123;</span><br><span class="line">	__tcp_fast_path_on(tp, tp-&gt;snd_wnd &gt;&gt; tp-&gt;rx_opt.snd_wscale);</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> __tcp_fast_path_on(<span class="keyword">struct</span> tcp_sock *tp, u32 snd_wnd)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/* mptcp hooks are only on the slow path */</span></span><br><span class="line">	<span class="keyword">if</span> (sk_is_mptcp((<span class="keyword">struct</span> sock *)tp))</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//设置判断是否走快速路径的标志</span></span><br><span class="line">	tp-&gt;pred_flags = htonl((tp-&gt;tcp_header_len &lt;&lt; <span class="number">26</span>) |</span><br><span class="line">			       ntohl(TCP_FLAG_ACK) |</span><br><span class="line">			       snd_wnd);<span class="comment">//通告窗口的大小</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_ack_update_window</code>中计算是否开启快速路径之后，如果发送队列不为空，则调用<code>tcp_slow_start_after_idle_check</code>判断是否由于过长时间（一个<code>rto</code>）没有发送数据包而进入慢启动状态。</p>
+<p>最后判断是否需要更新历史最大的窗口数，以及调用<code>tcp_snd_una_update</code>更新<code>snd_una</code> 以及确认的byte数。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E7%A1%AE%E8%AE%A4/" rel="tag"># TCP确认</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/12/09/tcp%E5%8F%91%E5%8C%85tcp_transmit_skb%EF%BC%882%EF%BC%89/" rel="prev" title="TCP输出 __tcp_transmit_skb(二)">
+      <i class="fa fa-chevron-left"></i> TCP输出 __tcp_transmit_skb(二)
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">76</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">18</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
