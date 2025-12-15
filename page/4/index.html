@@ -193,6 +193,106 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/09/09/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6syn%20(%E4%B8%89)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/09/09/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6syn%20(%E4%B8%89)/" class="post-title-link" itemprop="url">TCP三次握手-接收syn段 (三)</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-09-09 22:00:00 / 修改时间：23:15:58" itemprop="dateCreated datePublished" datetime="2025-09-09T22:00:00+08:00">2025-09-09</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/09/09/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6syn%20(%E4%B8%89)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/09/09/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6syn%20(%E4%B8%89)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p><code>tcp_conn_request</code>中首先读取系统参数  syncookies &#x3D; READ_ONCE(net-&gt;ipv4.sysctl_tcp_syncookies) 如果为1（默认是1）则表示当半连接队列满了(这里半连接队列的大小也是由系统参数决定)的时候开启<code>syncookie</code>如果为2则表示强制开启syncookie。拿到<code>syncookie</code>系统参数后会进一步判断当前场景下是否需要走<code>syncookie</code>模式。</p>
+<p>对应的代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> ((syncookies == <span class="number">2</span> || inet_csk_reqsk_queue_is_full(sk)) &amp;&amp; !isn) &#123;</span><br><span class="line">	<span class="comment">//是否需要cookie</span></span><br><span class="line">	want_cookie = tcp_syn_flood_action(sk, rsk_ops-&gt;slab_name);</span><br><span class="line">	<span class="keyword">if</span> (!want_cookie)</span><br><span class="line">		<span class="keyword">goto</span> drop;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>如果系统参数不是强制开启<code>syncookies</code>则进一步通过<code>inet_csk_reqsk_queue_is_full</code>检查，这里其实就是比较一下当前半连接数目是否超过系统配置的半连接队列长度，如果没有，则进一步检查是否是<code>timewait</code>状态的重用，即<code>isn</code>不为0。</p>
+<p>上述满足任何一个条件都会设置<code>want_cookie</code>标志。</p>
+<p>之后会进一步判断是否全连接队列满了(也就是<code>listen</code>系统调用的第二个参数，默认是4096), 满了则直接丢弃。</p>
+<p>然后调用<code>inet_reqsk_alloc</code>申请管理半连接队列的结构，很多信息都保存在这个结构中，这个就是插入<code>ehash</code>的结构(前提是走正常三次握手流程)</p>
+<p>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//这里的第三个参数表示是否跟listensocket相关联</span></span><br><span class="line"><span class="keyword">struct</span> request_sock *<span class="title function_">inet_reqsk_alloc</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> request_sock_ops *ops,</span></span><br><span class="line"><span class="params">				      <span class="keyword">struct</span> sock *sk_listener,</span></span><br><span class="line"><span class="params">				      <span class="type">bool</span> attach_listener)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//这里申请了一个reqsock 注意：这个结构体里面包了一层sock外面是这里根据req拿到inet_request_sock</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">request_sock</span> *<span class="title">req</span> =</span> reqsk_alloc(ops, sk_listener,</span><br><span class="line">					       attach_listener);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (req) &#123;</span><br><span class="line">		<span class="comment">//这里根据req拿到inet_request_sock</span></span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">inet_request_sock</span> *<span class="title">ireq</span> =</span> inet_rsk(req);</span><br><span class="line">		<span class="comment">//初始化一些字段</span></span><br><span class="line">		ireq-&gt;ireq_opt = <span class="literal">NULL</span>;<span class="comment">//ip选项相关</span></span><br><span class="line"><span class="meta">#<span class="keyword">if</span> IS_ENABLED(CONFIG_IPV6)</span></span><br><span class="line">		ireq-&gt;pktopts = <span class="literal">NULL</span>;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">		atomic64_set(&amp;ireq-&gt;ir_cookie, <span class="number">0</span>);</span><br><span class="line">		ireq-&gt;ireq_state = TCP_NEW_SYN_RECV;<span class="comment">//注意这里设置了TCP_NEW_SYN_RECV状态！</span></span><br><span class="line">		write_pnet(&amp;ireq-&gt;ireq_net, sock_net(sk_listener));<span class="comment">//设置网络命名空间</span></span><br><span class="line">		ireq-&gt;ireq_family = sk_listener-&gt;sk_family;</span><br><span class="line">		req-&gt;timeout = TCP_TIMEOUT_INIT;<span class="comment">//这个应该是对端如果不回ack的初始时间 1s</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> req;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>inet_reqsk_alloc</code>中调用<code>reqsk_alloc</code>完成实际的申请后会对一些字段进行初始化，<strong>注意：这里将<code>req</code>的状态设置为TCP_NEW_SYN_RECV</strong>（低版本内核没有的一个状态）。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/09/09/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6syn%20(%E4%B8%89)/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/09/09/TCP%E8%A2%AB%E5%8A%A8%E6%89%93%E5%BC%80%E6%8E%A5%E6%94%B6syn%20(%E4%BA%8C)/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1133,110 +1233,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/08/16/TLP%E5%AE%9A%E6%97%B6%E5%99%A8/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/08/16/TLP%E5%AE%9A%E6%97%B6%E5%99%A8/" class="post-title-link" itemprop="url">TCP尾部丢包探测定时器</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2025-08-16 22:00:00" itemprop="dateCreated datePublished" datetime="2025-08-16T22:00:00+08:00">2025-08-16</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-08-18 21:56:53" itemprop="dateModified" datetime="2025-08-18T21:56:53+08:00">2025-08-18</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/08/16/TLP%E5%AE%9A%E6%97%B6%E5%99%A8/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/08/16/TLP%E5%AE%9A%E6%97%B6%E5%99%A8/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="尾部丢包探测-TLP-定时器"><a href="#尾部丢包探测-TLP-定时器" class="headerlink" title="尾部丢包探测(TLP)定时器"></a>尾部丢包探测(TLP)定时器</h2><p>因为 TCP 的 <strong>快速重传</strong>需要重复 ACK 才能触发，而尾部丢包时往往没有新数据推动 ACK；如果依赖 <strong>RTO 定时器</strong>又太慢，动辄几百毫秒甚至秒级，造成应用延迟。于是引入 <strong>TLP 定时器</strong>，在 RTO 之前提前触发一次探测报文，用来快速确认是否真的丢包，从而避免长时间等待 RTO，提高尾部丢包情况下的恢复速度。</p>
-<p>TLP使用的定时器与超时重传用的是同一个定时器，具体定定时器到期的主要逻辑为，首先判断发送队列是否为空，如果不为空或者空间不够发送，则尝试从发送队列拿出一个个数据包直接发送，若发送队列为空，则从重传队列中拿到一个数据包发送</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//主动发生一个数据包</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">tcp_send_loss_probe</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>;</span></span><br><span class="line">	<span class="type">int</span> pcount;</span><br><span class="line">	<span class="type">int</span> mss = tcp_current_mss(sk);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* At most one outstanding TLP */</span></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;tlp_high_seq) <span class="comment">//tcpack中会把这个设置为0</span></span><br><span class="line">		<span class="keyword">goto</span> rearm_timer;</span><br><span class="line"></span><br><span class="line">	tp-&gt;tlp_retrans = <span class="number">0</span>;  <span class="comment">//标记是否触发了TLP</span></span><br><span class="line">	skb = tcp_send_head(sk); <span class="comment">//从发送队列拿到一个数据包。其实就是看一下数据包是否为空</span></span><br><span class="line">	<span class="comment">//如果数据包不为空，且当前空间有一个mss的大小，</span></span><br><span class="line">	<span class="keyword">if</span> (skb &amp;&amp; tcp_snd_wnd_test(tp, skb, mss)) &#123;</span><br><span class="line">		pcount = tp-&gt;packets_out;</span><br><span class="line">		tcp_write_xmit(sk, mss, TCP_NAGLE_OFF, <span class="number">2</span>, GFP_ATOMIC);</span><br><span class="line">		<span class="comment">//相当于在判断是否发送成功</span></span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;packets_out &gt; pcount) </span><br><span class="line">			<span class="keyword">goto</span> probe_sent;</span><br><span class="line">		<span class="keyword">goto</span> rearm_timer;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//如果发送队列为空或者可用空间不足，就从重传队列中拿到一个数据包</span></span><br><span class="line">	skb = skb_rb_last(&amp;sk-&gt;tcp_rtx_queue);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(!skb)) &#123;</span><br><span class="line">		WARN_ONCE(tp-&gt;packets_out,</span><br><span class="line">			  <span class="string">&quot;invalid inflight: %u state %u cwnd %u mss %d\n&quot;</span>,</span><br><span class="line">			  tp-&gt;packets_out, sk-&gt;sk_state, tcp_snd_cwnd(tp), mss);</span><br><span class="line">		inet_csk(sk)-&gt;icsk_pending = <span class="number">0</span>;</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//通过fclone判断是否已经在主机中了</span></span><br><span class="line">	<span class="keyword">if</span> (skb_still_in_host_queue(sk, skb))</span><br><span class="line">		<span class="keyword">goto</span> rearm_timer;</span><br><span class="line">	<span class="comment">//计算当前数据包有几个段</span></span><br><span class="line">	pcount = tcp_skb_pcount(skb);</span><br><span class="line">	<span class="keyword">if</span> (WARN_ON(!pcount))</span><br><span class="line">		<span class="keyword">goto</span> rearm_timer;</span><br><span class="line">	<span class="comment">//超过一个段的情况需要分段</span></span><br><span class="line">	<span class="keyword">if</span> ((pcount &gt; <span class="number">1</span>) &amp;&amp; (skb-&gt;len &gt; (pcount - <span class="number">1</span>) * mss)) &#123;</span><br><span class="line">		<span class="keyword">if</span> (unlikely(tcp_fragment(sk, TCP_FRAG_IN_RTX_QUEUE, skb,</span><br><span class="line">					  (pcount - <span class="number">1</span>) * mss, mss,</span><br><span class="line">					  GFP_ATOMIC)))</span><br><span class="line">			<span class="keyword">goto</span> rearm_timer;</span><br><span class="line">		skb = skb_rb_next(skb);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (WARN_ON(!skb || !tcp_skb_pcount(skb)))</span><br><span class="line">		<span class="keyword">goto</span> rearm_timer;</span><br><span class="line">	<span class="comment">//重传一个数据包</span></span><br><span class="line">	<span class="keyword">if</span> (__tcp_retransmit_skb(sk, skb, <span class="number">1</span>))</span><br><span class="line">		<span class="keyword">goto</span> rearm_timer;</span><br><span class="line"></span><br><span class="line">	tp-&gt;tlp_retrans = <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line">probe_sent:</span><br><span class="line">	<span class="comment">/* Record snd_nxt for loss detection. */</span></span><br><span class="line">	<span class="comment">//这里其实相当与标记了tlp重传</span></span><br><span class="line">	tp-&gt;tlp_high_seq = tp-&gt;snd_nxt;</span><br><span class="line">	<span class="comment">//更新统计信息</span></span><br><span class="line">	NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPLOSSPROBES);</span><br><span class="line">	<span class="comment">/* Reset s.t. tcp_rearm_rto will restart timer from now */</span></span><br><span class="line">	inet_csk(sk)-&gt;icsk_pending = <span class="number">0</span>;</span><br><span class="line">rearm_timer:</span><br><span class="line">	tcp_rearm_rto(sk);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>如果从重传队列中取出一个数据包发送，在经过一系列处理后会调用<code>__tcp_retransmit_skb</code> 注意重传定时器也使用这个函数，这里面主要对数据包进行了裁剪，查看路由是否有效，计算mss，计算数据包的的断数，尝试合并重传数据包，然后调用<code>tcp_transmit_skb</code>这里不在粘贴这部分代码了。</p>
-<h3 id="尾部丢包探测-TLP-定时器的激活"><a href="#尾部丢包探测-TLP-定时器的激活" class="headerlink" title="尾部丢包探测(TLP)定时器的激活"></a>尾部丢包探测(TLP)定时器的激活</h3><p>TLP定时器的激活由<code>tcp_schedule_loss_probe</code>完成，具体代码如下：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">bool</span> <span class="title function_">tcp_schedule_loss_probe</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">bool</span> advancing_rto)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	u32 timeout, timeout_us, rto_delta_us;</span><br><span class="line">	<span class="type">int</span> early_retrans;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Don&#x27;t do any loss probe on a Fast Open connection before 3WHS</span></span><br><span class="line"><span class="comment">	 * finishes.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//fastopen 不启动tlp</span></span><br><span class="line">	<span class="keyword">if</span> (rcu_access_pointer(tp-&gt;fastopen_rsk))</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	<span class="comment">//默认是3</span></span><br><span class="line">	early_retrans = READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_early_retrans);</span><br><span class="line">	<span class="comment">/* Schedule a loss probe in 2*RTT for SACK capable connections</span></span><br><span class="line"><span class="comment">	 * not in loss recovery, that are either limited by cwnd or application.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> ((early_retrans != <span class="number">3</span> &amp;&amp; early_retrans != <span class="number">4</span>) ||</span><br><span class="line">	    !tp-&gt;packets_out || !tcp_is_sack(tp) ||  <span class="comment">//是否支持sack，如果不支持sack也不能启动tlp，为什么呢？</span></span><br><span class="line">	    (icsk-&gt;icsk_ca_state != TCP_CA_Open &amp;&amp;</span><br><span class="line">	     icsk-&gt;icsk_ca_state != TCP_CA_CWR))</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Probe timeout is 2*rtt. Add minimum RTO to account</span></span><br><span class="line"><span class="comment">	 * for delayed ack when there&#x27;s one outstanding packet. If no RTT</span></span><br><span class="line"><span class="comment">	 * sample is available then probe after TCP_TIMEOUT_INIT.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//先拿到rtt</span></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;srtt_us) &#123;</span><br><span class="line">		timeout_us = tp-&gt;srtt_us &gt;&gt; <span class="number">2</span>;<span class="comment">//先算一个pto 这里除了4,</span></span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;packets_out == <span class="number">1</span>)	<span class="comment">//只有一个未确认数据包的情况</span></span><br><span class="line">			timeout_us += tcp_rto_min_us(sk);  <span class="comment">//加一个最小rto？ 200ms</span></span><br><span class="line">		<span class="keyword">else</span> <span class="comment">//有多个未确认数据包的情况</span></span><br><span class="line">			timeout_us += TCP_TIMEOUT_MIN_US; <span class="comment">//2ms</span></span><br><span class="line">		timeout = usecs_to_jiffies(timeout_us);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		timeout = TCP_TIMEOUT_INIT; <span class="comment">//如果没有rtt就是1s</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* If the RTO formula yields an earlier time, then use that time. */</span></span><br><span class="line">	<span class="comment">//直接用当前rto的原始值，还是rto的剩余时间，由传入的参数决定</span></span><br><span class="line">	rto_delta_us = advancing_rto ?</span><br><span class="line">			jiffies_to_usecs(inet_csk(sk)-&gt;icsk_rto) :</span><br><span class="line">			tcp_rto_delta_us(sk);  <span class="comment">/* How far in future is RTO? */</span></span><br><span class="line">	<span class="keyword">if</span> (rto_delta_us &gt; <span class="number">0</span>)</span><br><span class="line">	<span class="comment">//取最小值</span></span><br><span class="line">		timeout = <span class="type">min_t</span>(u32, timeout, usecs_to_jiffies(rto_delta_us));</span><br><span class="line"></span><br><span class="line">	tcp_reset_xmit_timer(sk, ICSK_TIME_LOSS_PROBE, timeout, TCP_RTO_MAX);</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<p><code>tcp_schedule_loss_probe</code> 首先判断是否可以调度定时器，如果拥塞状态机的状态不是<code>open</code>或拥塞状态， 或者系统参数没有开启TLP或者没有未确认的数据包，就直接返回了，不需要调度丢包探测定时器。否则的话就先获取<code>rtt</code>，然后根据rtt计算一个超时时间，启动定时器。</p>
-<p>接下来看上述调度<code>tcp_schedule_loss_probe</code>的地方，有两个地方，一个是发送数据包的路径上，另一个是<code>tcp_ack</code>的处理中，具体代码如下所示：</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/08/16/TLP%E5%AE%9A%E6%97%B6%E5%99%A8/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1306,7 +1302,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">77</span>
+          <span class="site-state-item-count">78</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
