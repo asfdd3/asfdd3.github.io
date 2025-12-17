@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="在TCP确认 tcp_sacktag_write_queue（一）中处理完判断是否为dsack块并丢弃无用的sack块后，接下来会把合法的sack block按startseq排序，为后续扫描发送队列提供优化。 接下来进入tcp_sacktag_write_queue中的主循环，循环会遍历每个有效的sack block，首先尝试让 cache 指针指向相关的 cache block，如果 cach">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TCP确认 tcp_sacktag_write_queue（二）">
+<meta property="og:url" content="http://example.com/2025/12/17/TCP%20sack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%882%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="在TCP确认 tcp_sacktag_write_queue（一）中处理完判断是否为dsack块并丢弃无用的sack块后，接下来会把合法的sack block按startseq排序，为后续扫描发送队列提供优化。 接下来进入tcp_sacktag_write_queue中的主循环，循环会遍历每个有效的sack block，首先尝试让 cache 指针指向相关的 cache block，如果 cach">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-12-17T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-12-17T14:35:22.652Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP确认">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/12/17/TCP%20sack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%882%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TCP确认 tcp_sacktag_write_queue（二） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/12/17/TCP%20sack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%882%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TCP确认 tcp_sacktag_write_queue（二）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-12-17 22:00:00 / 修改时间：22:35:22" itemprop="dateCreated datePublished" datetime="2025-12-17T22:00:00+08:00">2025-12-17</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/12/17/TCP%20sack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%882%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/12/17/TCP%20sack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%882%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>在<a href="/2025/12/16/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue/" title="TCP确认 tcp_sacktag_write_queue（一）">TCP确认 tcp_sacktag_write_queue（一）</a>中处理完判断是否为<code>dsack</code>块并丢弃无用的<code>sack</code>块后，接下来会把合法的<code>sack block</code>按<code>startseq</code>排序，为后续扫描发送队列提供优化。</p>
+<p>接下来进入<code>tcp_sacktag_write_queue</code>中的主循环，循环会遍历每个有效的<code>sack block</code>，首先尝试让 cache 指针指向相关的 cache block，如果 <code>cache</code> 可用且是普通 sack（不是<code>dup</code>）则进入关键的处理流程。</p>
+<p>首先判断当前当前确认的段是否在cache管理的前面（表示说明当前 <code>SACK</code> <code>block</code> 的左边一段是新的），如果条件满足则调用<code>tcp_sacktag_skip</code>二分找到发送队列中第一个 待处理的skb，<strong>调用<code>tcp_sacktag_walk</code>对 [start_seq, cache-&gt;start_seq) 这段序列范围的数据进行标记</strong>，<code>tcp_sacktag_walk</code>代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//从给定的 skb 开始，沿着 TCP 发送队列（有序 rb-tree）遍历序列号在 [start_seq, end_seq) 的所有 skb</span></span><br><span class="line"><span class="comment">//这个函数本质上才是sack的核心逻辑</span></span><br><span class="line"><span class="type">static</span> <span class="keyword">struct</span> sk_buff *<span class="title function_">tcp_sacktag_walk</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">					<span class="keyword">struct</span> tcp_sack_block *next_dup,</span></span><br><span class="line"><span class="params">					<span class="keyword">struct</span> tcp_sacktag_state *state,</span></span><br><span class="line"><span class="params">					u32 start_seq, u32 end_seq,</span></span><br><span class="line"><span class="params">					<span class="type">bool</span> dup_sack_in)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">tmp</span>;</span></span><br><span class="line">	<span class="comment">//遍历重传队列</span></span><br><span class="line">	skb_rbtree_walk_from(skb) &#123;</span><br><span class="line">		<span class="type">int</span> in_sack = <span class="number">0</span>; 			 <span class="comment">//标识skb是否被某个sack覆盖</span></span><br><span class="line">		<span class="type">bool</span> dup_sack = dup_sack_in; <span class="comment">//这个块是否dsack语义</span></span><br><span class="line"></span><br><span class="line">		<span class="comment">/* queue is in-order =&gt; we can short-circuit the walk early */</span></span><br><span class="line">		<span class="comment">//这里开始后面的 skb 都不在 [start_seq, end_seq) 内  可以直接break</span></span><br><span class="line">		<span class="keyword">if</span> (!before(TCP_SKB_CB(skb)-&gt;seq, end_seq))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="comment">//第一个条件是 考虑dsack的情况（两块组合编码） &amp;&amp; 当前 skb 起始序列号 &lt; DSACK块末尾序号 注意这里传入的的start和end是可能是dup的</span></span><br><span class="line">		<span class="keyword">if</span> (next_dup  &amp;&amp;</span><br><span class="line">		    before(TCP_SKB_CB(skb)-&gt;seq, next_dup-&gt;end_seq)) &#123; </span><br><span class="line">			<span class="comment">//判断当前 skb 是否被 DSACK block 完整或部分覆盖,这里注意，里面会拆分数据包，如果dsack start在skb序号的右侧这里返回的是0</span></span><br><span class="line">			in_sack = tcp_match_skb_to_sack(sk, skb,</span><br><span class="line">							next_dup-&gt;start_seq,</span><br><span class="line">							next_dup-&gt;end_seq);</span><br><span class="line">			<span class="keyword">if</span> (in_sack &gt; <span class="number">0</span>)</span><br><span class="line">				dup_sack = <span class="literal">true</span>;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* skb reference here is a bit tricky to get right, since</span></span><br><span class="line"><span class="comment">		 * shifting can eat and free both this skb and the next,</span></span><br><span class="line"><span class="comment">		 * so not even _safe variant of the loop is enough.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//不是dsack 或者上面dsack start在skb序号的右侧？</span></span><br><span class="line">		<span class="keyword">if</span> (in_sack &lt;= <span class="number">0</span>) &#123;</span><br><span class="line">			<span class="comment">//优化队列结构，本质思想是合成一个大块，返回空表示无法合并</span></span><br><span class="line">			tmp = tcp_shift_skb_data(sk, skb, state,</span><br><span class="line">						 start_seq, end_seq, dup_sack);</span><br><span class="line">			<span class="keyword">if</span> (tmp) &#123;</span><br><span class="line">				<span class="keyword">if</span> (tmp != skb) &#123;</span><br><span class="line">					skb = tmp;</span><br><span class="line">					<span class="keyword">continue</span>;</span><br><span class="line">				&#125;</span><br><span class="line"></span><br><span class="line">				in_sack = <span class="number">0</span>;</span><br><span class="line">			&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">				<span class="comment">//上面没有合并成功的情况，这里面是拆分数据包，如果这里返回0 表示没有命中sack这也是有可能的因为</span></span><br><span class="line">				in_sack = tcp_match_skb_to_sack(sk, skb,</span><br><span class="line">								start_seq,</span><br><span class="line">								end_seq);</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (unlikely(in_sack &lt; <span class="number">0</span>))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="comment">//真正的标记数据包，肯定是in_sack才能标记，注意这里接收了返回值</span></span><br><span class="line">		<span class="keyword">if</span> (in_sack) &#123;</span><br><span class="line">			TCP_SKB_CB(skb)-&gt;sacked =</span><br><span class="line">				tcp_sacktag_one(sk,</span><br><span class="line">						state,</span><br><span class="line">						TCP_SKB_CB(skb)-&gt;sacked,</span><br><span class="line">						TCP_SKB_CB(skb)-&gt;seq,</span><br><span class="line">						TCP_SKB_CB(skb)-&gt;end_seq,</span><br><span class="line">						dup_sack,</span><br><span class="line">						tcp_skb_pcount(skb),</span><br><span class="line">						tcp_skb_timestamp_us(skb));</span><br><span class="line">			<span class="comment">//更新拥塞算法用到的字段</span></span><br><span class="line">			tcp_rate_skb_delivered(sk, skb, state-&gt;rate);</span><br><span class="line">			<span class="keyword">if</span> (TCP_SKB_CB(skb)-&gt;sacked &amp; TCPCB_SACKED_ACKED)</span><br><span class="line">				list_del_init(&amp;skb-&gt;tcp_tsorted_anchor);</span><br><span class="line"></span><br><span class="line">			<span class="keyword">if</span> (!before(TCP_SKB_CB(skb)-&gt;seq,</span><br><span class="line">				    tcp_highest_sack_seq(tp)))</span><br><span class="line">				<span class="comment">//如果需要，更新最高的sack对应的数据包</span></span><br><span class="line">				tcp_advance_highest_sack(sk, skb);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//这个数据包貌似已经是不再 sack范围的数据包了</span></span><br><span class="line">	<span class="keyword">return</span> skb;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong><code>tcp_sacktag_walk</code>的核心逻辑为把落在某个<code>sack</code>区间的<code>skb</code>找出来并作标记，它做的事不仅简单的判断在不在区间，会为了精确标记而 可能拆分 skb、可能合并 skb，具体逻辑如下</strong>：</p>
+<p><code>tcp_sacktag_walk</code>中首先遍历重传队列，当数据包的<code>seq</code>已经超出了<code>sack</code>的右边界那就直接<code>break</code>，否则优先处理<code>dsack</code>双编码的场景，（这里注意如果使用的是<code>cache</code>这里就一定不会走吧），如果<code>next_dup</code> 非空且 当前 skb 起始序列号 &lt; <code>dsack</code>块末尾序号，则调用<code>tcp_match_skb_to_sack</code>可能拆分数据包，拆分数据包的目的是方便整整齐齐的标记：-）tcp_match_skb_to_sack具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 带 GSO：如果不刚好对齐 尝试 tcp_fragment</span></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">tcp_match_skb_to_sack</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">				  u32 start_seq, u32 end_seq)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="type">bool</span> in_sack;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> pkt_len;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> mss;</span><br><span class="line">	<span class="comment">//skb 完全被 SACK 覆盖</span></span><br><span class="line">	in_sack = !after(start_seq, TCP_SKB_CB(skb)-&gt;seq) &amp;&amp;</span><br><span class="line">		  !before(end_seq, TCP_SKB_CB(skb)-&gt;end_seq);</span><br><span class="line">	<span class="comment">// GSO &amp;&amp; 部分的情况</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_skb_pcount(skb) &gt; <span class="number">1</span> &amp;&amp; !in_sack &amp;&amp;</span><br><span class="line">	<span class="comment">////部分重叠 数据包的结束序列号小于块的起始序列号</span></span><br><span class="line">	    after(TCP_SKB_CB(skb)-&gt;end_seq, start_seq)) &#123; </span><br><span class="line">		mss = tcp_skb_mss(skb);</span><br><span class="line">		in_sack = !after(start_seq, TCP_SKB_CB(skb)-&gt;seq); </span><br><span class="line">		<span class="comment">//SACK start在 skb 里面</span></span><br><span class="line">		<span class="keyword">if</span> (!in_sack) &#123;</span><br><span class="line">			pkt_len = start_seq - TCP_SKB_CB(skb)-&gt;seq;</span><br><span class="line">			<span class="keyword">if</span> (pkt_len &lt; mss)</span><br><span class="line">				pkt_len = mss;<span class="comment">//对齐mss</span></span><br><span class="line">		<span class="comment">//SACK start &lt;= skb 起点</span></span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			pkt_len = end_seq - TCP_SKB_CB(skb)-&gt;seq;</span><br><span class="line">			<span class="keyword">if</span> (pkt_len &lt; mss)</span><br><span class="line">				<span class="keyword">return</span> -EINVAL;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Round if necessary so that SACKs cover only full MSSes</span></span><br><span class="line"><span class="comment">		 * and/or the remaining small portion (if present)</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="keyword">if</span> (pkt_len &gt; mss) &#123;</span><br><span class="line">			<span class="type">unsigned</span> <span class="type">int</span> new_len = (pkt_len / mss) * mss;</span><br><span class="line">			<span class="keyword">if</span> (!in_sack &amp;&amp; new_len &lt; pkt_len)</span><br><span class="line">				new_len += mss;</span><br><span class="line">			pkt_len = new_len; <span class="comment">//对齐成 N * MSS</span></span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (pkt_len &gt;= skb-&gt;len &amp;&amp; !in_sack)</span><br><span class="line">			<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">		<span class="comment">//切分数据包，这里很关键这次返回0 下次应该就不会了</span></span><br><span class="line">		err = tcp_fragment(sk, TCP_FRAG_IN_RTX_QUEUE, skb,</span><br><span class="line">				   pkt_len, mss, GFP_ATOMIC);</span><br><span class="line">		<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">			<span class="keyword">return</span> err;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> in_sack;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_match_skb_to_sack</code>首秀判断当前<code>sack</code>的返回是否覆盖了这个<code>skb</code>如果满足条件则直接返回了，否则只有在是GSO报文的情况下同时可能存在重叠则会进一步处理，首先计算<code>mss</code>然后判断<code>sack</code>从<code>skb</code>的左侧开始还是<code>sack</code>的起点在<code>skb</code>的内部，并进行mss对齐处理，之后调用<code>tcp_fragment</code>切分数据包，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br></pre></td><td class="code"><pre><span class="line">nt <span class="title function_">tcp_fragment</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">enum</span> tcp_queue tcp_queue,</span></span><br><span class="line"><span class="params">		 <span class="keyword">struct</span> sk_buff *skb, u32 len,</span></span><br><span class="line"><span class="params">		 <span class="type">unsigned</span> <span class="type">int</span> mss_now, <span class="type">gfp_t</span> gfp)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">buff</span>;</span></span><br><span class="line">	<span class="type">int</span> old_factor;</span><br><span class="line">	<span class="type">long</span> limit;</span><br><span class="line">	<span class="type">int</span> nlen;</span><br><span class="line">	u8 flags;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (WARN_ON(len &gt; skb-&gt;len))</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line"></span><br><span class="line">	DEBUG_NET_WARN_ON_ONCE(skb_headlen(skb));</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* tcp_sendmsg() can overshoot sk_wmem_queued by one full size skb.</span></span><br><span class="line"><span class="comment">	 * We need some allowance to not penalize applications setting small</span></span><br><span class="line"><span class="comment">	 * SO_SNDBUF values.</span></span><br><span class="line"><span class="comment">	 * Also allow first and last skb in retransmit queue to be split.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//发送缓冲区是否够大，是否超出了内存限制</span></span><br><span class="line">	limit = sk-&gt;sk_sndbuf + <span class="number">2</span> * SKB_TRUESIZE(GSO_LEGACY_MAX_SIZE);</span><br><span class="line">	<span class="keyword">if</span> (unlikely((sk-&gt;sk_wmem_queued &gt;&gt; <span class="number">1</span>) &gt; limit &amp;&amp;</span><br><span class="line">		     tcp_queue != TCP_FRAG_IN_WRITE_QUEUE &amp;&amp;</span><br><span class="line">		     skb != tcp_rtx_queue_head(sk) &amp;&amp;</span><br><span class="line">		     skb != tcp_rtx_queue_tail(sk))) &#123;</span><br><span class="line">		NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPWQUEUETOOBIG);</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (skb_unclone_keeptruesize(skb, gfp))</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Get a new skb... force flag on. */</span></span><br><span class="line">	<span class="comment">//申请一个新的skb</span></span><br><span class="line">	buff = tcp_stream_alloc_skb(sk, gfp, <span class="literal">true</span>);</span><br><span class="line">	<span class="keyword">if</span> (!buff)</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM; <span class="comment">/* We&#x27;ll just try again later. */</span></span><br><span class="line">	skb_copy_decrypted(buff, skb);</span><br><span class="line">	mptcp_skb_ext_copy(buff, skb);</span><br><span class="line">	<span class="comment">//更新内存记账</span></span><br><span class="line">	sk_wmem_queued_add(sk, buff-&gt;truesize);</span><br><span class="line">	sk_mem_charge(sk, buff-&gt;truesize);</span><br><span class="line">	nlen = skb-&gt;len - len;</span><br><span class="line">	<span class="comment">//新的skb</span></span><br><span class="line">	buff-&gt;truesize += nlen;</span><br><span class="line">	<span class="comment">//旧skb</span></span><br><span class="line">	skb-&gt;truesize -= nlen;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Correct the sequence numbers. */</span></span><br><span class="line">	<span class="comment">//更新序列号</span></span><br><span class="line">	TCP_SKB_CB(buff)-&gt;seq = TCP_SKB_CB(skb)-&gt;seq + len;</span><br><span class="line">	TCP_SKB_CB(buff)-&gt;end_seq = TCP_SKB_CB(skb)-&gt;end_seq;</span><br><span class="line">	TCP_SKB_CB(skb)-&gt;end_seq = TCP_SKB_CB(buff)-&gt;seq;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* PSH and FIN should only be set in the second packet. */</span></span><br><span class="line">	<span class="comment">//更新标志位</span></span><br><span class="line">	flags = TCP_SKB_CB(skb)-&gt;tcp_flags;</span><br><span class="line">	TCP_SKB_CB(skb)-&gt;tcp_flags = flags &amp; ~(TCPHDR_FIN | TCPHDR_PSH);</span><br><span class="line">	TCP_SKB_CB(buff)-&gt;tcp_flags = flags;</span><br><span class="line">	TCP_SKB_CB(buff)-&gt;sacked = TCP_SKB_CB(skb)-&gt;sacked;</span><br><span class="line">	tcp_skb_fragment_eor(skb, buff);</span><br><span class="line">	<span class="comment">//真正的数据分割</span></span><br><span class="line">	skb_split(skb, buff, len);</span><br><span class="line"></span><br><span class="line">	skb_set_delivery_time(buff, skb-&gt;tstamp, <span class="literal">true</span>);</span><br><span class="line">	tcp_fragment_tstamp(skb, buff);</span><br><span class="line">	<span class="comment">//原本数据包的段数</span></span><br><span class="line">	old_factor = tcp_skb_pcount(skb);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Fix up tso_factor for both original and new SKB.  */</span></span><br><span class="line">	<span class="comment">//调整GSO字段</span></span><br><span class="line">	tcp_set_skb_tso_segs(skb, mss_now);</span><br><span class="line">	tcp_set_skb_tso_segs(buff, mss_now);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Update delivered info for the new segment */</span></span><br><span class="line">	TCP_SKB_CB(buff)-&gt;tx = TCP_SKB_CB(skb)-&gt;tx;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* If this packet has been sent out already, we must</span></span><br><span class="line"><span class="comment">	 * adjust the various packet counters.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//判断数据包是否已经发送过</span></span><br><span class="line">	<span class="keyword">if</span> (!before(tp-&gt;snd_nxt, TCP_SKB_CB(buff)-&gt;end_seq)) &#123;</span><br><span class="line">		<span class="type">int</span> diff = old_factor - tcp_skb_pcount(skb) -</span><br><span class="line">			tcp_skb_pcount(buff);</span><br><span class="line">		<span class="comment">//为什么要调整这个已发送未确认的计数呢？？</span></span><br><span class="line">		<span class="keyword">if</span> (diff)</span><br><span class="line">			tcp_adjust_pcount(sk, skb, diff);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Link BUFF into the send queue. */</span></span><br><span class="line">	__skb_header_release(buff);</span><br><span class="line">	<span class="comment">//将新SKB插入到原SKB之后</span></span><br><span class="line">	tcp_insert_write_queue_after(skb, buff, sk, tcp_queue);</span><br><span class="line">	<span class="keyword">if</span> (tcp_queue == TCP_FRAG_IN_RTX_QUEUE)</span><br><span class="line">		list_add(&amp;buff-&gt;tcp_tsorted_anchor, &amp;skb-&gt;tcp_tsorted_anchor);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_fragment</code>核心逻辑为把发送队列里的 <code>skb</code> 按 <code>len</code> 位置切成两个 <code>skb</code>原来的在前面，新的在后面，之后修正 <code>seq</code>&#x2F;<code>end_seq</code>、<code>TCP</code> 标志位、<code>GSO</code> 分段信息、内存记账等。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E7%A1%AE%E8%AE%A4/" rel="tag"># TCP确认</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/12/16/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue/" rel="prev" title="TCP确认 tcp_sacktag_write_queue（一）">
+      <i class="fa fa-chevron-left"></i> TCP确认 tcp_sacktag_write_queue（一）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">79</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">18</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
