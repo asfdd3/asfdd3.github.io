@@ -193,7 +193,7 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/12/17/TCP%20sack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%882%EF%BC%89/">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/12/22/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%883%EF%BC%89/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/avatar.gif">
@@ -207,7 +207,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2025/12/17/TCP%20sack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%882%EF%BC%89/" class="post-title-link" itemprop="url">TCP确认 tcp_sacktag_write_queue（二）</a>
+            <a href="/2025/12/22/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%883%EF%BC%89/" class="post-title-link" itemprop="url">TCP确认 tcp_sacktag_write_queue（三）</a>
         </h2>
 
         <div class="post-meta">
@@ -218,7 +218,7 @@
               <span class="post-meta-item-text">发表于</span>
               
 
-              <time title="创建时间：2025-12-17 22:00:00 / 修改时间：22:35:22" itemprop="dateCreated datePublished" datetime="2025-12-17T22:00:00+08:00">2025-12-17</time>
+              <time title="创建时间：2025-12-22 22:00:00 / 修改时间：23:57:28" itemprop="dateCreated datePublished" datetime="2025-12-22T22:00:00+08:00">2025-12-22</time>
             </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -239,8 +239,112 @@
       </span>
       <span class="post-meta-item-text">Valine：</span>
     
-    <a title="valine" href="/2025/12/17/TCP%20sack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%882%EF%BC%89/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/12/17/TCP%20sack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%882%EF%BC%89/" itemprop="commentCount"></span>
+    <a title="valine" href="/2025/12/22/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%883%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/12/22/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%883%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <a href="/2025/12/18/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%882%EF%BC%89/" title="TCP确认 tcp_sacktag_write_queue（二）">TCP确认 tcp_sacktag_write_queue（二）</a>`tcp_sacktag_walk`调用`tcp_match_skb_to_sack`尝试合并`dsack`（其实就是拆分数据包，方便后续标记）如果合并失败了（没有拆分）或者根本没有满足处理条件，则会调用`tcp_shift_skb_data`进行处理，`tcp_shift_skb_data`的核心思想也是**对重传队列做搬运合并的整理优化把已确认（SACKed/ACKed）的数据尽量向前合并**， 具体代码如下所示：
+
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//核心就是把skb往前一个挪动 前提是前一个skb必须是sack的,这不是必须的 这是优化策略</span></span><br><span class="line"><span class="comment">// 前</span></span><br><span class="line"><span class="comment">// prev: [#### SACK ####]</span></span><br><span class="line"><span class="comment">// skb : [++++++SACK++++][----未SACK----]</span></span><br><span class="line"><span class="comment">// next: [#### SACK ####]</span></span><br><span class="line"><span class="comment">// 后</span></span><br><span class="line"><span class="comment">// prev: [#### SACK ####][++++++SACK++++]</span></span><br><span class="line"><span class="comment">// skb : [----未SACK----]</span></span><br><span class="line"><span class="comment">// next: [#### SACK ####]</span></span><br><span class="line"></span><br><span class="line"><span class="comment">//另外就是努力去填hole吧</span></span><br><span class="line"><span class="type">static</span> <span class="keyword">struct</span> sk_buff *<span class="title function_">tcp_shift_skb_data</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">					  <span class="keyword">struct</span> tcp_sacktag_state *state,</span></span><br><span class="line"><span class="params">					  u32 start_seq, u32 end_seq,</span></span><br><span class="line"><span class="params">					  <span class="type">bool</span> dup_sack)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">prev</span>;</span></span><br><span class="line">	<span class="type">int</span> mss;</span><br><span class="line">	<span class="type">int</span> pcount = <span class="number">0</span>;</span><br><span class="line">	<span class="type">int</span> len;</span><br><span class="line">	<span class="type">int</span> in_sack;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Normally R but no L won&#x27;t result in plain S */</span></span><br><span class="line">	<span class="comment">//如果数据包仅被标记为重传或者丢失则不处理只有 重传标记而没有丢失标记时，不太可能转成普通 SACK状态</span></span><br><span class="line">	<span class="keyword">if</span> (!dup_sack &amp;&amp;</span><br><span class="line">	    (TCP_SKB_CB(skb)-&gt;sacked &amp; (TCPCB_LOST|TCPCB_SACKED_RETRANS)) == TCPCB_SACKED_RETRANS)</span><br><span class="line">		<span class="keyword">goto</span> fallback;</span><br><span class="line">	<span class="comment">//SKB是否可合并</span></span><br><span class="line">	<span class="keyword">if</span> (!skb_can_shift(skb))</span><br><span class="line">		<span class="keyword">goto</span> fallback;</span><br><span class="line">	<span class="comment">/* This frame is about to be dropped (was ACKed). */</span></span><br><span class="line">	<span class="comment">//已经确认过不处理</span></span><br><span class="line">	<span class="keyword">if</span> (!after(TCP_SKB_CB(skb)-&gt;end_seq, tp-&gt;snd_una))</span><br><span class="line">		<span class="keyword">goto</span> fallback;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Can only happen with delayed DSACK + discard craziness */</span></span><br><span class="line">	<span class="comment">//获取前一个skb</span></span><br><span class="line">	prev = skb_rb_prev(skb);</span><br><span class="line">	<span class="keyword">if</span> (!prev)</span><br><span class="line">		<span class="keyword">goto</span> fallback;</span><br><span class="line">	<span class="comment">//!!!!!!!!!!!!!前一个SKB必须且只能被标记为SACKED_ACKED!!!!!</span></span><br><span class="line">	<span class="keyword">if</span> ((TCP_SKB_CB(prev)-&gt;sacked &amp; TCPCB_TAGBITS) != TCPCB_SACKED_ACKED)</span><br><span class="line">		<span class="keyword">goto</span> fallback;</span><br><span class="line">	<span class="comment">//大概率通过</span></span><br><span class="line">	<span class="keyword">if</span> (!tcp_skb_can_collapse(prev, skb))</span><br><span class="line">		<span class="keyword">goto</span> fallback;</span><br><span class="line">	<span class="comment">//当前skb是否完全被sack块cover住了</span></span><br><span class="line">	in_sack = !after(start_seq, TCP_SKB_CB(skb)-&gt;seq) &amp;&amp;</span><br><span class="line">		  !before(end_seq, TCP_SKB_CB(skb)-&gt;end_seq);</span><br><span class="line">	<span class="comment">//完全cover住的情况</span></span><br><span class="line">	<span class="keyword">if</span> (in_sack) &#123;</span><br><span class="line">		len = skb-&gt;len; 				<span class="comment">//记录数据包长度</span></span><br><span class="line">		pcount = tcp_skb_pcount(skb);   <span class="comment">//计算段数</span></span><br><span class="line">		mss = tcp_skb_seglen(skb);		<span class="comment">//计算mss</span></span><br><span class="line"></span><br><span class="line">		<span class="comment">/* <span class="doctag">TODO:</span> Fix DSACKs to not fragment already SACKed and we can</span></span><br><span class="line"><span class="comment">		 * drop this restriction as unnecessary</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="keyword">if</span> (mss != tcp_skb_seglen(prev)) <span class="comment">//两个mss不同，不处理</span></span><br><span class="line">			<span class="keyword">goto</span> fallback;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123; <span class="comment">//检查SKB是否完全在SACK之前</span></span><br><span class="line">		<span class="keyword">if</span> (!after(TCP_SKB_CB(skb)-&gt;end_seq, start_seq))</span><br><span class="line">			<span class="keyword">goto</span> noop;</span><br><span class="line">		<span class="comment">/* CHECKME: This is non-MSS split case only?, this will</span></span><br><span class="line"><span class="comment">		 * cause skipped skbs due to advancing loop btw, original</span></span><br><span class="line"><span class="comment">		 * has that feature too</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//是否可以分割</span></span><br><span class="line">		<span class="keyword">if</span> (tcp_skb_pcount(skb) &lt;= <span class="number">1</span>)</span><br><span class="line">			<span class="keyword">goto</span> noop;</span><br><span class="line">		<span class="comment">//SACK 的 start 在 skb 起始序号的左边或相等</span></span><br><span class="line">		in_sack = !after(start_seq, TCP_SKB_CB(skb)-&gt;seq);</span><br><span class="line">		<span class="keyword">if</span> (!in_sack) &#123;</span><br><span class="line">			<span class="comment">/* <span class="doctag">TODO:</span> head merge to next could be attempted here</span></span><br><span class="line"><span class="comment">			 * if (!after(TCP_SKB_CB(skb)-&gt;end_seq, end_seq)),</span></span><br><span class="line"><span class="comment">			 * though it might not be worth of the additional hassle</span></span><br><span class="line"><span class="comment">			 *</span></span><br><span class="line"><span class="comment">			 * ...we can probably just fallback to what was done</span></span><br><span class="line"><span class="comment">			 * previously. We could try merging non-SACKed ones</span></span><br><span class="line"><span class="comment">			 * as well but it probably isn&#x27;t going to buy off</span></span><br><span class="line"><span class="comment">			 * because later SACKs might again split them, and</span></span><br><span class="line"><span class="comment">			 * it would make skb timestamp tracking considerably</span></span><br><span class="line"><span class="comment">			 * harder problem.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="keyword">goto</span> fallback;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//左侧或者完全cover住的情况 重叠长度 = SACK结束序列号 - SKB起始序列号</span></span><br><span class="line">		len = end_seq - TCP_SKB_CB(skb)-&gt;seq;</span><br><span class="line">		BUG_ON(len &lt; <span class="number">0</span>);</span><br><span class="line">		BUG_ON(len &gt; skb-&gt;len);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* MSS boundaries should be honoured or else pcount will</span></span><br><span class="line"><span class="comment">		 * severely break even though it makes things bit trickier.</span></span><br><span class="line"><span class="comment">		 * Optimize common case to avoid most of the divides</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//计算mss</span></span><br><span class="line">		mss = tcp_skb_mss(skb);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* <span class="doctag">TODO:</span> Fix DSACKs to not fragment already SACKed and we can</span></span><br><span class="line"><span class="comment">		 * drop this restriction as unnecessary</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//MSS对齐 前面几个段必须mss</span></span><br><span class="line">		<span class="keyword">if</span> (mss != tcp_skb_seglen(prev))</span><br><span class="line">			<span class="keyword">goto</span> fallback;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (len == mss) &#123;</span><br><span class="line">			pcount = <span class="number">1</span>;</span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> (len &lt; mss) &#123;</span><br><span class="line">			<span class="keyword">goto</span> noop;</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			pcount = len / mss;</span><br><span class="line">			len = pcount * mss;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* tcp_sacktag_one() won&#x27;t SACK-tag ranges below snd_una */</span></span><br><span class="line">	<span class="comment">// 检查合并部分是否已完全确认</span></span><br><span class="line">	<span class="keyword">if</span> (!after(TCP_SKB_CB(skb)-&gt;seq + len, tp-&gt;snd_una))</span><br><span class="line">		<span class="keyword">goto</span> fallback;</span><br><span class="line">	<span class="comment">//将数据从skb移动到prev</span></span><br><span class="line">	<span class="keyword">if</span> (!tcp_skb_shift(prev, skb, pcount, len))</span><br><span class="line">		<span class="keyword">goto</span> fallback;</span><br><span class="line">	<span class="comment">//更新数据包的字段，返回false表示数据包合并了一部分！ 就不会走下面的逻辑了</span></span><br><span class="line">	<span class="keyword">if</span> (!tcp_shifted_skb(sk, prev, skb, state, pcount, len, mss, dup_sack))</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Hole filled allows collapsing with the next as well, this is very</span></span><br><span class="line"><span class="comment">	 * useful when hole on every nth skb pattern happens</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//看看后面的skb是否可以合并</span></span><br><span class="line">	skb = skb_rb_next(prev);</span><br><span class="line">	<span class="keyword">if</span> (!skb)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!skb_can_shift(skb) ||												<span class="comment">//缓冲区不符合要求</span></span><br><span class="line">	    ((TCP_SKB_CB(skb)-&gt;sacked &amp; TCPCB_TAGBITS) != TCPCB_SACKED_ACKED) || <span class="comment">//不是纯 SACKED_ACKED！！ 其实是把hole给填上</span></span><br><span class="line">	    (mss != tcp_skb_seglen(skb)))										<span class="comment">//mss不一致</span></span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!tcp_skb_can_collapse(prev, skb))</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	len = skb-&gt;len;</span><br><span class="line">	pcount = tcp_skb_pcount(skb);</span><br><span class="line">	<span class="comment">//和上面一样</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_skb_shift(prev, skb, pcount, len))</span><br><span class="line">		tcp_shifted_skb(sk, prev, skb, state, pcount,</span><br><span class="line">				len, mss, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">return</span> prev;</span><br><span class="line"></span><br><span class="line">noop:</span><br><span class="line">	<span class="keyword">return</span> skb;</span><br><span class="line"></span><br><span class="line">fallback:</span><br><span class="line">	NET_INC_STATS(sock_net(sk), LINUX_MIB_SACKSHIFTFALLBACK);</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_shift_skb_data</code>可以理解为处理<code>sack</code>的优化函数，当 发现当前<code>skb</code>的头部已经被<code>sack</code>覆盖并且前一个<code>skb</code>纯<code>sack</code>时，会把这个部分数据挪到前一个skb的尾部，让队列更紧凑，合并的前提需要满足一系列条件，例如不能是重复的<code>sack</code>，<code>skb</code>的物理层面可以合并，前一个数据包不能为空，<strong>最重要的是前一个<code>skb</code>必须是已经被完全sack的</strong>，如果不是这里直接<code>fallback</code>了，之后进一步<code>skb</code>的序号是否完全被<code>sack</code>的范围覆盖了，不论完全覆盖还是部分覆盖，最终会计算一个<code>len</code>，然后调用<code>tcp_skb_shift</code>在物理层面完成数据包的移动。</p>
+<p>如果合并成功了，<strong>则会进一步调用<code>tcp_shifted_skb</code>更新数据包的字段，相当于是对于上面物理合并完成之后的记账工作</strong>（核心是里面调用tcp_sacktag_one对tp的很多字段进行更新），<code>tcp_shifted_skb</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">bool</span> <span class="title function_">tcp_shifted_skb</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *prev,</span></span><br><span class="line"><span class="params">			    <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">			    <span class="keyword">struct</span> tcp_sacktag_state *state,</span></span><br><span class="line"><span class="params">			    <span class="type">unsigned</span> <span class="type">int</span> pcount, <span class="type">int</span> shifted, <span class="type">int</span> mss,</span></span><br><span class="line"><span class="params">			    <span class="type">bool</span> dup_sack)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="comment">//这里计算的start和end是前面移动的范围</span></span><br><span class="line">	u32 start_seq = TCP_SKB_CB(skb)-&gt;seq;	<span class="comment">/* start of newly-SACKed */</span></span><br><span class="line">	u32 end_seq = start_seq + shifted;	<span class="comment">/* end of newly-SACKed */</span></span><br><span class="line"></span><br><span class="line">	BUG_ON(!pcount);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Adjust counters and hints for the newly sacked sequence</span></span><br><span class="line"><span class="comment">	 * range but discard the return value since prev is already</span></span><br><span class="line"><span class="comment">	 * marked. We must tag the range first because the seq</span></span><br><span class="line"><span class="comment">	 * advancement below implicitly advances</span></span><br><span class="line"><span class="comment">	 * tcp_highest_sack_seq() when skb is highest_sack.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//注意这里丢弃了返回值，调用这个函数的地方是skb的数据一部分已经移动到prev了 切记！</span></span><br><span class="line">	<span class="comment">//感觉这丢弃返回值原因是就想修正一下计数</span></span><br><span class="line">	tcp_sacktag_one(sk, state, TCP_SKB_CB(skb)-&gt;sacked,</span><br><span class="line">			start_seq, end_seq, dup_sack, pcount,</span><br><span class="line">			tcp_skb_timestamp_us(skb));</span><br><span class="line">	<span class="comment">//更新采样字段，拥塞算法可能会用到</span></span><br><span class="line">	tcp_rate_skb_delivered(sk, skb, state-&gt;rate);</span><br><span class="line">	<span class="comment">//入如果是丢失的第一个包 修正lost_cnt_hint</span></span><br><span class="line">	<span class="keyword">if</span> (skb == tp-&gt;lost_skb_hint)</span><br><span class="line">		tp-&gt;lost_cnt_hint += pcount;</span><br><span class="line">	<span class="comment">//注意这里修改了 挪到prev后的序列号</span></span><br><span class="line">	TCP_SKB_CB(prev)-&gt;end_seq += shifted;</span><br><span class="line">	TCP_SKB_CB(skb)-&gt;seq += shifted;</span><br><span class="line">	<span class="comment">//更新段数</span></span><br><span class="line">	tcp_skb_pcount_add(prev, pcount);</span><br><span class="line">	WARN_ON_ONCE(tcp_skb_pcount(skb) &lt; pcount);</span><br><span class="line">	tcp_skb_pcount_add(skb, -pcount);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* When we&#x27;re adding to gso_segs == 1, gso_size will be zero,</span></span><br><span class="line"><span class="comment">	 * in theory this shouldn&#x27;t be necessary but as long as DSACK</span></span><br><span class="line"><span class="comment">	 * code can come after this skb later on it&#x27;s better to keep</span></span><br><span class="line"><span class="comment">	 * setting gso_size to something.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (!TCP_SKB_CB(prev)-&gt;tcp_gso_size)</span><br><span class="line">		TCP_SKB_CB(prev)-&gt;tcp_gso_size = mss;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* CHECKME: To clear or not to clear? Mimics normal skb currently */</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_skb_pcount(skb) &lt;= <span class="number">1</span>)</span><br><span class="line">		TCP_SKB_CB(skb)-&gt;tcp_gso_size = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Difference in this won&#x27;t matter, both ACKed by the same cumul. ACK */</span></span><br><span class="line">	TCP_SKB_CB(prev)-&gt;sacked |= (TCP_SKB_CB(skb)-&gt;sacked &amp; TCPCB_EVER_RETRANS);</span><br><span class="line">	<span class="comment">//这里很关键，决定了外面 tcp_shift_skb_data 是否能继续合并！！！</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;len &gt; <span class="number">0</span>) &#123;</span><br><span class="line">		BUG_ON(!tcp_skb_pcount(skb));</span><br><span class="line">		NET_INC_STATS(sock_net(sk), LINUX_MIB_SACKSHIFTED);</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Whole SKB was eaten :-) */</span></span><br><span class="line">	<span class="comment">//这里当前的数据包都被eaten了  继续修正重传用到的字段</span></span><br><span class="line">	<span class="keyword">if</span> (skb == tp-&gt;retransmit_skb_hint)</span><br><span class="line">		tp-&gt;retransmit_skb_hint = prev;</span><br><span class="line">	<span class="keyword">if</span> (skb == tp-&gt;lost_skb_hint) &#123;</span><br><span class="line">		tp-&gt;lost_skb_hint = prev;</span><br><span class="line">		tp-&gt;lost_cnt_hint -= tcp_skb_pcount(prev);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//合并标志位</span></span><br><span class="line">	TCP_SKB_CB(prev)-&gt;tcp_flags |= TCP_SKB_CB(skb)-&gt;tcp_flags;</span><br><span class="line">	TCP_SKB_CB(prev)-&gt;eor = TCP_SKB_CB(skb)-&gt;eor;</span><br><span class="line">	<span class="keyword">if</span> (TCP_SKB_CB(skb)-&gt;tcp_flags &amp; TCPHDR_FIN)</span><br><span class="line">		TCP_SKB_CB(prev)-&gt;end_seq++;</span><br><span class="line">	<span class="comment">//更新最高 SACK 指针</span></span><br><span class="line">	<span class="keyword">if</span> (skb == tcp_highest_sack(sk))</span><br><span class="line">		tcp_advance_highest_sack(sk, skb);</span><br><span class="line">	<span class="comment">//处理时间戳</span></span><br><span class="line">	tcp_skb_collapse_tstamp(prev, skb);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(TCP_SKB_CB(prev)-&gt;tx.delivered_mstamp))</span><br><span class="line">		TCP_SKB_CB(prev)-&gt;tx.delivered_mstamp = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//从重传队列删除并释放这个 skb</span></span><br><span class="line">	tcp_rtx_queue_unlink_and_free(skb, sk);</span><br><span class="line"></span><br><span class="line">	NET_INC_STATS(sock_net(sk), LINUX_MIB_SACKMERGED);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_shifted_skb</code>本质上就做两讲事情，一个是给刚刚被挪走的<code>skb做 </code>sack记账，之后修正<code>skb</code>的部分字段，例如重传用到的字段，合并标志位，更新<code>sack</code>最高指针，处理时间戳，从重传队列中删除<code>skb</code>上述代码也是<code>sack</code>的核心是调用<code>tcp_sacktag_one</code>做<code>sack</code>的记账，但是这里并未接收返回值，因为这里的上下文是把数据包的一部分移动到了前面，只是更新字段就<code>ok</code>。</p>
+
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/12/22/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%883%EF%BC%89/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/12/18/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%882%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/12/18/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%882%EF%BC%89/" class="post-title-link" itemprop="url">TCP确认 tcp_sacktag_write_queue（二）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-12-18 22:00:00" itemprop="dateCreated datePublished" datetime="2025-12-18T22:00:00+08:00">2025-12-18</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-12-23 00:03:51" itemprop="dateModified" datetime="2025-12-23T00:03:51+08:00">2025-12-23</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/12/18/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%882%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/12/18/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%882%EF%BC%89/" itemprop="commentCount"></span>
     </a>
   </span>
   
@@ -270,7 +374,7 @@
 <p><code>tcp_fragment</code>核心逻辑为把发送队列里的 <code>skb</code> 按 <code>len</code> 位置切成两个 <code>skb</code>原来的在前面，新的在后面，之后修正 <code>seq</code>&#x2F;<code>end_seq</code>、<code>TCP</code> 标志位、<code>GSO</code> 分段信息、内存记账等。</p>
           <!--noindex-->
             <div class="post-button">
-              <a class="btn" href="/2025/12/17/TCP%20sack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%882%EF%BC%89/#more" rel="contents">
+              <a class="btn" href="/2025/12/18/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%882%EF%BC%89/#more" rel="contents">
                 阅读全文 &raquo;
               </a>
             </div>
@@ -1130,113 +1234,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/11/23/tcp_sendmsg_locked(%E4%B8%89)/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/11/23/tcp_sendmsg_locked(%E4%B8%89)/" class="post-title-link" itemprop="url">TCP输出tcp_sendmsg_locked（三）</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2025-11-23 22:00:00" itemprop="dateCreated datePublished" datetime="2025-11-23T22:00:00+08:00">2025-11-23</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-11-25 21:34:57" itemprop="dateModified" datetime="2025-11-25T21:34:57+08:00">2025-11-25</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/11/23/tcp_sendmsg_locked(%E4%B8%89)/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/11/23/tcp_sendmsg_locked(%E4%B8%89)/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p><code>tcp_sendmsg_locked</code>申请数据包成功并调用<code>tcp_skb_entail</code>将数据包入队后，接下来的任务就是将用户数据包<code>copy</code>到<code>skb</code>非线性部分中。</p>
-<p>首先调用<code>sk_page_frag</code>从当前进程获取一个<code>page</code>，之后调用<code>sk_page_frag_refill</code>查看是否还有足够的空间可以使用，上述过程具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="keyword">struct</span> page_frag *<span class="title function_">sk_page_frag</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_use_task_frag)</span><br><span class="line">		<span class="keyword">return</span> &amp;current-&gt;task_frag;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> &amp;sk-&gt;sk_frag;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">bool</span> <span class="title function_">sk_page_frag_refill</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> page_frag *pfrag)</span></span><br><span class="line">&#123;	</span><br><span class="line"></span><br><span class="line">	<span class="comment">//是否有32字节可以写的空间</span></span><br><span class="line">	<span class="keyword">if</span> (likely(skb_page_frag_refill(<span class="number">32U</span>, pfrag, sk-&gt;sk_allocation)))</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">	<span class="comment">//分配失败，进入内存压力</span></span><br><span class="line">	sk_enter_memory_pressure(sk);</span><br><span class="line">	<span class="comment">//减小发送缓冲区</span></span><br><span class="line">	sk_stream_moderate_sndbuf(sk);</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p><code>skb_page_frag_refill</code>中会进一步判断拿到的页是否有32字节可写的空间，如果空间不够则会申请一个新的页，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">bool</span> <span class="title function_">skb_page_frag_refill</span><span class="params">(<span class="type">unsigned</span> <span class="type">int</span> sz, <span class="keyword">struct</span> page_frag *pfrag, <span class="type">gfp_t</span> gfp)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">if</span> (pfrag-&gt;page) &#123;</span><br><span class="line">		<span class="keyword">if</span> (page_ref_count(pfrag-&gt;page) == <span class="number">1</span>) &#123; 	   <span class="comment">//只有自己在用</span></span><br><span class="line">			pfrag-&gt;offset = <span class="number">0</span>; 						 <span class="comment">//offset设置为0 </span></span><br><span class="line">			<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">if</span> (pfrag-&gt;offset + sz &lt;= pfrag-&gt;size) 		   <span class="comment">//别人在用，看空间是否够，如果够也直接返回了</span></span><br><span class="line">			<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">		put_page(pfrag-&gt;page);  					  <span class="comment">//不够，直接put掉</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//准备分配新页</span></span><br><span class="line">	pfrag-&gt;offset = <span class="number">0</span>; </span><br><span class="line">	<span class="comment">//这里通常不会走把</span></span><br><span class="line">	<span class="keyword">if</span> (SKB_FRAG_PAGE_ORDER &amp;&amp;</span><br><span class="line">	    !static_branch_unlikely(&amp;net_high_order_alloc_disable_key)) &#123;</span><br><span class="line">		<span class="comment">/* Avoid direct reclaim but allow kswapd to wake */</span></span><br><span class="line">		pfrag-&gt;page = alloc_pages((gfp &amp; ~__GFP_DIRECT_RECLAIM) |</span><br><span class="line">					  __GFP_COMP | __GFP_NOWARN |</span><br><span class="line">					  __GFP_NORETRY,</span><br><span class="line">					  SKB_FRAG_PAGE_ORDER);</span><br><span class="line">		<span class="keyword">if</span> (likely(pfrag-&gt;page)) &#123;</span><br><span class="line">			pfrag-&gt;size = PAGE_SIZE &lt;&lt; SKB_FRAG_PAGE_ORDER;</span><br><span class="line">			<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//分配一个page</span></span><br><span class="line">	pfrag-&gt;page = alloc_page(gfp);</span><br><span class="line">	<span class="keyword">if</span> (likely(pfrag-&gt;page)) &#123;</span><br><span class="line">		pfrag-&gt;size = PAGE_SIZE;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>上述获取到<code>page</code>后，进一步调用<code>skb_can_coalesce</code>判断当前获取到的页是否已经是<code>skb</code>管理的页，如果不是，且当前<code>skb</code>已将有17个非线性部分的页了，则直接重新申请<code>skb</code>同时设置<code>push</code>标志位，并将标记为不能合并（后续用于指导设置页的元数据)</p>
-<p>判断是否可以合并的逻辑如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">bool</span> <span class="title function_">skb_can_coalesce</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="type">int</span> i,</span></span><br><span class="line"><span class="params">				    <span class="type">const</span> <span class="keyword">struct</span> page *page, <span class="type">int</span> off)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">if</span> (skb_zcopy(skb)) <span class="comment">//零拷贝 skb 不能合并</span></span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	<span class="keyword">if</span> (i) &#123;</span><br><span class="line">		<span class="type">const</span> <span class="type">skb_frag_t</span> *frag = &amp;skb_shinfo(skb)-&gt;frags[i - <span class="number">1</span>]; <span class="comment">//skb的最后一个页？</span></span><br><span class="line">		<span class="comment">//当前写入数据使用的 page 与最后的 frag 是同一物理页</span></span><br><span class="line">		<span class="keyword">return</span> page == skb_frag_page(frag) &amp;&amp;   <span class="comment">//判断是否是同一个页</span></span><br><span class="line">		       off == skb_frag_off(frag) + skb_frag_size(frag);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>上述工作完成后，会计算当前获取的页还有头多少可以<code>copy</code>的空间，并调用<code>tcp_wmem_schedule</code>更新内存记账，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">int</span> <span class="title function_">tcp_wmem_schedule</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">int</span> copy)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> left;</span><br><span class="line">	<span class="comment">//判断是否达到全局的内存压力，如果还有足够发送空间，则直接允许这次请求</span></span><br><span class="line">	<span class="keyword">if</span> (likely(sk_wmem_schedule(sk, copy)))</span><br><span class="line">		<span class="keyword">return</span> copy;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* We could be in trouble if we have nothing queued.</span></span><br><span class="line"><span class="comment">	 * Use whatever is left in sk-&gt;sk_forward_alloc and tcp_wmem[0]</span></span><br><span class="line"><span class="comment">	 * to guarantee some progress.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//正常内存预算不够了 TCP 进入资源紧张状态</span></span><br><span class="line">	left = sock_net(sk)-&gt;ipv4.sysctl_tcp_wmem[<span class="number">0</span>] - sk-&gt;sk_wmem_queued;</span><br><span class="line">	<span class="keyword">if</span> (left &gt; <span class="number">0</span>) <span class="comment">//最低保障区间还有空间，强制额外分配内存，这里可以看到每个sk最少可以用4k，没使用到4k的时候即使资源紧张也会强制调度</span></span><br><span class="line">		sk_forced_mem_schedule(sk, min(left, copy));</span><br><span class="line">	<span class="keyword">return</span> min(copy, sk-&gt;sk_forward_alloc); <span class="comment">//回真正允许写入的数据大小</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/11/23/tcp_sendmsg_locked(%E4%B8%89)/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1306,7 +1303,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">79</span>
+          <span class="site-state-item-count">80</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
