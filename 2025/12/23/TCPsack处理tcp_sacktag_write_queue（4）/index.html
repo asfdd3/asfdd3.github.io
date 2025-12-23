@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="tcp_shifted_skb中会调用tcp_sacktag_one来更新sack的相关记账，注意tcp_shifted_skb没有接收返回值，因为做的工作就是只是将当前skb的sack确认的部分移动到前一个部分，因此不需要接收返回值，当真正需要标记sack时候会接收返回值，tcp_sacktag_one具体代码如下所示： 1234567891011121314151617181920212223">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TCP确认 tcp_sacktag_write_queue（四）">
+<meta property="og:url" content="http://example.com/2025/12/23/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%884%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="tcp_shifted_skb中会调用tcp_sacktag_one来更新sack的相关记账，注意tcp_shifted_skb没有接收返回值，因为做的工作就是只是将当前skb的sack确认的部分移动到前一个部分，因此不需要接收返回值，当真正需要标记sack时候会接收返回值，tcp_sacktag_one具体代码如下所示： 1234567891011121314151617181920212223">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2025-12-23T14:00:00.000Z">
+<meta property="article:modified_time" content="2025-12-23T15:21:10.212Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP确认">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2025/12/23/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%884%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TCP确认 tcp_sacktag_write_queue（四） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/12/23/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%884%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TCP确认 tcp_sacktag_write_queue（四）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-12-23 22:00:00 / 修改时间：23:21:10" itemprop="dateCreated datePublished" datetime="2025-12-23T22:00:00+08:00">2025-12-23</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/12/23/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%884%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/12/23/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%884%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p><code>tcp_shifted_skb</code>中会调用<code>tcp_sacktag_one</code>来更新<code>sack</code>的相关记账，注意<code>tcp_shifted_skb</code>没有接收返回值，因为做的工作就是只是将当前<code>skb</code>的<code>sack</code>确认的部分移动到前一个部分，因此不需要接收返回值，当真正需要标记sack时候会接收返回值，<code>tcp_sacktag_one</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> u8 <span class="title function_">tcp_sacktag_one</span><span class="params">(<span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">			  <span class="keyword">struct</span> tcp_sacktag_state *state, u8 sacked,</span></span><br><span class="line"><span class="params">			  u32 start_seq, u32 end_seq,</span></span><br><span class="line"><span class="params">			  <span class="type">int</span> dup_sack, <span class="type">int</span> pcount,</span></span><br><span class="line"><span class="params">			  u64 xmit_time)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Account D-SACK for retransmitted packet. */</span></span><br><span class="line">	<span class="comment">//如果是dsack且是重传包</span></span><br><span class="line">	<span class="keyword">if</span> (dup_sack &amp;&amp; (sacked &amp; TCPCB_RETRANS)) &#123;</span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;undo_marker &amp;&amp; tp-&gt;undo_retrans &gt; <span class="number">0</span> &amp;&amp; 					<span class="comment">//存在重传</span></span><br><span class="line">		    after(end_seq, tp-&gt;undo_marker))</span><br><span class="line">			tp-&gt;undo_retrans = <span class="type">max_t</span>(<span class="type">int</span>, <span class="number">0</span>, tp-&gt;undo_retrans - pcount);<span class="comment">//更新未确认重传包的数量</span></span><br><span class="line">		<span class="keyword">if</span> ((sacked &amp; TCPCB_SACKED_ACKED) &amp;&amp; </span><br><span class="line">		    before(start_seq, state-&gt;reord))</span><br><span class="line">				state-&gt;reord = start_seq; <span class="comment">//跟踪最早的重排序边界</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Nothing to do; acked frame is about to be dropped (was ACKed). */</span></span><br><span class="line">	<span class="comment">//如果要标记范围已经被确认了</span></span><br><span class="line">	<span class="keyword">if</span> (!after(end_seq, tp-&gt;snd_una))</span><br><span class="line">		<span class="keyword">return</span> sacked;</span><br><span class="line">	<span class="comment">//这个数据包没有被sack过的情况，如果是tcp_shifted_skb调进来，大概率不进入这个分支吧？</span></span><br><span class="line">	<span class="keyword">if</span> (!(sacked &amp; TCPCB_SACKED_ACKED)) &#123; <span class="comment">//</span></span><br><span class="line">		<span class="comment">//这里很关键，应该叫真正启动rack吧</span></span><br><span class="line">		tcp_rack_advance(tp, sacked, end_seq, xmit_time);</span><br><span class="line">		<span class="comment">//这段数据曾经被重传过</span></span><br><span class="line">		<span class="keyword">if</span> (sacked &amp; TCPCB_SACKED_RETRANS) &#123;<span class="comment">//</span></span><br><span class="line">			<span class="comment">/* If the segment is not tagged as lost,</span></span><br><span class="line"><span class="comment">			 * we do not clear RETRANS, believing</span></span><br><span class="line"><span class="comment">			 * that retransmission is still in flight.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="comment">//同时还有LOST标记</span></span><br><span class="line">			<span class="keyword">if</span> (sacked &amp; TCPCB_LOST) &#123;</span><br><span class="line">				sacked &amp;= ~(TCPCB_LOST|TCPCB_SACKED_RETRANS);<span class="comment">//清掉标志位</span></span><br><span class="line">				tp-&gt;lost_out -= pcount; </span><br><span class="line">				tp-&gt;retrans_out -= pcount;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;<span class="comment">//之前没有重传过新的sack，这是最常见的场景吧？</span></span><br><span class="line">			<span class="keyword">if</span> (!(sacked &amp; TCPCB_RETRANS)) &#123;</span><br><span class="line">				<span class="comment">/* New sack for not retransmitted frame,</span></span><br><span class="line"><span class="comment">				 * which was in hole. It is reordering.</span></span><br><span class="line"><span class="comment">				 */</span></span><br><span class="line">				<span class="comment">//这种情况就表示乱序</span></span><br><span class="line">				<span class="keyword">if</span> (before(start_seq,</span><br><span class="line">					   tcp_highest_sack_seq(tp)) &amp;&amp;</span><br><span class="line">				    before(start_seq, state-&gt;reord))</span><br><span class="line">					state-&gt;reord = start_seq; <span class="comment">//更新乱序边界</span></span><br><span class="line">				<span class="comment">//SACK 的 end_seq 不超过 high_seq，是原始发送窗口里的数据</span></span><br><span class="line">				<span class="keyword">if</span> (!after(end_seq, tp-&gt;high_seq))</span><br><span class="line">					state-&gt;flag |= FLAG_ORIG_SACK_ACKED;</span><br><span class="line">				<span class="keyword">if</span> (state-&gt;first_sackt == <span class="number">0</span>)</span><br><span class="line">					state-&gt;first_sackt = xmit_time;</span><br><span class="line">				state-&gt;last_sackt = xmit_time;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="comment">//如果之前带 LOST 撤销 LOSS</span></span><br><span class="line">			<span class="keyword">if</span> (sacked &amp; TCPCB_LOST) &#123;</span><br><span class="line">				sacked &amp;= ~TCPCB_LOST;</span><br><span class="line">				tp-&gt;lost_out -= pcount;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//真正标记为 SACKED_ACKED</span></span><br><span class="line">		sacked |= TCPCB_SACKED_ACKED;</span><br><span class="line">		state-&gt;flag |= FLAG_DATA_SACKED;</span><br><span class="line">		tp-&gt;sacked_out += pcount;</span><br><span class="line">		<span class="comment">/* Out-of-order packets delivered */</span></span><br><span class="line">		state-&gt;sack_delivered += pcount;</span><br><span class="line">		<span class="comment">//修正 lost_skb_hint 对应的 hint 计数</span></span><br><span class="line">		<span class="comment">/* Lost marker hint past SACKed? Tweak RFC3517 cnt */</span></span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;lost_skb_hint &amp;&amp;</span><br><span class="line">		    before(start_seq, TCP_SKB_CB(tp-&gt;lost_skb_hint)-&gt;seq))</span><br><span class="line">			tp-&gt;lost_cnt_hint += pcount;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* D-SACK. We can detect redundant retransmission in S|R and plain R</span></span><br><span class="line"><span class="comment">	 * frames and clear it. undo_retrans is decreased above, L|R frames</span></span><br><span class="line"><span class="comment">	 * are accounted above as well.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (dup_sack &amp;&amp; (sacked &amp; TCPCB_SACKED_RETRANS)) &#123;</span><br><span class="line">		sacked &amp;= ~TCPCB_SACKED_RETRANS;</span><br><span class="line">		tp-&gt;retrans_out -= pcount;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> sacked;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_sacktag_one</code>中如果当前数据包是<code>dsack</code>且重传过则证明重传是多余，则修正拥塞撤销的相关计数，同时更新乱序边界，合理。</p>
+<p>如果当前数据包已经被累计的<code>ack</code>确认过，则直接返回。之后对没有标记为<code>sack</code>的数据进行处理，如果是优化队列结构，这里应该大概率会进入！！！，然后调用<code>tcp_rack_advance</code>这个是启动<code>rack</code>定时器的关键，也就是说收到了部分的确认，因此需要启动<code>rack</code>，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_rack_advance</span><span class="params">(<span class="keyword">struct</span> tcp_sock *tp, u8 sacked, u32 end_seq,</span></span><br><span class="line"><span class="params">		      u64 xmit_time)</span></span><br><span class="line">&#123;</span><br><span class="line">	u32 rtt_us;</span><br><span class="line">	<span class="comment">//计算当前数据包的rtt</span></span><br><span class="line">	rtt_us = tcp_stamp_us_delta(tp-&gt;tcp_mstamp, xmit_time);</span><br><span class="line">	<span class="comment">//小于最小rtt可能是乱续导致的，直接return</span></span><br><span class="line">	<span class="keyword">if</span> (rtt_us &lt; tcp_min_rtt(tp) &amp;&amp; (sacked &amp; TCPCB_RETRANS)) &#123;</span><br><span class="line">		<span class="comment">/* If the sacked packet was retransmitted, it&#x27;s ambiguous</span></span><br><span class="line"><span class="comment">		 * whether the retransmission or the original (or the prior</span></span><br><span class="line"><span class="comment">		 * retransmission) was sacked.</span></span><br><span class="line"><span class="comment">		 *</span></span><br><span class="line"><span class="comment">		 * If the original is lost, there is no ambiguity. Otherwise</span></span><br><span class="line"><span class="comment">		 * we assume the original can be delayed up to aRTT + min_rtt.</span></span><br><span class="line"><span class="comment">		 * the aRTT term is bounded by the fast recovery or timeout,</span></span><br><span class="line"><span class="comment">		 * so it&#x27;s at least one RTT (i.e., retransmission is at least</span></span><br><span class="line"><span class="comment">		 * an RTT later).</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//设置rack用到的标志，这个很关键</span></span><br><span class="line">	tp-&gt;rack.advanced = <span class="number">1</span>;</span><br><span class="line">	<span class="comment">//保存rtt</span></span><br><span class="line">	tp-&gt;rack.rtt_us = rtt_us;</span><br><span class="line">	<span class="comment">//更新当前数据包的时间戳和序列好到 rack使用的相关字段中</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_skb_sent_after(xmit_time, tp-&gt;rack.mstamp,</span><br><span class="line">			       end_seq, tp-&gt;rack.end_seq)) &#123;</span><br><span class="line">		tp-&gt;rack.mstamp = xmit_time;</span><br><span class="line">		tp-&gt;rack.end_seq = end_seq;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_rack_advance</code>的主要工作是在每次确认部分数据时， 拿到<code>RTT</code>，如果<code>rtt</code>很小这直接忽略，否则设置<code>rack.advanced</code>这个是是否启动<code>rack</code>标记丢包的关键，也就是说通过收到<code>sack</code>就会启动。</p>
+<p>回到<code>tcp_sacktag_one</code>中，如果这段数据包被重传过同时还被标了 <code>LOST</code>，但是现在被<code>sack</code>了就不算丢失，也不算重传在飞，则修改对应计数。如果没有重传标志（最常见的场景吧），则判断是否认为是乱序，如果乱序则更新乱序的边界。如果原始发送窗口内的数据被 <code>SACK</code> 到则置 <code>FLAG_ORIG_SACK_ACKED</code>表示没有重传过的数据被确认了。最后给这个数据包打上已被 <code>SACK</code> 确认的永久标记，并更新<code>sack</code>累计数量。</p>
+<p>回调<code>tcp_shifted_skb</code>中处理完<code>sack</code>的记账相关信息后，会调用<code>tcp_rate_skb_delivered</code>设置采样信息，<code>BBR</code>拥塞算法用到的通过这里采样得到的信息进行拥塞控制。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//某个 skb 被 SACK 或被累计 ACK 时，就会调用它</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">tcp_rate_skb_delivered</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">			    <span class="keyword">struct</span> rate_sample *rs)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_skb_cb</span> *<span class="title">scb</span> =</span> TCP_SKB_CB(skb);</span><br><span class="line">	u64 tx_tstamp;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!scb-&gt;tx.delivered_mstamp)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//TCP_SKB_CB(skb)-&gt;tx 里存的是这段数据当时发出去时的快照</span></span><br><span class="line">	<span class="comment">//BBR就会用到这下面部分字段</span></span><br><span class="line">	tx_tstamp = tcp_skb_timestamp_us(skb);</span><br><span class="line">	<span class="keyword">if</span> (!rs-&gt;prior_delivered ||</span><br><span class="line">	    tcp_skb_sent_after(tx_tstamp, tp-&gt;first_tx_mstamp,</span><br><span class="line">			       scb-&gt;end_seq, rs-&gt;last_end_seq)) &#123;</span><br><span class="line">		rs-&gt;prior_delivered_ce  = scb-&gt;tx.delivered_ce;</span><br><span class="line">		rs-&gt;prior_delivered  = scb-&gt;tx.delivered;</span><br><span class="line">		rs-&gt;prior_mstamp     = scb-&gt;tx.delivered_mstamp;</span><br><span class="line">		rs-&gt;is_app_limited   = scb-&gt;tx.is_app_limited;</span><br><span class="line">		rs-&gt;is_retrans	     = scb-&gt;sacked &amp; TCPCB_RETRANS;</span><br><span class="line">		rs-&gt;last_end_seq     = scb-&gt;end_seq;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Record send time of most recently ACKed packet: */</span></span><br><span class="line">		tp-&gt;first_tx_mstamp  = tx_tstamp;</span><br><span class="line">		<span class="comment">/* Find the duration of the &quot;send phase&quot; of this window: */</span></span><br><span class="line">		rs-&gt;interval_us = tcp_stamp_us_delta(tp-&gt;first_tx_mstamp,</span><br><span class="line">						     scb-&gt;tx.first_tx_mstamp);</span><br><span class="line"></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">/* Mark off the skb delivered once it&#x27;s sacked to avoid being</span></span><br><span class="line"><span class="comment">	 * used again when it&#x27;s cumulatively acked. For acked packets</span></span><br><span class="line"><span class="comment">	 * we don&#x27;t need to reset since it&#x27;ll be freed soon.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (scb-&gt;sacked &amp; TCPCB_SACKED_ACKED)</span><br><span class="line">		scb-&gt;tx.delivered_mstamp = <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码主要工作汇总如下：</p>
+<ul>
+<li>发送 <code>skb</code> 时：TCP 在 <code>skb</code> 里埋下一个发送时 delivered 快照 + 时间戳。（<code>tcp_rate_skb_sent</code>对称的逻辑，<code>__tcp_transmit_skb</code>中调用）</li>
+<li>收到 ACK&#x2F;SACK 时：<code>tcp_rate_skb_delivered()</code> 从被确认的 <code>skb</code>挑一个最合适的数据包，把快照拷贝到 <code>rate_sample</code>。</li>
+<li>后续（在别的函数里）用当前 <code>tp-&gt;delivered</code> 和 <code>rs-&gt;prior_delivered</code>、以及时间差，算 delivery rate（给 BBR 等用）。</li>
+<li>如果是 SACK 确认：清零 <code>delivered_mstamp</code> 防重复采样。</li>
+</ul>
+<p>回到<code>tcp_shift_skb_data</code>中（之前说了<code>tcp_shift_skb_data</code>的主要作用是尽量把已经被确认的数据进行合并），如果合并成功还会继续尝试是否能够合并后面的数据包，这里不再重复。</p>
+<p>回到<code>tcp_sacktag_walk</code>中，调用完<code>tcp_shift_skb_data</code>后返回的结构表示是否合并成功了，如果合并成功则会<code>continue</code>继续遍历重传队列继续尝试合并，直到没有合并成功为止，如果合并失败则调用<code>tcp_match_skb_to_sack</code>尝试拆分数据包，如果拆分成功了则表示数据包完全在<code>sack</code>的范围内，会调用<code>tcp_sacktag_one</code>标记数据包，<strong>这里注意：此时接收的了该函数的返回值，表示真正的标记了数据包</strong>。之后调用<code>tcp_rate_skb_delivered</code>更新拥塞算法用到字段。并更新更新最高的<code>sack</code>对应的数据包。如果拆分失败，还会继续遍历重传队列。</p>
+<p>回到<code>tcp_sacktag_write_queue</code>中，有<code>cache</code>可用并调用 <code>tcp_sacktag_walk</code>完成后，会进一步判断当前数据包携带的<code>sack</code>结束序列号是否在缓存管理的范围内，如果在则直接跳出遍历每个<code>sack</code>块的循环，否则跳出循环（相当于不用<code>cache</code>加速直接走慢速路径）。</p>
+<p>如果无法用<code>cache</code>加速则直接调用<code>tcp_sacktag_skip</code>找到待标记的<code>skb</code>同时调用<code>tcp_sacktag_walk</code>遍历重传队列标记数据包。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E7%A1%AE%E8%AE%A4/" rel="tag"># TCP确认</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2025/12/22/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%883%EF%BC%89/" rel="prev" title="TCP确认 tcp_sacktag_write_queue（三）">
+      <i class="fa fa-chevron-left"></i> TCP确认 tcp_sacktag_write_queue（三）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">81</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">18</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2025</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

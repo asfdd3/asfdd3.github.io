@@ -193,6 +193,105 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/07/24/TCP%E5%8D%8F%E8%AE%AE%E5%88%9D%E5%A7%8B%E5%8C%96/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/07/24/TCP%E5%8D%8F%E8%AE%AE%E5%88%9D%E5%A7%8B%E5%8C%96/" class="post-title-link" itemprop="url">TCP协议的初始化</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-07-24 22:00:00 / 修改时间：21:52:20" itemprop="dateCreated datePublished" datetime="2025-07-24T22:00:00+08:00">2025-07-24</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/07/24/TCP%E5%8D%8F%E8%AE%AE%E5%88%9D%E5%A7%8B%E5%8C%96/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/07/24/TCP%E5%8D%8F%E8%AE%AE%E5%88%9D%E5%A7%8B%E5%8C%96/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h3 id="TCP协议的初始化"><a href="#TCP协议的初始化" class="headerlink" title="TCP协议的初始化"></a>TCP协议的初始化</h3><p><code>tcp_init()</code> 是 Linux 内核中 TCP 协议的全局初始化函数，在<code>inet_init</code>中被调用，主要完成了以下工作</p>
+<p><strong>初始化listen哈希表，两个bind哈希表和ehash表</strong>，创建bind用到的<code>slab</code>分配器，根据<code>cpu</code>的数量来确定<code>ehash</code>表的锁的数量，<code>hash</code> 桶的大小是更具当前系统内存大小计算得来的 <strong>比如8G就是64k个桶</strong>，桶的大小是不会改变的，可以通过参数指定范围。</p>
+<p><strong>根据系统内存大小设置<code>tcp</code>的可以使用页数的内存水位线</strong>，包括全局的<code>tcp</code>和单个的<code>tcp</code>。</p>
+<p>**调用<code>tcp_v4_init**</code>为每个<code>cpu</code>创建一个<code>rawsocket</code>套接字用来发送<code>rst</code>报文，为每个<code>namespace</code>注册<code>init</code>和<code>exit</code>的<code>ops</code></p>
+<p>具体逻辑如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> __init <span class="title function_">tcp_init</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> max_rshare, max_wshare, cnt;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> limit;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> i;</span><br><span class="line">	<span class="comment">//最小的mss不小于tcp选项的长度</span></span><br><span class="line">	BUILD_BUG_ON(TCP_MIN_SND_MSS &lt;= MAX_TCP_OPTION_SPACE);</span><br><span class="line">	BUILD_BUG_ON(<span class="keyword">sizeof</span>(<span class="keyword">struct</span> tcp_skb_cb) &gt;</span><br><span class="line">		     sizeof_field(<span class="keyword">struct</span> sk_buff, cb));</span><br><span class="line">	<span class="comment">//初始化一个tcp数量的计数器</span></span><br><span class="line">	percpu_counter_init(&amp;tcp_sockets_allocated, <span class="number">0</span>, GFP_KERNEL);</span><br><span class="line">	<span class="comment">//设置一个定时器，不启动，处理孤儿连接</span></span><br><span class="line">	timer_setup(&amp;tcp_orphan_timer, tcp_orphan_update, TIMER_DEFERRABLE);</span><br><span class="line">	mod_timer(&amp;tcp_orphan_timer, jiffies + TCP_ORPHAN_TIMER_PERIOD);</span><br><span class="line">	<span class="comment">//初始化listen hash表</span></span><br><span class="line">	inet_hashinfo2_init(&amp;tcp_hashinfo, <span class="string">&quot;tcp_listen_portaddr_hash&quot;</span>,</span><br><span class="line">			    thash_entries, <span class="number">21</span>,  <span class="comment">/* one slot per 2 MB*/</span></span><br><span class="line">			    <span class="number">0</span>, <span class="number">64</span> * <span class="number">1024</span>);</span><br><span class="line">	<span class="comment">//创建两个bind用到的slab</span></span><br><span class="line">	tcp_hashinfo.bind_bucket_cachep =</span><br><span class="line">		kmem_cache_create(<span class="string">&quot;tcp_bind_bucket&quot;</span>,</span><br><span class="line">				  <span class="keyword">sizeof</span>(<span class="keyword">struct</span> inet_bind_bucket), <span class="number">0</span>,</span><br><span class="line">				  SLAB_HWCACHE_ALIGN | SLAB_PANIC |</span><br><span class="line">				  SLAB_ACCOUNT,</span><br><span class="line">				  <span class="literal">NULL</span>);</span><br><span class="line">	tcp_hashinfo.bind2_bucket_cachep =</span><br><span class="line">		kmem_cache_create(<span class="string">&quot;tcp_bind2_bucket&quot;</span>,</span><br><span class="line">				  <span class="keyword">sizeof</span>(<span class="keyword">struct</span> inet_bind2_bucket), <span class="number">0</span>,</span><br><span class="line">				  SLAB_HWCACHE_ALIGN | SLAB_PANIC |</span><br><span class="line">				  SLAB_ACCOUNT,</span><br><span class="line">				  <span class="literal">NULL</span>);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Size and allocate the main established and bind bucket</span></span><br><span class="line"><span class="comment">	 * hash tables.</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * The methodology is similar to that of the buffer cache.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line"></span><br><span class="line">	 <span class="comment">//创建ehash表 并初始化桶和锁，bhash是一个bucket一个桶</span></span><br><span class="line">	 <span class="comment">//第三个参数的本质上就是根据系统的内存去算有多少个桶 比如8G就是64k个桶</span></span><br><span class="line">	tcp_hashinfo.ehash =</span><br><span class="line">		alloc_large_system_hash(<span class="string">&quot;TCP established&quot;</span>,</span><br><span class="line">					<span class="keyword">sizeof</span>(<span class="keyword">struct</span> inet_ehash_bucket),</span><br><span class="line">					thash_entries,</span><br><span class="line">					<span class="number">17</span>, <span class="comment">/* one slot per 128 KB of memory */</span> </span><br><span class="line">					<span class="number">0</span>,</span><br><span class="line">					<span class="literal">NULL</span>,</span><br><span class="line">					&amp;tcp_hashinfo.ehash_mask,</span><br><span class="line">					<span class="number">0</span>,</span><br><span class="line">					thash_entries ? <span class="number">0</span> : <span class="number">512</span> * <span class="number">1024</span>);</span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt;= tcp_hashinfo.ehash_mask; i++)</span><br><span class="line">		INIT_HLIST_NULLS_HEAD(&amp;tcp_hashinfo.ehash[i].chain, i);</span><br><span class="line">	<span class="comment">//根据cpu的数量计算 自旋锁的数量，</span></span><br><span class="line">	<span class="keyword">if</span> (inet_ehash_locks_alloc(&amp;tcp_hashinfo))</span><br><span class="line">		panic(<span class="string">&quot;TCP: failed to alloc ehash_locks&quot;</span>);</span><br><span class="line">	<span class="comment">//创建bhash表  注意，根据第二个参数这里实际申请了bhash和bhash2 他们在内存上是连续的</span></span><br><span class="line">	tcp_hashinfo.bhash =</span><br><span class="line">		alloc_large_system_hash(<span class="string">&quot;TCP bind&quot;</span>,</span><br><span class="line">					<span class="number">2</span> * <span class="keyword">sizeof</span>(<span class="keyword">struct</span> inet_bind_hashbucket),</span><br><span class="line">					tcp_hashinfo.ehash_mask + <span class="number">1</span>, <span class="comment">//这里其实让ehash和bhash的数目保持一致了</span></span><br><span class="line">					<span class="number">17</span>, <span class="comment">/* one slot per 128 KB of memory */</span></span><br><span class="line">					<span class="number">0</span>,</span><br><span class="line">					&amp;tcp_hashinfo.bhash_size,</span><br><span class="line">					<span class="literal">NULL</span>,</span><br><span class="line">					<span class="number">0</span>,</span><br><span class="line">					<span class="number">64</span> * <span class="number">1024</span>);</span><br><span class="line">	<span class="comment">//左移 bhash_size 位变成真正的桶数 比如 1 &lt;&lt;12 = 4096</span></span><br><span class="line">	tcp_hashinfo.bhash_size = <span class="number">1U</span> &lt;&lt; tcp_hashinfo.bhash_size; </span><br><span class="line">	<span class="comment">//设置bhash2的索引</span></span><br><span class="line">	tcp_hashinfo.bhash2 = tcp_hashinfo.bhash + tcp_hashinfo.bhash_size; </span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; tcp_hashinfo.bhash_size; i++) &#123;</span><br><span class="line">		spin_lock_init(&amp;tcp_hashinfo.bhash[i].lock);</span><br><span class="line">		INIT_HLIST_HEAD(&amp;tcp_hashinfo.bhash[i].chain);</span><br><span class="line">		spin_lock_init(&amp;tcp_hashinfo.bhash2[i].lock);</span><br><span class="line">		INIT_HLIST_HEAD(&amp;tcp_hashinfo.bhash2[i].chain);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	tcp_hashinfo.pernet = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">	<span class="comment">//根据ehash的桶的数目，计算了一个容许的最大孤儿连接的数量？，在tcp_close 中会用到</span></span><br><span class="line">	cnt = tcp_hashinfo.ehash_mask + <span class="number">1</span>;</span><br><span class="line">	sysctl_tcp_max_orphans = cnt / <span class="number">2</span>;</span><br><span class="line">	<span class="comment">//根据系统当前空闲的页数来确定tcp可以使用页数的水位线有三个值，注意这个是全局的</span></span><br><span class="line">	<span class="comment">//net.ipv4.tcp_mem </span></span><br><span class="line">	tcp_init_mem();</span><br><span class="line">	<span class="comment">/* Set per-socket limits to no more than 1/128 the pressure threshold */</span></span><br><span class="line">	<span class="comment">//设置单个tcp的发送和接收使用的字节数，tcp_init_mem的是页数！</span></span><br><span class="line">	limit = nr_free_buffer_pages() &lt;&lt; (PAGE_SHIFT - <span class="number">7</span>);</span><br><span class="line">	max_wshare = min(<span class="number">4UL</span>*<span class="number">1024</span>*<span class="number">1024</span>, limit);</span><br><span class="line">	max_rshare = min(<span class="number">6UL</span>*<span class="number">1024</span>*<span class="number">1024</span>, limit);</span><br><span class="line"></span><br><span class="line">	init_net.ipv4.sysctl_tcp_wmem[<span class="number">0</span>] = PAGE_SIZE;</span><br><span class="line">	init_net.ipv4.sysctl_tcp_wmem[<span class="number">1</span>] = <span class="number">16</span>*<span class="number">1024</span>;</span><br><span class="line">	init_net.ipv4.sysctl_tcp_wmem[<span class="number">2</span>] = max(<span class="number">64</span>*<span class="number">1024</span>, max_wshare);</span><br><span class="line"></span><br><span class="line">	init_net.ipv4.sysctl_tcp_rmem[<span class="number">0</span>] = PAGE_SIZE;</span><br><span class="line">	init_net.ipv4.sysctl_tcp_rmem[<span class="number">1</span>] = <span class="number">131072</span>;</span><br><span class="line">	init_net.ipv4.sysctl_tcp_rmem[<span class="number">2</span>] = max(<span class="number">131072</span>, max_rshare);</span><br><span class="line"></span><br><span class="line">	pr_info(<span class="string">&quot;Hash tables configured (established %u bind %u)\n&quot;</span>,</span><br><span class="line">		tcp_hashinfo.ehash_mask + <span class="number">1</span>, tcp_hashinfo.bhash_size);</span><br><span class="line">	<span class="comment">//创建一个rawsocket然后初始化系统参数 sysctl -a </span></span><br><span class="line">	tcp_v4_init();</span><br><span class="line">	tcp_metrics_init();</span><br><span class="line">	BUG_ON(tcp_register_congestion_control(&amp;tcp_reno) != <span class="number">0</span>);</span><br><span class="line">	<span class="comment">//注册tsq的软中端处理函数</span></span><br><span class="line">	tcp_tasklet_init();</span><br><span class="line">	mptcp_init();</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述<code>tcp_init_mem();</code>中设置了<code>tcp</code> 内存的水位线具体如下所示，这里的limit的单位是页。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> __init <span class="title function_">tcp_init_mem</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> limit = nr_free_buffer_pages() / <span class="number">16</span>;</span><br><span class="line">	<span class="comment">//最少用128个页</span></span><br><span class="line">	limit = max(limit, <span class="number">128UL</span>);</span><br><span class="line">	<span class="comment">//低阈值</span></span><br><span class="line">	sysctl_tcp_mem[<span class="number">0</span>] = limit / <span class="number">4</span> * <span class="number">3</span>;		<span class="comment">/* 4.68 % */</span></span><br><span class="line">	<span class="comment">//中阈值</span></span><br><span class="line">	sysctl_tcp_mem[<span class="number">1</span>] = limit;			<span class="comment">/* 6.25 % */</span></span><br><span class="line">	<span class="comment">//高阈值</span></span><br><span class="line">	sysctl_tcp_mem[<span class="number">2</span>] = sysctl_tcp_mem[<span class="number">0</span>] * <span class="number">2</span>;	<span class="comment">/* 9.37 % */</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在<code>tcp_v4_init</code>中创建了一个<code>rawsocket</code>套接字，当<code>tcp</code>需要回复<code>rst</code>报文的时候就是用的这个套接字。然后调用<code>register_pernet_subsys(&amp;tcp_sk_ops)</code>来注册初始化的系统的参数的回调函数。具体代码如下：</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/07/24/TCP%E5%8D%8F%E8%AE%AE%E5%88%9D%E5%A7%8B%E5%8C%96/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/07/15/tcp_sock/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1166,117 +1265,10 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/22/sock%E7%BB%93%E6%9E%84%E4%BD%93/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/06/22/sock%E7%BB%93%E6%9E%84%E4%BD%93/" class="post-title-link" itemprop="url">struct sock</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2025-06-22 22:00:00 / 修改时间：23:29:12" itemprop="dateCreated datePublished" datetime="2025-06-22T22:00:00+08:00">2025-06-22</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/06/22/sock%E7%BB%93%E6%9E%84%E4%BD%93/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/06/22/sock%E7%BB%93%E6%9E%84%E4%BD%93/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p><strong>sock 结构体在 Linux 网络协议栈中的作用非常核心，它本质上是用于管理传输层连接状态和控制信息的内核数据结构</strong></p>
-<h2 id="sock-结构体的主要功能："><a href="#sock-结构体的主要功能：" class="headerlink" title="sock 结构体的主要功能："></a><code>sock</code> 结构体的主要功能：</h2><h3 id="1-管理传输层连接状态"><a href="#1-管理传输层连接状态" class="headerlink" title="1.  管理传输层连接状态"></a>1.  <strong>管理传输层连接状态</strong></h3><ul>
-<li>记录 socket 状态，如 TCP 的 <code>ESTABLISHED</code>、<code>LISTEN</code>、<code>SYN_SENT</code> 等；</li>
-<li>维护连接生命周期。</li>
-</ul>
-<h3 id="2-数据收发管理"><a href="#2-数据收发管理" class="headerlink" title="2. 数据收发管理"></a>2. <strong>数据收发管理</strong></h3><ul>
-<li>接收队列：<code>sk_receive_queue</code></li>
-<li>发送队列：<code>sk_write_queue</code></li>
-<li>Backlog 队列：<code>sk_backlog</code></li>
-</ul>
-<h3 id="3-缓冲区和流控"><a href="#3-缓冲区和流控" class="headerlink" title="3. 缓冲区和流控"></a>3. <strong>缓冲区和流控</strong></h3><ul>
-<li>接收缓冲区大小（<code>sk_rcvbuf</code>）</li>
-<li>发送缓冲区大小（<code>sk_sndbuf</code>）</li>
-<li>控制数据收发速率，避免内存耗尽。</li>
-</ul>
-<h3 id="4-定时器与超时管理"><a href="#4-定时器与超时管理" class="headerlink" title="4. 定时器与超时管理"></a>4. <strong>定时器与超时管理</strong></h3><ul>
-<li><code>sk_timer</code>：重传、超时的定时器；</li>
-<li>如 TCP 的重传定时器（RTO）、保活定时器（keepalive）。</li>
-</ul>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/06/22/sock%E7%BB%93%E6%9E%84%E4%BD%93/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
-    <a class="extend prev" rel="prev" href="/page/5/"><i class="fa fa-angle-left" aria-label="上一页"></i></a><a class="page-number" href="/">1</a><span class="space">&hellip;</span><a class="page-number" href="/page/5/">5</a><span class="page-number current">6</span><a class="page-number" href="/page/7/">7</a><a class="page-number" href="/page/8/">8</a><a class="extend next" rel="next" href="/page/7/"><i class="fa fa-angle-right" aria-label="下一页"></i></a>
+    <a class="extend prev" rel="prev" href="/page/5/"><i class="fa fa-angle-left" aria-label="上一页"></i></a><a class="page-number" href="/">1</a><span class="space">&hellip;</span><a class="page-number" href="/page/5/">5</a><span class="page-number current">6</span><a class="page-number" href="/page/7/">7</a><span class="space">&hellip;</span><a class="page-number" href="/page/9/">9</a><a class="extend next" rel="next" href="/page/7/"><i class="fa fa-angle-right" aria-label="下一页"></i></a>
   </nav>
 
 
@@ -1342,7 +1334,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">80</span>
+          <span class="site-state-item-count">81</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
