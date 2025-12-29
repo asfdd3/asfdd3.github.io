@@ -193,6 +193,131 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/23/%E9%93%BE%E6%8E%A5(%E4%B8%80)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/06/23/%E9%93%BE%E6%8E%A5(%E4%B8%80)/" class="post-title-link" itemprop="url">链接(一)</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-06-23 22:00:00" itemprop="dateCreated datePublished" datetime="2025-06-23T22:00:00+08:00">2025-06-23</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-06-25 23:48:22" itemprop="dateModified" datetime="2025-06-25T23:48:22+08:00">2025-06-25</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/06/23/%E9%93%BE%E6%8E%A5(%E4%B8%80)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/06/23/%E9%93%BE%E6%8E%A5(%E4%B8%80)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h1 id="链接"><a href="#链接" class="headerlink" title="链接"></a>链接</h1><p><strong>链接（Linking）是一个将多个代码和数据片段（来自编译器生成的目标文件）收集并组合为一个单一文件</strong>的过程，这个文件可以被<strong>加载到内存中执行</strong>。</p>
+<p> 链接的目标文件可以是：</p>
+<ul>
+<li>可执行文件</li>
+<li>共享库（动态库）</li>
+<li>或中间的可重定位文件</li>
+</ul>
+<p>链接可以发生在不同的阶段：</p>
+<table>
+<thead>
+<tr>
+<th>链接阶段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>链接时（Link-time）</strong></td>
+<td>最常见的，指用 <code>ld</code> 或 <code>gcc</code> 把多个 <code>.o</code>、<code>.a</code>、<code>.so</code> 链接为一个可执行文件或库。</td>
+</tr>
+<tr>
+<td><strong>加载时（Load-time）</strong></td>
+<td>程序被操作系统加载到内存时，动态链接器（如 <code>/lib64/ld-linux.so.2</code>）把 <code>.so</code> 文件装载并绑定符号。</td>
+</tr>
+<tr>
+<td><strong>运行时（Run-time）</strong></td>
+<td>程序运行过程中自行调用 <code>dlopen()</code> &#x2F; <code>dlsym()</code> 等函数动态加载库并解析符号。</td>
+</tr>
+</tbody></table>
+<h2 id="静态链接"><a href="#静态链接" class="headerlink" title="静态链接"></a>静态链接</h2><p><strong>静态链接</strong>是指链接器将所有需要的代码、数据和库函数<strong>一次性合并到一个最终的可执行文件中</strong>，使这个文件在运行时<strong>不再依赖外部库</strong></p>
+<p>举例：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// main.c</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">add</span><span class="params">(<span class="type">int</span> a, <span class="type">int</span> b)</span>;</span><br><span class="line"><span class="type">int</span> <span class="title function_">main</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> add(<span class="number">2</span>, <span class="number">3</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/06/23/%E9%93%BE%E6%8E%A5(%E4%B8%80)/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/22/sock%E7%BB%93%E6%9E%84%E4%BD%93/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1409,103 +1534,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/28/module_init%E5%8E%9F%E7%90%86%E5%AD%A6%E4%B9%A0/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/05/28/module_init%E5%8E%9F%E7%90%86%E5%AD%A6%E4%B9%A0/" class="post-title-link" itemprop="url">moudle_init()原理学习</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2025-05-28 22:00:00 / 修改时间：23:07:59" itemprop="dateCreated datePublished" datetime="2025-05-28T22:00:00+08:00">2025-05-28</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%85%B6%E4%BB%96/" itemprop="url" rel="index"><span itemprop="name">其他</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/05/28/module_init%E5%8E%9F%E7%90%86%E5%AD%A6%E4%B9%A0/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/28/module_init%E5%8E%9F%E7%90%86%E5%AD%A6%E4%B9%A0/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h1 id="moudle-init-原理学习"><a href="#moudle-init-原理学习" class="headerlink" title="moudle_init()原理学习"></a>moudle_init()原理学习</h1><h2 id="1-静态加载与动态加载"><a href="#1-静态加载与动态加载" class="headerlink" title="1.静态加载与动态加载"></a>1.静态加载与动态加载</h2><h3 id="内核模块代码的例子"><a href="#内核模块代码的例子" class="headerlink" title="内核模块代码的例子"></a>内核模块代码的例子</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;linux/module.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;linux/init.h&gt;</span></span></span><br><span class="line"> </span><br><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">hello_init</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">    printk(KERN_ALERT <span class="string">&quot;Hello World\n&quot;</span>);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"> </span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">hello_exit</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">    printk(KERN_ALERT <span class="string">&quot;Bye Bye World\n&quot;</span>);</span><br><span class="line">&#125;</span><br><span class="line"> </span><br><span class="line">module_init(hello_init);</span><br><span class="line">module_exit(hello_exit);</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-<p>上述编写的内核模块有两种运行方式，一是静态编译链接进内核，在系统启动过程中进行初始化；一是编译成可动态加载的module，通过insmod动态加载重定位到内核。<strong>这两种方式可以在Makefile中通过obj-y或obj-m选项进行选择</strong>。</p>
-<p><strong>动态加载</strong>：</p>
-<ul>
-<li>可根据系统需要运行动态加载模块，以扩充内核功能，不需要时将其卸载，以释放内存空间；</li>
-<li>当需要修改内核功能时，只需编译相应模块，而不必重新编译整个内核。</li>
-</ul>
-<p><strong>静态加载</strong><br>但是有些模块必须要编译到内核，随内核一起运行，从不卸载，如 vfs等</p>
-<h2 id="2-动态加载与静态加载实现原理"><a href="#2-动态加载与静态加载实现原理" class="headerlink" title="2.动态加载与静态加载实现原理"></a>2.动态加载与静态加载实现原理</h2><p><strong>同样的内核代码通过对<code>moudle_init</code>这个宏的不同展开来实现动态加载与卸载</strong><br>下面看一下<code>moudle_init</code>这个宏的实现：</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/05/28/module_init%E5%8E%9F%E7%90%86%E5%AD%A6%E4%B9%A0/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1575,7 +1603,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">81</span>
+          <span class="site-state-item-count">82</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>

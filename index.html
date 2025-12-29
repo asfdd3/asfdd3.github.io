@@ -193,6 +193,110 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/12/29/TCP%E6%B8%85%E7%90%86%E9%87%8D%E4%BC%A0%E9%98%9F%E5%88%97/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/12/29/TCP%E6%B8%85%E7%90%86%E9%87%8D%E4%BC%A0%E9%98%9F%E5%88%97/" class="post-title-link" itemprop="url">TCP确认 tcp_clean_rtx_queue</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-12-29 22:00:00 / 修改时间：21:37:37" itemprop="dateCreated datePublished" datetime="2025-12-29T22:00:00+08:00">2025-12-29</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/12/29/TCP%E6%B8%85%E7%90%86%E9%87%8D%E4%BC%A0%E9%98%9F%E5%88%97/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/12/29/TCP%E6%B8%85%E7%90%86%E9%87%8D%E4%BC%A0%E9%98%9F%E5%88%97/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p><code>tcp_ack</code>中处理完数据包的<code>ack</code>信息后，会调用<code>tcp_clean_rtx_queue</code>把已经确认的数据从重传队列中移除，并维护一系列的状态，整体工作可以总结为以下四点：</p>
+<ul>
+<li><strong>清理</strong>：把确认了的 <code>skb</code>（或 <code>skb</code> 的一部分）从 <code>tcp_rtx_queue</code> 移除 </li>
+<li><strong>计数修正</strong>：更新 <code>packets_out / sacked_out / lost_out / retrans_out</code> 等 in-<code>flight</code> 相关计数。</li>
+<li><strong>交付与测量</strong>：更新 delivered 统计，为 BBR&#x2F;RACK&#x2F;RTT 采样提供输入。</li>
+<li><strong>输出 flag</strong>：告诉上层 这次 ACK 发生了什么（是否需要重置重传计时器？是否出现 SACK 反悔等）。</li>
+</ul>
+<p><code>tcp_clean_rtx_queue</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br><span class="line">217</span><br><span class="line">218</span><br><span class="line">219</span><br><span class="line">220</span><br><span class="line">221</span><br><span class="line">222</span><br><span class="line">223</span><br><span class="line">224</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">tcp_clean_rtx_queue</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">const</span> <span class="keyword">struct</span> sk_buff *ack_skb,</span></span><br><span class="line"><span class="params">			       u32 prior_fack, u32 prior_snd_una,</span></span><br><span class="line"><span class="params">			       <span class="keyword">struct</span> tcp_sacktag_state *sack, <span class="type">bool</span> ece_ack)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">	u64 first_ackt, last_ackt;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	u32 prior_sacked = tp-&gt;sacked_out;</span><br><span class="line">	u32 reord = tp-&gt;snd_nxt; <span class="comment">/* lowest acked un-retx un-sacked seq */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>, *<span class="title">next</span>;</span></span><br><span class="line">	<span class="type">bool</span> fully_acked = <span class="literal">true</span>;</span><br><span class="line">	<span class="type">long</span> sack_rtt_us = <span class="number">-1L</span>;</span><br><span class="line">	<span class="type">long</span> seq_rtt_us = <span class="number">-1L</span>;</span><br><span class="line">	<span class="type">long</span> ca_rtt_us = <span class="number">-1L</span>;</span><br><span class="line">	u32 pkts_acked = <span class="number">0</span>;</span><br><span class="line">	<span class="type">bool</span> rtt_update;</span><br><span class="line">	<span class="type">int</span> flag = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	first_ackt = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//遍历重传队列</span></span><br><span class="line">	<span class="keyword">for</span> (skb = skb_rb_first(&amp;sk-&gt;tcp_rtx_queue); skb; skb = next) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">tcp_skb_cb</span> *<span class="title">scb</span> =</span> TCP_SKB_CB(skb);</span><br><span class="line">		<span class="type">const</span> u32 start_seq = scb-&gt;seq;</span><br><span class="line">		u8 sacked = scb-&gt;sacked;</span><br><span class="line">		u32 acked_pcount;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Determine how many packets and what bytes were acked, tso and else */</span></span><br><span class="line">		<span class="comment">//结束序列号大于una 可能是部分确认</span></span><br><span class="line">		<span class="keyword">if</span> (after(scb-&gt;end_seq, tp-&gt;snd_una)) &#123;</span><br><span class="line">			<span class="comment">//只有一个段，或者una在seq前面则直接break</span></span><br><span class="line">			<span class="keyword">if</span> (tcp_skb_pcount(skb) == <span class="number">1</span> ||</span><br><span class="line">			    !after(tp-&gt;snd_una, scb-&gt;seq))</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			<span class="comment">//部分确认的情况，直接trim数据包 ,返回0表示无法trim直接break</span></span><br><span class="line">			acked_pcount = tcp_tso_acked(sk, skb);</span><br><span class="line">			<span class="keyword">if</span> (!acked_pcount)</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			fully_acked = <span class="literal">false</span>;</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123; <span class="comment">//整个包都被确认过，直接计算ack计数</span></span><br><span class="line">			acked_pcount = tcp_skb_pcount(skb);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//这个数据包被重传过</span></span><br><span class="line">		<span class="keyword">if</span> (unlikely(sacked &amp; TCPCB_RETRANS)) &#123;</span><br><span class="line">			<span class="keyword">if</span> (sacked &amp; TCPCB_SACKED_RETRANS)	<span class="comment">//也是表示重传过，有这个表示明确加过下面的计数</span></span><br><span class="line">				tp-&gt;retrans_out -= acked_pcount;<span class="comment">//更新重传出去的包数 </span></span><br><span class="line">			flag |= FLAG_RETRANS_DATA_ACKED;</span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> (!(sacked &amp; TCPCB_SACKED_ACKED)) &#123;<span class="comment">//没被重传过，也没有被sack确认过</span></span><br><span class="line">			last_ackt = tcp_skb_timestamp_us(skb); <span class="comment">//获取数据包的发送时间戳</span></span><br><span class="line">			WARN_ON_ONCE(last_ackt == <span class="number">0</span>);</span><br><span class="line">			<span class="keyword">if</span> (!first_ackt)			<span class="comment">//记录本轮清理的第一个被确认的skb</span></span><br><span class="line">				first_ackt = last_ackt;</span><br><span class="line">			<span class="comment">//记录本次被确认的原始数据里，最靠前的起始 seq （</span></span><br><span class="line">			<span class="comment">// 后面如果发现 reord 比之前的 prior_fack 还靠前，通常用来推断 发生了乱序）</span></span><br><span class="line">			<span class="keyword">if</span> (before(start_seq, reord))</span><br><span class="line">				reord = start_seq;</span><br><span class="line">			<span class="comment">//其实就是确认了拥塞发送时候之前的数据，表示确认了原始的数据？</span></span><br><span class="line">			<span class="keyword">if</span> (!after(scb-&gt;end_seq, tp-&gt;high_seq))</span><br><span class="line">				flag |= FLAG_ORIG_SACK_ACKED;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//被sack确认过</span></span><br><span class="line">		<span class="keyword">if</span> (sacked &amp; TCPCB_SACKED_ACKED) &#123;</span><br><span class="line">			tp-&gt;sacked_out -= acked_pcount;</span><br><span class="line">		<span class="comment">//更新交付的数量，同时如果不是虚假重传的话，</span></span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> (tcp_is_sack(tp)) &#123;</span><br><span class="line">			tcp_count_delivered(tp, acked_pcount, ece_ack);</span><br><span class="line">			<span class="keyword">if</span> (!tcp_skb_spurious_retrans(tp, skb))</span><br><span class="line">				<span class="comment">//决定是否启用rack，最后一个参数表示发送出去的时间戳</span></span><br><span class="line">				tcp_rack_advance(tp, sacked, scb-&gt;end_seq,</span><br><span class="line">						 tcp_skb_timestamp_us(skb));</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//之前认为丢失但是现在确认了，修正待重传的丢包数量</span></span><br><span class="line">		<span class="keyword">if</span> (sacked &amp; TCPCB_LOST)</span><br><span class="line">			tp-&gt;lost_out -= acked_pcount;</span><br><span class="line">		<span class="comment">//更新发送出去还没有接收到ack的数量</span></span><br><span class="line">		tp-&gt;packets_out -= acked_pcount;</span><br><span class="line">		<span class="comment">//累计确认了多少个段</span></span><br><span class="line">		pkts_acked += acked_pcount;</span><br><span class="line">		<span class="comment">//bbr算法使用的字段</span></span><br><span class="line">		tcp_rate_skb_delivered(sk, skb, sack-&gt;rate);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Initial outgoing SYN&#x27;s get put onto the write_queue</span></span><br><span class="line"><span class="comment">		 * just like anything else we transmit.  It is not</span></span><br><span class="line"><span class="comment">		 * true data, and if we misinform our callers that</span></span><br><span class="line"><span class="comment">		 * this ACK acks real data, we will erroneously exit</span></span><br><span class="line"><span class="comment">		 * connection startup slow start one packet too</span></span><br><span class="line"><span class="comment">		 * quickly.  This is severely frowned upon behavior.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//不是syn包</span></span><br><span class="line">		<span class="keyword">if</span> (likely(!(scb-&gt;tcp_flags &amp; TCPHDR_SYN))) &#123;</span><br><span class="line">			flag |= FLAG_DATA_ACKED;</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			flag |= FLAG_SYN_ACKED;</span><br><span class="line">			tp-&gt;retrans_stamp = <span class="number">0</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//注意如果不是整个包确认这里直接break</span></span><br><span class="line">		<span class="keyword">if</span> (!fully_acked)</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="comment">//用户态是否需要拿到整个数据包的时间戳？</span></span><br><span class="line">		tcp_ack_tstamp(sk, skb, ack_skb, prior_snd_una);</span><br><span class="line"></span><br><span class="line">		next = skb_rb_next(skb);</span><br><span class="line">		<span class="keyword">if</span> (unlikely(skb == tp-&gt;retransmit_skb_hint))</span><br><span class="line">			tp-&gt;retransmit_skb_hint = <span class="literal">NULL</span>;</span><br><span class="line">		<span class="keyword">if</span> (unlikely(skb == tp-&gt;lost_skb_hint))</span><br><span class="line">			tp-&gt;lost_skb_hint = <span class="literal">NULL</span>;</span><br><span class="line">		tcp_highest_sack_replace(sk, skb, next);</span><br><span class="line">		<span class="comment">//从重传队列中移除</span></span><br><span class="line">		tcp_rtx_queue_unlink_and_free(skb, sk);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!skb)</span><br><span class="line">		<span class="comment">//状态的计时器</span></span><br><span class="line">		tcp_chrono_stop(sk, TCP_CHRONO_BUSY);</span><br><span class="line">	<span class="comment">//更新紧急指针发送边界，没什么用</span></span><br><span class="line">	<span class="keyword">if</span> (likely(between(tp-&gt;snd_up, prior_snd_una, tp-&gt;snd_una)))</span><br><span class="line">		tp-&gt;snd_up = tp-&gt;snd_una;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (skb) &#123;</span><br><span class="line">		tcp_ack_tstamp(sk, skb, ack_skb, prior_snd_una);</span><br><span class="line">		<span class="comment">//这里处理sack 反悔的情况，没太理解</span></span><br><span class="line">		<span class="keyword">if</span> (TCP_SKB_CB(skb)-&gt;sacked &amp; TCPCB_SACKED_ACKED)</span><br><span class="line">			flag |= FLAG_SACK_RENEGING;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//确认了原始发送的数据，并且没有重传过的数据</span></span><br><span class="line">	<span class="keyword">if</span> (likely(first_ackt) &amp;&amp; !(flag &amp; FLAG_RETRANS_DATA_ACKED)) &#123;</span><br><span class="line">		<span class="comment">//这里是获取两个计算rtt的样本，分别用当前的时间减去，第一个被确认的skb和最后一个被确认的skb</span></span><br><span class="line">		seq_rtt_us = tcp_stamp_us_delta(tp-&gt;tcp_mstamp, first_ackt);</span><br><span class="line">		ca_rtt_us = tcp_stamp_us_delta(tp-&gt;tcp_mstamp, last_ackt);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (pkts_acked == <span class="number">1</span> &amp;&amp; fully_acked &amp;&amp; !prior_sacked &amp;&amp;</span><br><span class="line">		    (tp-&gt;snd_una - prior_snd_una) &lt; tp-&gt;mss_cache &amp;&amp;</span><br><span class="line">		    sack-&gt;rate-&gt;prior_delivered + <span class="number">1</span> == tp-&gt;delivered &amp;&amp;</span><br><span class="line">		    !(flag &amp; (FLAG_CA_ALERT | FLAG_SYN_ACKED))) &#123;</span><br><span class="line">			<span class="comment">/* Conservatively mark a delayed ACK. It&#x27;s typically</span></span><br><span class="line"><span class="comment">			 * from a lone runt packet over the round trip to</span></span><br><span class="line"><span class="comment">			 * a receiver w/o out-of-order or CE events.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			flag |= FLAG_ACK_MAYBE_DELAYED;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//和上面类似，只不过这里是用sack的信息生成rtt样本</span></span><br><span class="line">	<span class="keyword">if</span> (sack-&gt;first_sackt) &#123; <span class="comment">//tcp_sacktag_one 中设置的</span></span><br><span class="line">		sack_rtt_us = tcp_stamp_us_delta(tp-&gt;tcp_mstamp, sack-&gt;first_sackt);</span><br><span class="line">		ca_rtt_us = tcp_stamp_us_delta(tp-&gt;tcp_mstamp, sack-&gt;last_sackt);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//计算平滑rtt和rto 和三次握手一样注意这里参数不一样</span></span><br><span class="line">	rtt_update = tcp_ack_update_rtt(sk, flag, seq_rtt_us, sack_rtt_us,</span><br><span class="line">					ca_rtt_us, sack-&gt;rate);</span><br><span class="line">	<span class="comment">//如果ack确认了新数据</span></span><br><span class="line">	<span class="keyword">if</span> (flag &amp; FLAG_ACKED) &#123;</span><br><span class="line">		flag |= FLAG_SET_XMIT_TIMER;  <span class="comment">/* set TLP or RTO timer */</span></span><br><span class="line">		<span class="comment">//mtu探测成功！</span></span><br><span class="line">		<span class="keyword">if</span> (unlikely(icsk-&gt;icsk_mtup.probe_size &amp;&amp;</span><br><span class="line">			     !after(tp-&gt;mtu_probe.probe_seq_end, tp-&gt;snd_una))) &#123;</span><br><span class="line">			tcp_mtup_probe_success(sk);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//这里通常不进入</span></span><br><span class="line">		<span class="keyword">if</span> (tcp_is_reno(tp)) &#123;</span><br><span class="line">			tcp_remove_reno_sacks(sk, pkts_acked, ece_ack);</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* If any of the cumulatively ACKed segments was</span></span><br><span class="line"><span class="comment">			 * retransmitted, non-SACK case cannot confirm that</span></span><br><span class="line"><span class="comment">			 * progress was due to original transmission due to</span></span><br><span class="line"><span class="comment">			 * lack of TCPCB_SACKED_ACKED bits even if some of</span></span><br><span class="line"><span class="comment">			 * the packets may have been never retransmitted.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="keyword">if</span> (flag &amp; FLAG_RETRANS_DATA_ACKED)</span><br><span class="line">				flag &amp;= ~FLAG_ORIG_SACK_ACKED;</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			<span class="type">int</span> delta;</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* Non-retransmitted hole got filled? That&#x27;s reordering */</span></span><br><span class="line">		<span class="comment">//之前 SACK 认为后面已经收到，现在累计 ACK 却回过头来确认了一个更靠前的洞，就是更新乱序阈值！！</span></span><br><span class="line">			<span class="keyword">if</span> (before(reord, prior_fack))</span><br><span class="line">				tcp_check_sack_reordering(sk, reord, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">			delta = prior_sacked - tp-&gt;sacked_out;</span><br><span class="line">			tp-&gt;lost_cnt_hint -= min(tp-&gt;lost_cnt_hint, delta);</span><br><span class="line">		&#125;</span><br><span class="line">	<span class="comment">//如果ack没有确认新数据</span></span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (skb &amp;&amp; rtt_update &amp;&amp; sack_rtt_us &gt;= <span class="number">0</span> &amp;&amp;</span><br><span class="line">		   sack_rtt_us &gt; tcp_stamp_us_delta(tp-&gt;tcp_mstamp,</span><br><span class="line">						    tcp_skb_timestamp_us(skb))) &#123;</span><br><span class="line">		<span class="comment">/* Do not re-arm RTO if the sack RTT is measured from data sent</span></span><br><span class="line"><span class="comment">		 * after when the head was last (re)transmitted. Otherwise the</span></span><br><span class="line"><span class="comment">		 * timeout may continue to extend in loss recovery.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		flag |= FLAG_SET_XMIT_TIMER;  <span class="comment">/* set TLP or RTO timer */</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//是否有拥塞算法的钩子，vegas 有这个钩子</span></span><br><span class="line">	<span class="keyword">if</span> (icsk-&gt;icsk_ca_ops-&gt;pkts_acked) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">ack_sample</span> <span class="title">sample</span> =</span> &#123; .pkts_acked = pkts_acked,</span><br><span class="line">					     .rtt_us = sack-&gt;rate-&gt;rtt_us &#125;;</span><br><span class="line"></span><br><span class="line">		sample.in_flight = tp-&gt;mss_cache *</span><br><span class="line">			(tp-&gt;delivered - sack-&gt;rate-&gt;prior_delivered);</span><br><span class="line">		icsk-&gt;icsk_ca_ops-&gt;pkts_acked(sk, &amp;sample);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">if</span> FASTRETRANS_DEBUG &gt; 0</span></span><br><span class="line">	WARN_ON((<span class="type">int</span>)tp-&gt;sacked_out &lt; <span class="number">0</span>);</span><br><span class="line">	WARN_ON((<span class="type">int</span>)tp-&gt;lost_out &lt; <span class="number">0</span>);</span><br><span class="line">	WARN_ON((<span class="type">int</span>)tp-&gt;retrans_out &lt; <span class="number">0</span>);</span><br><span class="line">	<span class="keyword">if</span> (!tp-&gt;packets_out &amp;&amp; tcp_is_sack(tp)) &#123;</span><br><span class="line">		icsk = inet_csk(sk);</span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;lost_out) &#123;</span><br><span class="line">			pr_debug(<span class="string">&quot;Leak l=%u %d\n&quot;</span>,</span><br><span class="line">				 tp-&gt;lost_out, icsk-&gt;icsk_ca_state);</span><br><span class="line">			tp-&gt;lost_out = <span class="number">0</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;sacked_out) &#123;</span><br><span class="line">			pr_debug(<span class="string">&quot;Leak s=%u %d\n&quot;</span>,</span><br><span class="line">				 tp-&gt;sacked_out, icsk-&gt;icsk_ca_state);</span><br><span class="line">			tp-&gt;sacked_out = <span class="number">0</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;retrans_out) &#123;</span><br><span class="line">			pr_debug(<span class="string">&quot;Leak r=%u %d\n&quot;</span>,</span><br><span class="line">				 tp-&gt;retrans_out, icsk-&gt;icsk_ca_state);</span><br><span class="line">			tp-&gt;retrans_out = <span class="number">0</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="keyword">return</span> flag;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_clean_rtx_queue</code>中首先从重传队列头部开始，尽可能的去清理<code>skb</code>，循环内部首先判断这个<code>skb</code>是否已经被snd_una覆盖，或者是否被部分确认了，如果是部分确认则后续数据包肯定不用继续走了，会直接<code>break</code>。</p>
+<p>如果确认了原始发送的数据（最常见的情况）则会记录本轮第一个<code>skb</code>（后面计算<code>rtt</code>会用到），同时更新乱序开始的序号并设置确认原始数据的标志。</p>
+<p>接下来判断数据包是否被<code>sack</code>确认过，如果确认过则更新确认的累计技计数，如果没有被<code>sack</code>确认过则会进一步判断当前是否是一个虚假的重传（通过比较时间戳选项），如果不是虚假重传则会根据这个数据包的<code>rtt</code>决定是否启用<code>rack</code></p>
+<p>之后更新更新发送出去还没有接收到ack的数量，累计确认的总段数等信息，同时为<code>bbr</code>算法提供必要的字段。之后调用<code>tcp_rtx_queue_unlink_and_free</code>将当前数据包从重传队列中移除，进入下一次循环。</p>
+<p>重传队列清理完成后（也就是退出循环），进入收尾工作，<strong>最关键的就是计算<code>rtt</code>，同时决定是否启动重传相关定时器</strong>首先调用<code>tcp_chrono_stop</code>记录本次状态持续的时间（三次握手中有介绍过）之后判断当前重传队列是否被清空了，如果没有被清空，则会判断是否存在<code>sack</code>反悔，这里不太理解怎么判断的。</p>
+<p>之后计算<code>rtt</code>，生成<code>rtt</code>的样本来源两处，一个是累计<code>ack</code>清掉的原始数据另一个是<code>sack</code>选项确认的数据，这里使用哪个是不一定的。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/12/29/TCP%E6%B8%85%E7%90%86%E9%87%8D%E4%BC%A0%E9%98%9F%E5%88%97/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/12/23/TCPsack%E5%A4%84%E7%90%86tcp_sacktag_write_queue%EF%BC%884%EF%BC%89/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1134,107 +1238,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/11/27/tcp_write_xmit(%E4%BA%8C)/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/11/27/tcp_write_xmit(%E4%BA%8C)/" class="post-title-link" itemprop="url">TCP输出 tcp_write_xmit（二）</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2025-11-27 22:00:00 / 修改时间：23:23:28" itemprop="dateCreated datePublished" datetime="2025-11-27T22:00:00+08:00">2025-11-27</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/11/27/tcp_write_xmit(%E4%BA%8C)/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/11/27/tcp_write_xmit(%E4%BA%8C)/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p><code>tcp_write_xmit</code>在进入<code>while</code>循环遍历发送数据包之前，首先计算<code>max_segs</code>的大小，这里需要注意，<code>tcp_sendmsg_locked</code>中只是尽可能的将用户数据<code>copy</code>放到一个<code>skb</code>中，而接下来的工作是真正决定是否能发送，能发送多少。</p>
-<p>首先调用<code>tcp_tso_segs</code>计算当前数据包的最大段数(<code>max_segs</code>根据<code>rtt</code>计算)，最大段数和当前的<code>mss</code>决定了一次<code>while</code>循环最多能发送多少数据，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> u32 <span class="title function_">tcp_tso_segs</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">unsigned</span> <span class="type">int</span> mss_now)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">tcp_congestion_ops</span> *<span class="title">ca_ops</span> =</span> inet_csk(sk)-&gt;icsk_ca_ops;</span><br><span class="line">	u32 min_tso, tso_segs;</span><br><span class="line">	<span class="comment">//拥塞算法是否提供了钩子，bbr就提供了，否则使用默认的，通常为2 </span></span><br><span class="line">	min_tso = ca_ops-&gt;min_tso_segs ?</span><br><span class="line">			ca_ops-&gt;min_tso_segs(sk) :</span><br><span class="line">			READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_min_tso_segs);</span><br><span class="line">	<span class="comment">//根据rtt计算段数 </span></span><br><span class="line">	tso_segs = tcp_tso_autosize(sk, mss_now, min_tso);</span><br><span class="line">	<span class="keyword">return</span> <span class="type">min_t</span>(u32, tso_segs, sk-&gt;sk_gso_max_segs);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p><strong><code>tcp_tso_segs</code>进一步调用<code>tcp_tso_autosize</code>根据<code>rtt</code>自适应调整段数的大小，具体代码如下所示：</strong></p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> u32 <span class="title function_">tcp_tso_autosize</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> sock *sk, <span class="type">unsigned</span> <span class="type">int</span> mss_now,</span></span><br><span class="line"><span class="params">			    <span class="type">int</span> min_tso_segs)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> bytes;</span><br><span class="line">	u32 r;</span><br><span class="line">	<span class="comment">//转换成每秒多少字节</span></span><br><span class="line">	bytes = sk-&gt;sk_pacing_rate &gt;&gt; READ_ONCE(sk-&gt;sk_pacing_shift);</span><br><span class="line">	<span class="comment">//基于rtt做调整，r可以理解为延迟的严重程度吧</span></span><br><span class="line">	r = tcp_min_rtt(tcp_sk(sk)) &gt;&gt; READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_tso_rtt_log);<span class="comment">//默认是9 标志512是一个合理的网络延迟变化粒度</span></span><br><span class="line">	<span class="keyword">if</span> (r &lt; BITS_PER_TYPE(sk-&gt;sk_gso_max_size))<span class="comment">//这是什么意思？</span></span><br><span class="line">		bytes += sk-&gt;sk_gso_max_size &gt;&gt; r; <span class="comment">//这里的意思就是延迟越大，max_size 越小</span></span><br><span class="line">	<span class="comment">//钳制</span></span><br><span class="line">	bytes = <span class="type">min_t</span>(<span class="type">unsigned</span> <span class="type">long</span>, bytes, sk-&gt;sk_gso_max_size);</span><br><span class="line">	<span class="comment">//计算段数 </span></span><br><span class="line">	<span class="keyword">return</span> <span class="type">max_t</span>(u32, bytes / mss_now, min_tso_segs);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>上述代码根据带宽估算和 <code>RTT</code> 动态决定 <code>GSO</code> 报文大小：<code>RTT</code> 越大网络越远，单个 <code>GSO</code>包越小；<code>RTT</code> 越小网络越近，<code>GSO</code>越大以减少 <code>CPU</code> 负载</p>
-<p>计算最大段数之后之后进入主要流程，循环从队列头部中获取数据包。</p>
-<p>首先调用<code>tcp_pacing_check</code>，判断是否可以立即发送数据包，<code>tcp_pacing_check</code>中首先判断是否需要<code>tcp</code>内部自己做<code>pacing</code>，下一个数据包要发送的时间小于等于当前的时钟（理想发包时间已经到了 ），则可以直接发送，不需要启动定时器，否则表示时间还没有到，返回<code>true</code>表示不立即发送，<strong>注意：这里启动了<code>pacing</code>定时器</strong>，上述具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">bool</span> <span class="title function_">tcp_pacing_check</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="comment">//sch_fq 开启这个就会返回false，表示不需要tcp内部自己pacing ，反之，如果为brr 会继续向下执行</span></span><br><span class="line">	<span class="keyword">if</span> (!tcp_needs_internal_pacing(sk))</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	<span class="comment">//下一个数据包要发送的时间小于等于当前的时钟，则可以直接发送，不需要启动定时器</span></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;tcp_wstamp_ns &lt;= tp-&gt;tcp_clock_cache)</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	<span class="comment">//如果定时器还没在排队，就启动一个pacing定时器 如果不能发送的情况 这里用软中断上下文去发包</span></span><br><span class="line">	<span class="keyword">if</span> (!hrtimer_is_queued(&amp;tp-&gt;pacing_timer)) &#123;</span><br><span class="line">		hrtimer_start(&amp;tp-&gt;pacing_timer,</span><br><span class="line">			      ns_to_ktime(tp-&gt;tcp_wstamp_ns),</span><br><span class="line">			      HRTIMER_MODE_ABS_PINNED_SOFT);</span><br><span class="line">		sock_hold(sk);<span class="comment">//这里引用计数++，防止socket被提前释放</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>如果可以发送，则调用<code>tcp_init_tso_segs</code>根据当前数据包的总长度和<code>mss</code>计算当前数据包的段数，这里注意上面是根据<code>rtt</code>计算最大的段数，这里计算的是当前数据包的段数，不矛盾，具体代码如下所示：</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/11/27/tcp_write_xmit(%E4%BA%8C)/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1304,7 +1307,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">81</span>
+          <span class="site-state-item-count">82</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
