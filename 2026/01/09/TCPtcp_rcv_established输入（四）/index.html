@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="上文TCP输入 慢速路径（一）说到TCP慢速路径收到报文后，如果数据包序列号是预期的，则首先进行内存压力检查，如果不存在内存压力或者解决了内存压力，会直接将数据包放入接收队列，随后会判断乱序队列是否为空，如果乱序队列不为空，则会调用tcp_ofo_queue尝试将乱序队列中的数据尝试放到有序接收队列中，具体代码如下所示： 12345678910111213141516171819202122232">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TCP输入 慢速路径（二）">
+<meta property="og:url" content="http://example.com/2026/01/09/TCPtcp_rcv_established%E8%BE%93%E5%85%A5%EF%BC%88%E5%9B%9B%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="上文TCP输入 慢速路径（一）说到TCP慢速路径收到报文后，如果数据包序列号是预期的，则首先进行内存压力检查，如果不存在内存压力或者解决了内存压力，会直接将数据包放入接收队列，随后会判断乱序队列是否为空，如果乱序队列不为空，则会调用tcp_ofo_queue尝试将乱序队列中的数据尝试放到有序接收队列中，具体代码如下所示： 12345678910111213141516171819202122232">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-01-09T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-01-08T14:54:59.217Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP输入">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/01/09/TCPtcp_rcv_established%E8%BE%93%E5%85%A5%EF%BC%88%E5%9B%9B%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TCP输入 慢速路径（二） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/01/09/TCPtcp_rcv_established%E8%BE%93%E5%85%A5%EF%BC%88%E5%9B%9B%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TCP输入 慢速路径（二）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-01-09 22:00:00" itemprop="dateCreated datePublished" datetime="2026-01-09T22:00:00+08:00">2026-01-09</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-01-08 22:54:59" itemprop="dateModified" datetime="2026-01-08T22:54:59+08:00">2026-01-08</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/01/09/TCPtcp_rcv_established%E8%BE%93%E5%85%A5%EF%BC%88%E5%9B%9B%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/01/09/TCPtcp_rcv_established%E8%BE%93%E5%85%A5%EF%BC%88%E5%9B%9B%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>上文<a href="/2026/01/07/TCPtcp_rcv_established%E8%BE%93%E5%85%A5%EF%BC%88%E4%B8%89%EF%BC%89/" title="TCP输入 慢速路径（一）">TCP输入 慢速路径（一）</a>说到TCP慢速路径收到报文后，如果数据包序列号是预期的，则首先进行内存压力检查，如果不存在内存压力或者解决了内存压力，会直接将数据包放入接收队列，随后会判断乱序队列是否为空，如果乱序队列不为空，则会调用<code>tcp_ofo_queue</code>尝试将乱序队列中的数据尝试放到有序接收队列中，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">tcp_ofo_queue</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	__u32 dsack_high = tp-&gt;rcv_nxt;</span><br><span class="line">	<span class="type">bool</span> fin, fragstolen, eaten;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>, *<span class="title">tail</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rb_node</span> *<span class="title">p</span>;</span></span><br><span class="line">	<span class="comment">//乱序队列</span></span><br><span class="line">	p = rb_first(&amp;tp-&gt;out_of_order_queue);</span><br><span class="line">	<span class="keyword">while</span> (p) &#123;</span><br><span class="line">		skb = rb_to_skb(p);</span><br><span class="line">		<span class="comment">//需要比下一个预期接收的大直接break</span></span><br><span class="line">		<span class="keyword">if</span> (after(TCP_SKB_CB(skb)-&gt;seq, tp-&gt;rcv_nxt))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="comment">//这里判断是否发生重叠</span></span><br><span class="line">		<span class="keyword">if</span> (before(TCP_SKB_CB(skb)-&gt;seq, dsack_high)) &#123;</span><br><span class="line">			__u32 dsack = dsack_high;<span class="comment">//保存起来</span></span><br><span class="line">			<span class="comment">//整个skb都在旧的部分</span></span><br><span class="line">			<span class="keyword">if</span> (before(TCP_SKB_CB(skb)-&gt;end_seq, dsack_high))</span><br><span class="line">				dsack_high = TCP_SKB_CB(skb)-&gt;end_seq;</span><br><span class="line">			<span class="comment">//用于告诉发送端收到了重复的数据</span></span><br><span class="line">			tcp_dsack_extend(sk, TCP_SKB_CB(skb)-&gt;seq, dsack);</span><br><span class="line">		&#125;</span><br><span class="line">		p = rb_next(p);</span><br><span class="line">		rb_erase(&amp;skb-&gt;rbnode, &amp;tp-&gt;out_of_order_queue);</span><br><span class="line">		<span class="comment">//完全是旧的数据直接 continue</span></span><br><span class="line">		<span class="keyword">if</span> (unlikely(!after(TCP_SKB_CB(skb)-&gt;end_seq, tp-&gt;rcv_nxt))) &#123;</span><br><span class="line">			tcp_drop_reason(sk, skb, SKB_DROP_REASON_TCP_OFO_DROP);</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//获取接收队列的最后一个数据包</span></span><br><span class="line">		tail = skb_peek_tail(&amp;sk-&gt;sk_receive_queue);</span><br><span class="line">		<span class="comment">//追加新的skb，这里注意如果序列号不正正好好的连续这里直接false</span></span><br><span class="line">		eaten = tail &amp;&amp; tcp_try_coalesce(sk, tail, skb, &amp;fragstolen);</span><br><span class="line">		<span class="comment">//更新下一个待接收的序列号</span></span><br><span class="line">		tcp_rcv_nxt_update(tp, TCP_SKB_CB(skb)-&gt;end_seq);</span><br><span class="line">		fin = TCP_SKB_CB(skb)-&gt;tcp_flags &amp; TCPHDR_FIN;</span><br><span class="line">		<span class="comment">//没有追加上，入队列，这里有问题啊 部分重叠的数也入队了？？</span></span><br><span class="line">		<span class="keyword">if</span> (!eaten)</span><br><span class="line">			__skb_queue_tail(&amp;sk-&gt;sk_receive_queue, skb);</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			</span><br><span class="line">			kfree_skb_partial(skb, fragstolen);</span><br><span class="line">		<span class="comment">//乱序队列中有个fin 走fin包处理逻辑</span></span><br><span class="line">		<span class="keyword">if</span> (unlikely(fin)) &#123;</span><br><span class="line">			tcp_fin(sk);</span><br><span class="line">			<span class="comment">/* tcp_fin() purges tp-&gt;out_of_order_queue,</span></span><br><span class="line"><span class="comment">			 * so we must end this loop right now.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_ofo_queue</code>核心工作就是当接收端发现乱序队列中已有的数据已经连续可用时，就按序从 <code>out-of-order</code> 红黑树中取出这些 <code>skb</code>：一边生成 <code>DSACK</code> 记录重复区间，一边丢弃完全过期的数据，能与接收队列尾部合并的就合并，不能的就入接收队列，同时推进 <code>rcv_nxt</code>；如果遇到 <code>FIN</code> 就进入连接关闭处理。这里注意：貌似部分重叠的数据也直接入队了！。</p>
+<p>回到<code>tcp_data_queue</code>中处理完乱序队列后，会重新处理<code>sack</code>选项的信息，因为此时整理的乱序丢列，需要重新更新。之后调用<code>tcp_fast_path_check</code>重新设置快速路径用到的<code>flag</code>。最后通知用户态的进程，有数据到了。</p>
+<p>如果是完全旧的数据包（数据包的结束序列号在下一个待接收序列号的左侧）则认为是一次虚假的重传设置<code>dsack</code>并进入快速<code>ack</code>模式，目的是即使通知对端收到了虚假重传。</p>
+<p>如果数据包的序列号超出了本端的接窗口则直接丢弃书包</p>
+<p>如果数据包存在部分重叠的情况，则设置<code>dsack</code>的信息，并直接入队，这里注意：重叠的部分也直接入队了？，应用程序读取的时候会处理这种情况？</p>
+<p>其他情况则认为就是收到了乱序的报文，调用<code>tcp_data_queue_ofo</code>进行进一步处理，<code>tcp_data_queue_ofo</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">tcp_data_queue_ofo</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rb_node</span> **<span class="title">p</span>, *<span class="title">parent</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb1</span>;</span></span><br><span class="line">	u32 seq, end_seq;</span><br><span class="line">	<span class="type">bool</span> fragstolen;</span><br><span class="line"></span><br><span class="line">	tcp_ecn_check_ce(sk, skb);</span><br><span class="line">	<span class="comment">//判断是否内存原因无法继续处理，和外面处理逻辑一样</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(tcp_try_rmem_schedule(sk, skb, skb-&gt;truesize))) &#123;</span><br><span class="line">		NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPOFODROP);</span><br><span class="line">		sk-&gt;sk_data_ready(sk);</span><br><span class="line">		tcp_drop_reason(sk, skb, SKB_DROP_REASON_PROTO_MEM);</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Disable header prediction. */</span></span><br><span class="line">	<span class="comment">//这里直接关掉了fastpath</span></span><br><span class="line">	tp-&gt;pred_flags = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//设置需要回复ack 的标志</span></span><br><span class="line">	inet_csk_schedule_ack(sk);</span><br><span class="line">	<span class="comment">//乱序包统计计数++</span></span><br><span class="line">	tp-&gt;rcv_ooopack += <span class="type">max_t</span>(u16, <span class="number">1</span>, skb_shinfo(skb)-&gt;gso_segs);</span><br><span class="line">	NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPOFOQUEUE); <span class="comment">//这可以观测乱序数据包的数量</span></span><br><span class="line">	<span class="comment">//数据包的开始序列号</span></span><br><span class="line">	seq = TCP_SKB_CB(skb)-&gt;seq;</span><br><span class="line">	<span class="comment">//数据包的结束序列号</span></span><br><span class="line">	end_seq = TCP_SKB_CB(skb)-&gt;end_seq;</span><br><span class="line">	<span class="comment">//乱序队列</span></span><br><span class="line">	p = &amp;tp-&gt;out_of_order_queue.rb_node;</span><br><span class="line">	<span class="comment">//乱序队列为空的情况</span></span><br><span class="line">	<span class="keyword">if</span> (RB_EMPTY_ROOT(&amp;tp-&gt;out_of_order_queue)) &#123;</span><br><span class="line">		<span class="comment">/* Initial out of order segment, build 1 SACK. */</span></span><br><span class="line">		<span class="keyword">if</span> (tcp_is_sack(tp)) &#123;</span><br><span class="line">			<span class="comment">//构造sack的信息</span></span><br><span class="line">			tp-&gt;rx_opt.num_sacks = <span class="number">1</span>;</span><br><span class="line">			tp-&gt;selective_acks[<span class="number">0</span>].start_seq = seq;</span><br><span class="line">			tp-&gt;selective_acks[<span class="number">0</span>].end_seq = end_seq;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//插入乱序队列</span></span><br><span class="line">		rb_link_node(&amp;skb-&gt;rbnode, <span class="literal">NULL</span>, p);</span><br><span class="line">		rb_insert_color(&amp;skb-&gt;rbnode, &amp;tp-&gt;out_of_order_queue);</span><br><span class="line">		tp-&gt;ooo_last_skb = skb;<span class="comment">//乱序队列中最后一个书包</span></span><br><span class="line">		<span class="keyword">goto</span> end;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* In the typical case, we are adding an skb to the end of the list.</span></span><br><span class="line"><span class="comment">	 * Use of ooo_last_skb avoids the O(Log(N)) rbtree lookup.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//这里是尝试将当前数据包加入到末尾skb上 注意序列号必须和最后一个连续</span></span><br><span class="line">	<span class="comment">//感觉通常不会走到这个逻辑吧</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_ooo_try_coalesce(sk, tp-&gt;ooo_last_skb,</span><br><span class="line">				 skb, &amp;fragstolen)) &#123;</span><br><span class="line">coalesce_done:</span><br><span class="line">		<span class="comment">/* For non sack flows, do not grow window to force DUPACK</span></span><br><span class="line"><span class="comment">		 * and trigger fast retransmit.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="keyword">if</span> (tcp_is_sack(tp))</span><br><span class="line">			tcp_grow_window(sk, skb, <span class="literal">true</span>);</span><br><span class="line">		kfree_skb_partial(skb, fragstolen);</span><br><span class="line">		skb = <span class="literal">NULL</span>;</span><br><span class="line">		<span class="keyword">goto</span> add_sack;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">/* Can avoid an rbtree lookup if we are adding skb after ooo_last_skb */</span></span><br><span class="line">	<span class="comment">//还在当前乱序数据包的最后一个的后面，那就直接插入就可以了</span></span><br><span class="line">	<span class="keyword">if</span> (!before(seq, TCP_SKB_CB(tp-&gt;ooo_last_skb)-&gt;end_seq)) &#123;</span><br><span class="line">		parent = &amp;tp-&gt;ooo_last_skb-&gt;rbnode;</span><br><span class="line">		p = &amp;parent-&gt;rb_right;</span><br><span class="line">		<span class="keyword">goto</span> insert;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Find place to insert this segment. Handle overlaps on the way. */</span></span><br><span class="line">	<span class="comment">//真正的核心，在红黑树中查找插入点，同时处理重叠和覆盖</span></span><br><span class="line">	parent = <span class="literal">NULL</span>;</span><br><span class="line">	<span class="comment">//这里p是红黑树的根</span></span><br><span class="line">	<span class="keyword">while</span> (*p) &#123;</span><br><span class="line">		parent = *p;</span><br><span class="line">		skb1 = rb_to_skb(parent);</span><br><span class="line">		<span class="comment">//一直往左左走</span></span><br><span class="line">		<span class="keyword">if</span> (before(seq, TCP_SKB_CB(skb1)-&gt;seq)) &#123;</span><br><span class="line">			p = &amp;parent-&gt;rb_left;</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//判断右边</span></span><br><span class="line">		<span class="keyword">if</span> (before(seq, TCP_SKB_CB(skb1)-&gt;end_seq)) &#123;</span><br><span class="line">			<span class="comment">//新段完全被当前段覆盖 直接丢弃了，注意和外面区分，这里是乱序队列完全是旧的</span></span><br><span class="line">			<span class="keyword">if</span> (!after(end_seq, TCP_SKB_CB(skb1)-&gt;end_seq)) &#123;</span><br><span class="line">				<span class="comment">/* All the bits are present. Drop. */</span></span><br><span class="line">				NET_INC_STATS(sock_net(sk),</span><br><span class="line">					      LINUX_MIB_TCPOFOMERGE);</span><br><span class="line">				tcp_drop_reason(sk, skb,</span><br><span class="line">						SKB_DROP_REASON_TCP_OFOMERGE);</span><br><span class="line">				skb = <span class="literal">NULL</span>;</span><br><span class="line">				<span class="comment">//构造sack</span></span><br><span class="line">				tcp_dsack_set(sk, seq, end_seq);</span><br><span class="line">				<span class="keyword">goto</span> add_sack;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="comment">//部分重叠的情况</span></span><br><span class="line">			<span class="keyword">if</span> (after(seq, TCP_SKB_CB(skb1)-&gt;seq)) &#123;</span><br><span class="line">				<span class="comment">/* Partial overlap. */</span></span><br><span class="line">				tcp_dsack_set(sk, seq, TCP_SKB_CB(skb1)-&gt;end_seq);</span><br><span class="line">			&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">				<span class="comment">/* skb&#x27;s seq == skb1&#x27;s seq and skb covers skb1.</span></span><br><span class="line"><span class="comment">				 * Replace skb1 with skb.</span></span><br><span class="line"><span class="comment">				 */</span></span><br><span class="line">				<span class="comment">//这里是一定是起点相同的情况！！！</span></span><br><span class="line">				rb_replace_node(&amp;skb1-&gt;rbnode, &amp;skb-&gt;rbnode,</span><br><span class="line">						&amp;tp-&gt;out_of_order_queue);</span><br><span class="line">				<span class="comment">//设置dsack 这里是一个扩展，在原有的基础上？</span></span><br><span class="line">				tcp_dsack_extend(sk,</span><br><span class="line">						 TCP_SKB_CB(skb1)-&gt;seq,</span><br><span class="line">						 TCP_SKB_CB(skb1)-&gt;end_seq);</span><br><span class="line">				NET_INC_STATS(sock_net(sk),</span><br><span class="line">					      LINUX_MIB_TCPOFOMERGE);</span><br><span class="line">				</span><br><span class="line">				tcp_drop_reason(sk, skb1,</span><br><span class="line">						SKB_DROP_REASON_TCP_OFOMERGE);</span><br><span class="line">				<span class="comment">//处理右侧可能重叠的部分</span></span><br><span class="line">				<span class="keyword">goto</span> merge_right;</span><br><span class="line">			&#125;</span><br><span class="line">		<span class="comment">//在skb1的右侧，如果进入分支表示合并成功！</span></span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> (tcp_ooo_try_coalesce(sk, skb1,</span><br><span class="line">						skb, &amp;fragstolen)) &#123;</span><br><span class="line">			<span class="keyword">goto</span> coalesce_done;</span><br><span class="line">		&#125;</span><br><span class="line">		p = &amp;parent-&gt;rb_right;</span><br><span class="line">	&#125;</span><br><span class="line">insert:</span><br><span class="line">	<span class="comment">/* Insert segment into RB tree. */</span></span><br><span class="line">	rb_link_node(&amp;skb-&gt;rbnode, parent, p);</span><br><span class="line">	rb_insert_color(&amp;skb-&gt;rbnode, &amp;tp-&gt;out_of_order_queue);</span><br><span class="line"></span><br><span class="line">merge_right:</span><br><span class="line">	<span class="comment">//把右边的重复数据段干掉!</span></span><br><span class="line">	<span class="comment">/* Remove other segments covered by skb. */</span></span><br><span class="line">	<span class="keyword">while</span> ((skb1 = skb_rb_next(skb)) != <span class="literal">NULL</span>) &#123;</span><br><span class="line">		<span class="comment">//和右侧没有重叠的 直接break</span></span><br><span class="line">		<span class="keyword">if</span> (!after(end_seq, TCP_SKB_CB(skb1)-&gt;seq))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="comment">//部分重叠，不处理</span></span><br><span class="line">		<span class="keyword">if</span> (before(end_seq, TCP_SKB_CB(skb1)-&gt;end_seq)) &#123;</span><br><span class="line">			tcp_dsack_extend(sk, TCP_SKB_CB(skb1)-&gt;seq,</span><br><span class="line">					 end_seq);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//重叠的情况，完全覆盖，从红黑树中移除</span></span><br><span class="line">		rb_erase(&amp;skb1-&gt;rbnode, &amp;tp-&gt;out_of_order_queue);</span><br><span class="line">	</span><br><span class="line">		tcp_dsack_extend(sk, TCP_SKB_CB(skb1)-&gt;seq,</span><br><span class="line">				 TCP_SKB_CB(skb1)-&gt;end_seq);</span><br><span class="line">		NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPOFOMERGE);</span><br><span class="line">		tcp_drop_reason(sk, skb1, SKB_DROP_REASON_TCP_OFOMERGE);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">/* If there is no skb after us, we are the last_skb ! */</span></span><br><span class="line">	<span class="comment">//更新最后一个skb</span></span><br><span class="line">	<span class="keyword">if</span> (!skb1)</span><br><span class="line">		tp-&gt;ooo_last_skb = skb;</span><br><span class="line"></span><br><span class="line">add_sack:<span class="comment">//更新sack 的信息</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_is_sack(tp))</span><br><span class="line">		tcp_sack_new_ofo_skb(sk, seq, end_seq);</span><br><span class="line">end:</span><br><span class="line"><span class="comment">//如果skb没被丢弃</span></span><br><span class="line">	<span class="keyword">if</span> (skb) &#123;</span><br><span class="line">		<span class="comment">/* For non sack flows, do not grow window to force DUPACK</span></span><br><span class="line"><span class="comment">		 * and trigger fast retransmit.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//尝试增大窗口，目的是让对端发送更多数据？触发快重传？</span></span><br><span class="line">		<span class="keyword">if</span> (tcp_is_sack(tp))</span><br><span class="line">			tcp_grow_window(sk, skb, <span class="literal">false</span>);</span><br><span class="line">		<span class="comment">//整理skb内存布局</span></span><br><span class="line">		skb_condense(skb);</span><br><span class="line">		<span class="comment">//内存记账！</span></span><br><span class="line">		skb_set_owner_r(skb, sk);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_data_queue_ofo</code>核心逻辑就是将乱序到达的数据包按序插入到红黑树中，并更新<code>sack</code>的信息。首先也检查是否在内存压力之下，和外层处理逻辑类似，之后直接关闭快速路径，累加乱序数据包计数，之后拿到数据包的起始和结束序号。</p>
+<p>如果乱序队列为空，则数据包直接放入乱序队列，并更新<code>sack</code>的信息。</p>
+<p>如果当前数据包的开始序列号正好和乱序队列队列的最后一个数据包序列号上连续则直接尝试合并数据包，如果合并成功则直接构造<code>sack</code>信息并返回。</p>
+<p>如果当前数据包还在乱序队列最后一个数据包的后面则直接插入乱序队列并返回，否则进入<code>while</code>循环中从乱序队列的根节点开始找到合适的处理位置，插入或者处理数据包。如果当前数据包已经完全被乱序队列中的数据包覆盖则直接丢弃数据包，如果部分重叠则直接插入，后面会进一步处理。如果当前数据包和红黑树中的数据包起点相同则设置<code>dsack</code>后会丢弃原有的数据包，并处理右侧重叠的部分。</p>
+<p>如果恰好为当前待处理数据包的右侧序列号，则会尝试直接合并数据包（大概率不会吧）。</p>
+<p>处理右侧的逻辑：如果当前数据包和右侧数据包存在部分重叠则不处理，如果完全重叠的话则把红黑树中的书包直接移除。</p>
+<p>上述处理乱序的流程中如果需要处理<code>sack</code>则会调用<code>tcp_sack_new_ofo_skb</code>来填充<code>sack</code>信息。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Reasonable amount of sack blocks included in TCP SACK option</span></span><br><span class="line"><span class="comment"> * The max is 4, but this becomes 3 if TCP timestamps are there.</span></span><br><span class="line"><span class="comment"> * Given that SACK packets might be lost, be conservative and use 2.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> TCP_SACK_BLOCKS_EXPECTED 2</span></span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">tcp_sack_new_ofo_skb</span><span class="params">(<span class="keyword">struct</span> sock *sk, u32 seq, u32 end_seq)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sack_block</span> *<span class="title">sp</span> =</span> &amp;tp-&gt;selective_acks[<span class="number">0</span>];</span><br><span class="line">	<span class="type">int</span> cur_sacks = tp-&gt;rx_opt.num_sacks;</span><br><span class="line">	<span class="type">int</span> this_sack;</span><br><span class="line">	<span class="comment">//没有，直接填充sack</span></span><br><span class="line">	<span class="keyword">if</span> (!cur_sacks)</span><br><span class="line">		<span class="keyword">goto</span> new_sack;</span><br><span class="line">	<span class="comment">//尝试更已右的sack合并。</span></span><br><span class="line">	<span class="keyword">for</span> (this_sack = <span class="number">0</span>; this_sack &lt; cur_sacks; this_sack++, sp++) &#123;</span><br><span class="line">		<span class="keyword">if</span> (tcp_sack_extend(sp, seq, end_seq)) &#123;</span><br><span class="line">			<span class="keyword">if</span> (this_sack &gt;= TCP_SACK_BLOCKS_EXPECTED) <span class="comment">//段太多</span></span><br><span class="line">				tcp_sack_compress_send_ack(sk);	<span class="comment">//取消压缩ack 立即发送sack信息</span></span><br><span class="line">			<span class="comment">/* Rotate this_sack to the first one. */</span></span><br><span class="line">			<span class="keyword">for</span> (; this_sack &gt; <span class="number">0</span>; this_sack--, sp--)<span class="comment">//冒泡排序</span></span><br><span class="line">				swap(*sp, *(sp - <span class="number">1</span>));</span><br><span class="line">			<span class="keyword">if</span> (cur_sacks &gt; <span class="number">1</span>)</span><br><span class="line">				tcp_sack_maybe_coalesce(tp);<span class="comment">//有多个段，尝试把相邻的在合并一下</span></span><br><span class="line">			<span class="keyword">return</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//取消压缩ack</span></span><br><span class="line">	<span class="keyword">if</span> (this_sack &gt;= TCP_SACK_BLOCKS_EXPECTED)</span><br><span class="line">		tcp_sack_compress_send_ack(sk);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Could not find an adjacent existing SACK, build a new one,</span></span><br><span class="line"><span class="comment">	 * put it at the front, and shift everyone else down.  We</span></span><br><span class="line"><span class="comment">	 * always know there is at least one SACK present already here.</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * If the sack array is full, forget about the last one.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//丢掉最后一个sack  只能容纳4个</span></span><br><span class="line">	<span class="keyword">if</span> (this_sack &gt;= TCP_NUM_SACKS) &#123;</span><br><span class="line">		this_sack--;</span><br><span class="line">		tp-&gt;rx_opt.num_sacks--;</span><br><span class="line">		sp--;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//体右移一格，给第 0 腾位置</span></span><br><span class="line">	<span class="keyword">for</span> (; this_sack &gt; <span class="number">0</span>; this_sack--, sp--)</span><br><span class="line">		*sp = *(sp - <span class="number">1</span>);</span><br><span class="line"><span class="comment">//这里就是真正的填充sack 的信息！</span></span><br><span class="line">new_sack:</span><br><span class="line">	<span class="comment">/* Build the new head SACK, and we&#x27;re done. */</span></span><br><span class="line">	sp-&gt;start_seq = seq;</span><br><span class="line">	sp-&gt;end_seq = end_seq;</span><br><span class="line">	tp-&gt;rx_opt.num_sacks++; <span class="comment">//注意这里更新了sack的块数</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_sack_new_ofo_skb</code>作用就是构造<code>sack</code>信息，首先是一个<code>for</code>循环尝试跟现有的<code>sack</code>合并，如果合并成功同时段数很多就立即发送<code>ack</code>，若合并失败也会判断<code>sack</code>段数是否过多（超过2个），并取消压缩<code>ack</code>定时器并立即发送<code>ack</code>，紧接着判断段数是否超过4个（<code>sack</code>块只能容纳4个），之后给整体右移动，给下一个要填写的<code>sack</code>块腾出位置，并完成真正的写入操作：-）。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E8%BE%93%E5%85%A5/" rel="tag"># TCP输入</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/01/07/TCPtcp_rcv_established%E8%BE%93%E5%85%A5%EF%BC%88%E4%B8%89%EF%BC%89/" rel="prev" title="TCP输入 慢速路径（一）">
+      <i class="fa fa-chevron-left"></i> TCP输入 慢速路径（一）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">87</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">20</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
