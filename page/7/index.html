@@ -193,6 +193,110 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/07/06/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98(%E4%BA%94)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/07/06/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98(%E4%BA%94)/" class="post-title-link" itemprop="url">虚拟内存（五）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-07-06 22:00:00 / 修改时间：21:35:04" itemprop="dateCreated datePublished" datetime="2025-07-06T22:00:00+08:00">2025-07-06</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/07/06/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98(%E4%BA%94)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/07/06/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98(%E4%BA%94)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="显示空闲链表"><a href="#显示空闲链表" class="headerlink" title="显示空闲链表"></a>显示空闲链表</h2><p>隐式空闲链表查找效率低，适合块数很少的情况；显式空闲链表把空闲块用前后指针连成链表，比如用双向链表，可以大大加快查找速度（只跟空闲块数量有关），如果用后进先出插入，释放块和合并可以是常数时间，但如果按地址排序虽然释放块需要找位置（慢一些），但内存利用率更高；缺点是显式链表需要额外的前后指针，块最小尺寸增大，增加了内部碎片。</p>
+<p><img src="/images/CSAPP/vmem20.png" alt="&#96;虚拟内存&#96;"></p>
+<h2 id="与内存有关的错误"><a href="#与内存有关的错误" class="headerlink" title="与内存有关的错误"></a>与内存有关的错误</h2><h4 id="间接引用坏指针"><a href="#间接引用坏指针" class="headerlink" title="间接引用坏指针"></a>间接引用坏指针</h4><ul>
+<li><strong>间接引用</strong>就是用指针去访问内存。</li>
+<li><strong>坏指针</strong>就是：<ul>
+<li>指向了不该访问的区域（比如没分配过的虚拟内存洞）</li>
+<li>或者指向了只读区域（但你却想写它）</li>
+<li>或者根本就是乱的值（未初始化、被覆盖、拼错……）</li>
+</ul>
+</li>
+</ul>
+<p>当你去<strong>解引用</strong>（访问 <code>*p</code>）一个坏指针时，操作系统会触发保护机制（段错误或保护错误），直接把程序干掉，防止你破坏别的内存。</p>
+<p>例子：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> val;</span><br><span class="line"><span class="built_in">scanf</span>(<span class="string">&quot;%d&quot;</span>, &amp;val);  <span class="comment">// 正确：传的是变量 val 的地址</span></span><br><span class="line"><span class="built_in">scanf</span>(<span class="string">&quot;%d&quot;</span>, val);  <span class="comment">// 错误：把 val 的值当成地址传了</span></span><br></pre></td></tr></table></figure>
+
+<p>可能的后果</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/07/06/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98(%E4%BA%94)/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/07/03/%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98%EF%BC%88%E5%9B%9B%EF%BC%89/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1178,108 +1282,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/15/skb%E7%9A%84%E7%AE%A1%E7%90%86%E5%87%BD%E6%95%B0/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/06/15/skb%E7%9A%84%E7%AE%A1%E7%90%86%E5%87%BD%E6%95%B0/" class="post-title-link" itemprop="url">skb操作函数(一)</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2025-06-15 22:00:00" itemprop="dateCreated datePublished" datetime="2025-06-15T22:00:00+08:00">2025-06-15</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-06-16 21:34:41" itemprop="dateModified" datetime="2025-06-16T21:34:41+08:00">2025-06-16</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/06/15/skb%E7%9A%84%E7%AE%A1%E7%90%86%E5%87%BD%E6%95%B0/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/06/15/skb%E7%9A%84%E7%AE%A1%E7%90%86%E5%87%BD%E6%95%B0/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="skb预留和对齐"><a href="#skb预留和对齐" class="headerlink" title="skb预留和对齐"></a>skb预留和对齐</h2><p>数据的预留和对齐主要<code>skb_reserve(),skb_put(),skb_push(),skb_pull</code>这个几个函数来完成</p>
-<h3 id="skb-reserve"><a href="#skb-reserve" class="headerlink" title="skb_reserve()"></a><code>skb_reserve()</code></h3><p><code>skb_reserve()</code> 是用于预留头部空间（headroom）的函数，它的作用是在 <code>sk_buff</code> 结构中提前空出一部分头部空间或者为了对齐，以便后续协议栈可以在这个位置添加协议头（如 MAC&#x2F;IP&#x2F;TCP 头）。</p>
-<p><strong>注意<code>skb_reserve()</code>只能用于空的<code>SKB</code>，通常在分配<code>SKB</code>之后就会调用这个函数，注意此时的data和tail指针指向最初的位置。当<code>skb</code>在协议栈中向下传递的时候，data指针是向上移动的，然后复制需要封装的协议头部，最后更新<code>skb</code>的<code>len</code>字段，具体如下图：</strong></p>
-<p><img src="/images/skb/reserve.jpeg" alt="&#96;skb_reserve()&#96;"></p>
-<p><code>skb_reserve()</code> 函数实现如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">skb_reserve</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="type">int</span> len)</span></span><br><span class="line">&#123;</span><br><span class="line">	skb-&gt;data += len;</span><br><span class="line">	skb-&gt;tail += len;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<h3 id="skb-push"><a href="#skb-push" class="headerlink" title="skb_push()"></a><code>skb_push()</code></h3><p>将数据指针 <code>skb-&gt;data</code> 向前移动（减少），为报文头腾出空间，并返回新位置的指针</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/06/15/skb%E7%9A%84%E7%AE%A1%E7%90%86%E5%87%BD%E6%95%B0/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1349,7 +1351,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">87</span>
+          <span class="site-state-item-count">88</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>

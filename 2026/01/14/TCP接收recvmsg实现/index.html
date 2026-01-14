@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="用户态调用read或者recv等系统调用接收数据时，最终会调用到传输层（sk_prot）的回调，TCP对应的实现则为tcp_recvmsg,该接口主要目的就是将sk_receive_queue（接收队列）里按序列号找数据，把 payload 拷贝到用户缓冲区，如果暂时没有合适的数据，就根据阻塞&#x2F;超时&#x2F;信号等条件决定等还是返回；最后根据这次读走的数据量决定要不要发 ACK&amp;#x2">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TCP输入 recvmsg实现">
+<meta property="og:url" content="http://example.com/2026/01/14/TCP%E6%8E%A5%E6%94%B6recvmsg%E5%AE%9E%E7%8E%B0/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="用户态调用read或者recv等系统调用接收数据时，最终会调用到传输层（sk_prot）的回调，TCP对应的实现则为tcp_recvmsg,该接口主要目的就是将sk_receive_queue（接收队列）里按序列号找数据，把 payload 拷贝到用户缓冲区，如果暂时没有合适的数据，就根据阻塞&#x2F;超时&#x2F;信号等条件决定等还是返回；最后根据这次读走的数据量决定要不要发 ACK&amp;#x2">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-01-14T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-01-14T14:42:40.550Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP输入">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/01/14/TCP%E6%8E%A5%E6%94%B6recvmsg%E5%AE%9E%E7%8E%B0/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TCP输入 recvmsg实现 | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/01/14/TCP%E6%8E%A5%E6%94%B6recvmsg%E5%AE%9E%E7%8E%B0/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TCP输入 recvmsg实现
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-01-14 22:00:00 / 修改时间：22:42:40" itemprop="dateCreated datePublished" datetime="2026-01-14T22:00:00+08:00">2026-01-14</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/01/14/TCP%E6%8E%A5%E6%94%B6recvmsg%E5%AE%9E%E7%8E%B0/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/01/14/TCP%E6%8E%A5%E6%94%B6recvmsg%E5%AE%9E%E7%8E%B0/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>用户态调用<code>read</code>或者<code>recv</code>等系统调用接收数据时，最终会调用到传输层（<code>sk_prot</code>）的回调，TCP对应的实现则为<code>tcp_recvmsg</code>,该接口主要目的就是将<code>sk_receive_queue</code>（接收队列）里按序列号找数据，把 <code>payload</code> 拷贝到用户缓冲区，如果暂时没有合适的数据，就根据阻塞&#x2F;超时&#x2F;信号等条件决定等还是返回；最后根据这次读走的数据量决定要不要发 ACK&#x2F;更新窗口。</p>
+<p><code>tcp_recvmsg</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">tcp_recvmsg</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> msghdr *msg, <span class="type">size_t</span> len, <span class="type">int</span> flags,</span></span><br><span class="line"><span class="params">		<span class="type">int</span> *addr_len)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> cmsg_flags = <span class="number">0</span>, ret;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">scm_timestamping_internal</span> <span class="title">tss</span>;</span></span><br><span class="line">	<span class="comment">//用户态获取错误对立的数据</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(flags &amp; MSG_ERRQUEUE))</span><br><span class="line">		<span class="keyword">return</span> inet_recv_error(sk, msg, len, addr_len);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (sk_can_busy_loop(sk) &amp;&amp;									<span class="comment">//用户启用了busypoll</span></span><br><span class="line">	    skb_queue_empty_lockless(&amp;sk-&gt;sk_receive_queue) &amp;&amp; <span class="comment">//接收对立为空</span></span><br><span class="line">	    sk-&gt;sk_state == TCP_ESTABLISHED)						<span class="comment">//建立连接的状态</span></span><br><span class="line">		sk_busy_loop(sk, flags &amp; MSG_DONTWAIT);		<span class="comment">//直接调用驱动的poll函数貌似不需要驱动支持</span></span><br><span class="line"></span><br><span class="line">	lock_sock(sk);<span class="comment">//加锁</span></span><br><span class="line">	<span class="comment">//返回值是拷贝给用户的字节数</span></span><br><span class="line">	ret = tcp_recvmsg_locked(sk, msg, len, flags, &amp;tss, &amp;cmsg_flags);</span><br><span class="line">	<span class="comment">//解锁</span></span><br><span class="line">	release_sock(sk);</span><br><span class="line">	<span class="comment">//是否有控制信息</span></span><br><span class="line">	<span class="keyword">if</span> ((cmsg_flags || msg-&gt;msg_get_inq) &amp;&amp; ret &gt;= <span class="number">0</span>) &#123;</span><br><span class="line">		<span class="comment">//接收时间戳返给用户</span></span><br><span class="line">		<span class="keyword">if</span> (cmsg_flags &amp; TCP_CMSG_TS)</span><br><span class="line">			tcp_recv_timestamp(msg, sk, &amp;tss);</span><br><span class="line">		<span class="comment">//接收队列还有多少可读字节</span></span><br><span class="line">		<span class="keyword">if</span> (msg-&gt;msg_get_inq) &#123;</span><br><span class="line">			msg-&gt;msg_inq = tcp_inq_hint(sk);</span><br><span class="line">			<span class="keyword">if</span> (cmsg_flags &amp; TCP_CMSG_INQ)</span><br><span class="line">				<span class="comment">//拷贝给用户</span></span><br><span class="line">				put_cmsg(msg, SOL_TCP, TCP_CM_INQ,</span><br><span class="line">					 <span class="keyword">sizeof</span>(msg-&gt;msg_inq), &amp;msg-&gt;msg_inq);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_recvmsg</code>中首先判断是否需要从错误队列读取错误信息，如果读取错误信息则直接走<code>inet_recv_error</code>不走正常收包流程。</p>
+<p>如果用户启用了busy_poll，且接收队列为空的情况下，则会尝试轮询收报，这里网卡应该是感知不到的， 应该是通过DD位保证数据一致性的吧？</p>
+<p>之后调用<code>tcp_recvmsg_locked</code>将数据包真正的从内核拷贝到用户态，并返回拷贝的字节数。<code>tcp_recvmsg_locked</code>代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br><span class="line">217</span><br><span class="line">218</span><br><span class="line">219</span><br><span class="line">220</span><br><span class="line">221</span><br><span class="line">222</span><br><span class="line">223</span><br><span class="line">224</span><br><span class="line">225</span><br><span class="line">226</span><br><span class="line">227</span><br><span class="line">228</span><br><span class="line">229</span><br><span class="line">230</span><br><span class="line">231</span><br><span class="line">232</span><br><span class="line">233</span><br><span class="line">234</span><br><span class="line">235</span><br><span class="line">236</span><br><span class="line">237</span><br><span class="line">238</span><br><span class="line">239</span><br><span class="line">240</span><br><span class="line">241</span><br><span class="line">242</span><br><span class="line">243</span><br><span class="line">244</span><br><span class="line">245</span><br><span class="line">246</span><br><span class="line">247</span><br><span class="line">248</span><br><span class="line">249</span><br><span class="line">250</span><br><span class="line">251</span><br><span class="line">252</span><br><span class="line">253</span><br><span class="line">254</span><br><span class="line">255</span><br><span class="line">256</span><br><span class="line">257</span><br><span class="line">258</span><br><span class="line">259</span><br><span class="line">260</span><br><span class="line">261</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">tcp_recvmsg_locked</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> msghdr *msg, <span class="type">size_t</span> len,</span></span><br><span class="line"><span class="params">			      <span class="type">int</span> flags, <span class="keyword">struct</span> scm_timestamping_internal *tss,</span></span><br><span class="line"><span class="params">			      <span class="type">int</span> *cmsg_flags)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="type">int</span> copied = <span class="number">0</span>;</span><br><span class="line">	u32 peek_seq;</span><br><span class="line">	u32 *seq;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> used;</span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="type">int</span> target;		<span class="comment">/* Read at least this many bytes */</span></span><br><span class="line">	<span class="type">long</span> timeo;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>, *<span class="title">last</span>;</span></span><br><span class="line">	u32 urg_hole = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	err = -ENOTCONN;</span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_state == TCP_LISTEN)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	<span class="comment">//用户选项设置，看一下接收队列还有多少数据</span></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;recvmsg_inq) &#123;</span><br><span class="line">		*cmsg_flags = TCP_CMSG_INQ;</span><br><span class="line">		msg-&gt;msg_get_inq = <span class="number">1</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//获取超时时间</span></span><br><span class="line">	timeo = sock_rcvtimeo(sk, flags &amp; MSG_DONTWAIT);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Urgent data needs to be handled specially. */</span></span><br><span class="line">	<span class="comment">//紧急数据的处理</span></span><br><span class="line">	<span class="keyword">if</span> (flags &amp; MSG_OOB)</span><br><span class="line">		<span class="keyword">goto</span> recv_urg;</span><br><span class="line">	<span class="comment">//repair模式下的处理</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(tp-&gt;repair)) &#123;</span><br><span class="line">		err = -EPERM;</span><br><span class="line">		<span class="keyword">if</span> (!(flags &amp; MSG_PEEK))</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;repair_queue == TCP_SEND_QUEUE)</span><br><span class="line">			<span class="keyword">goto</span> recv_sndq;</span><br><span class="line"></span><br><span class="line">		err = -EINVAL;</span><br><span class="line">		<span class="keyword">if</span> (tp-&gt;repair_queue == TCP_NO_QUEUE)</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* &#x27;common&#x27; recv queue MSG_PEEK-ing */</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//应用程序已经读到哪个序列号的位置</span></span><br><span class="line">	seq = &amp;tp-&gt;copied_seq;</span><br><span class="line">	<span class="comment">//是否设置了peek</span></span><br><span class="line">	<span class="keyword">if</span> (flags &amp; MSG_PEEK) &#123;</span><br><span class="line">		peek_seq = tp-&gt;copied_seq;</span><br><span class="line">		seq = &amp;peek_seq;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//至少读多少才行，默认是1</span></span><br><span class="line">	target = sock_rcvlowat(sk, flags &amp; MSG_WAITALL, len);</span><br><span class="line">	<span class="comment">//不断从 sk_receive_queue 找到当前 seq 对应的 skb，拷贝数据</span></span><br><span class="line">	<span class="keyword">do</span> &#123;</span><br><span class="line">		u32 offset;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Are we at urgent data? Stop if we have read anything or have SIGURG pending. */</span></span><br><span class="line">		<span class="comment">//处理紧急数据</span></span><br><span class="line">		<span class="keyword">if</span> (unlikely(tp-&gt;urg_data) &amp;&amp; tp-&gt;urg_seq == *seq) &#123;</span><br><span class="line">			<span class="keyword">if</span> (copied)</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			<span class="keyword">if</span> (signal_pending(current)) &#123;</span><br><span class="line">				copied = timeo ? sock_intr_errno(timeo) : -EAGAIN;</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Next get a buffer. */</span></span><br><span class="line">		<span class="comment">//获取当前队列尾部的skb</span></span><br><span class="line">		last = skb_peek_tail(&amp;sk-&gt;sk_receive_queue);</span><br><span class="line">		skb_queue_walk(&amp;sk-&gt;sk_receive_queue, skb) &#123;</span><br><span class="line">			last = skb;</span><br><span class="line">			<span class="comment">/* Now that we have two receive queues this</span></span><br><span class="line"><span class="comment">			 * shouldn&#x27;t happen.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="comment">//seq 不能在skb的序号之前，</span></span><br><span class="line">			<span class="keyword">if</span> (WARN(before(*seq, TCP_SKB_CB(skb)-&gt;seq),</span><br><span class="line">				 <span class="string">&quot;TCP recvmsg seq # bug: copied %X, seq %X, rcvnxt %X, fl %X\n&quot;</span>,</span><br><span class="line">				 *seq, TCP_SKB_CB(skb)-&gt;seq, tp-&gt;rcv_nxt,</span><br><span class="line">				 flags))</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			<span class="comment">//找到skb中的偏移</span></span><br><span class="line">			offset = *seq - TCP_SKB_CB(skb)-&gt;seq;</span><br><span class="line">			<span class="comment">//不能有syn标志</span></span><br><span class="line">			<span class="keyword">if</span> (unlikely(TCP_SKB_CB(skb)-&gt;tcp_flags &amp; TCPHDR_SYN)) &#123;</span><br><span class="line">				pr_err_once(<span class="string">&quot;%s: found a SYN, please report !\n&quot;</span>, __func__);</span><br><span class="line">				offset--;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="comment">//表示序列号落在当前这个skb的范围内</span></span><br><span class="line">			<span class="keyword">if</span> (offset &lt; skb-&gt;len)</span><br><span class="line">				<span class="keyword">goto</span> found_ok_skb;</span><br><span class="line">			<span class="comment">//数据包中存在fin标志</span></span><br><span class="line">			<span class="keyword">if</span> (TCP_SKB_CB(skb)-&gt;tcp_flags &amp; TCPHDR_FIN)</span><br><span class="line">				<span class="keyword">goto</span> found_fin_ok;</span><br><span class="line">			WARN(!(flags &amp; MSG_PEEK),</span><br><span class="line">			     <span class="string">&quot;TCP recvmsg seq # bug 2: copied %X, seq %X, rcvnxt %X, fl %X\n&quot;</span>,</span><br><span class="line">			     *seq, TCP_SKB_CB(skb)-&gt;seq, tp-&gt;rcv_nxt, flags);</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Well, if we have backlog, try to process it now yet. */</span></span><br><span class="line">		<span class="comment">//如果没找到skb 同时没有读够数据，且backlog为空，直接返回</span></span><br><span class="line">		<span class="keyword">if</span> (copied &gt;= target &amp;&amp; !READ_ONCE(sk-&gt;sk_backlog.tail))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="comment">//已经读了一些数据</span></span><br><span class="line">		<span class="keyword">if</span> (copied) &#123;</span><br><span class="line">			<span class="keyword">if</span> (!timeo ||							<span class="comment">//非阻塞</span></span><br><span class="line">			    sk-&gt;sk_err ||						<span class="comment">//存在错误</span></span><br><span class="line">			    sk-&gt;sk_state == TCP_CLOSE ||		<span class="comment">//已经close</span></span><br><span class="line">			    (sk-&gt;sk_shutdown &amp; RCV_SHUTDOWN) ||	<span class="comment">//被动关闭</span></span><br><span class="line">			    signal_pending(current))			<span class="comment">//ctrl c？？</span></span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			<span class="keyword">if</span> (sock_flag(sk, SOCK_DONE))		<span class="comment">//比如说主动关闭</span></span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">			<span class="keyword">if</span> (sk-&gt;sk_err) &#123;						<span class="comment">//比如说收到rst，icmp</span></span><br><span class="line">				copied = sock_error(sk);</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			<span class="keyword">if</span> (sk-&gt;sk_shutdown &amp; RCV_SHUTDOWN)		 <span class="comment">//被动关闭</span></span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">			<span class="keyword">if</span> (sk-&gt;sk_state == TCP_CLOSE) &#123;</span><br><span class="line">				<span class="comment">/* This occurs when user tries to read</span></span><br><span class="line"><span class="comment">				 * from never connected socket.</span></span><br><span class="line"><span class="comment">				 */</span></span><br><span class="line">				copied = -ENOTCONN;</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			<span class="keyword">if</span> (!timeo) &#123;<span class="comment">//非阻塞模式，没有copy到数据</span></span><br><span class="line">				copied = -EAGAIN;</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="comment">//ctrl +c</span></span><br><span class="line">			<span class="keyword">if</span> (signal_pending(current)) &#123;</span><br><span class="line">				copied = sock_intr_errno(timeo);</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//已经读够了数据，处理后备队列</span></span><br><span class="line">		<span class="keyword">if</span> (copied &gt;= target) &#123;</span><br><span class="line">			<span class="comment">/* Do not sleep, just process backlog. */</span></span><br><span class="line">			__sk_flush_backlog(sk);</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			<span class="comment">//是否立即回ack</span></span><br><span class="line">			tcp_cleanup_rbuf(sk, copied);</span><br><span class="line">			<span class="comment">//睡眠等待数据</span></span><br><span class="line">			err = sk_wait_data(sk, &amp;timeo, last);</span><br><span class="line">			<span class="keyword">if</span> (err &lt; <span class="number">0</span>) &#123;</span><br><span class="line">				err = copied ? : err;</span><br><span class="line">				<span class="keyword">goto</span> out;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//peek</span></span><br><span class="line">		<span class="keyword">if</span> ((flags &amp; MSG_PEEK) &amp;&amp;</span><br><span class="line">		    (peek_seq - copied - urg_hole != tp-&gt;copied_seq)) &#123;</span><br><span class="line">			net_dbg_ratelimited(<span class="string">&quot;TCP(%s:%d): Application bug, race in MSG_PEEK\n&quot;</span>,</span><br><span class="line">					    current-&gt;comm,</span><br><span class="line">					    task_pid_nr(current));</span><br><span class="line">			peek_seq = tp-&gt;copied_seq;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">continue</span>;</span><br><span class="line"></span><br><span class="line">found_ok_skb:</span><br><span class="line">		<span class="comment">/* Ok so how much can we use? */</span></span><br><span class="line">		<span class="comment">//计算当前数据包有多少可以copy</span></span><br><span class="line">		used = skb-&gt;len - offset;</span><br><span class="line">		<span class="keyword">if</span> (len &lt; used)</span><br><span class="line">			used = len;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Do we have urgent data here? */</span></span><br><span class="line">		<span class="comment">//紧急数据处理</span></span><br><span class="line">		<span class="keyword">if</span> (unlikely(tp-&gt;urg_data)) &#123;</span><br><span class="line">			u32 urg_offset = tp-&gt;urg_seq - *seq;</span><br><span class="line">			<span class="keyword">if</span> (urg_offset &lt; used) &#123;</span><br><span class="line">				<span class="keyword">if</span> (!urg_offset) &#123;</span><br><span class="line">					<span class="keyword">if</span> (!sock_flag(sk, SOCK_URGINLINE)) &#123;</span><br><span class="line">						WRITE_ONCE(*seq, *seq + <span class="number">1</span>);</span><br><span class="line">						urg_hole++;</span><br><span class="line">						offset++;</span><br><span class="line">						used--;</span><br><span class="line">						<span class="keyword">if</span> (!used)</span><br><span class="line">							<span class="keyword">goto</span> skip_copy;</span><br><span class="line">					&#125;</span><br><span class="line">				&#125; <span class="keyword">else</span></span><br><span class="line">					used = urg_offset;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//这里是把数据真正拷贝到用户态！！</span></span><br><span class="line">		<span class="keyword">if</span> (!(flags &amp; MSG_TRUNC)) &#123;</span><br><span class="line">			err = skb_copy_datagram_msg(skb, offset, msg, used);</span><br><span class="line">			<span class="keyword">if</span> (err) &#123;</span><br><span class="line">				<span class="comment">/* Exception. Bailout! */</span></span><br><span class="line">				<span class="keyword">if</span> (!copied)</span><br><span class="line">					copied = -EFAULT;</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//更新seq， copy总量，用户还希望接收的字节数</span></span><br><span class="line">		WRITE_ONCE(*seq, *seq + used);</span><br><span class="line">		copied += used;</span><br><span class="line">		len -= used;</span><br><span class="line">		<span class="comment">//自动调大tcp的接收缓冲区</span></span><br><span class="line">		tcp_rcv_space_adjust(sk);</span><br><span class="line"></span><br><span class="line">skip_copy:</span><br><span class="line">		<span class="comment">//紧急数据处理</span></span><br><span class="line">		<span class="keyword">if</span> (unlikely(tp-&gt;urg_data) &amp;&amp; after(tp-&gt;copied_seq, tp-&gt;urg_seq)) &#123;</span><br><span class="line">			WRITE_ONCE(tp-&gt;urg_data, <span class="number">0</span>);</span><br><span class="line">			tcp_fast_path_check(sk);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//如果设置了时间戳，提取时间戳的到tss参数中，并设置控制标志位</span></span><br><span class="line">		<span class="keyword">if</span> (TCP_SKB_CB(skb)-&gt;has_rxtstamp) &#123;</span><br><span class="line">			tcp_update_recv_tstamps(skb, tss);</span><br><span class="line">			*cmsg_flags |= TCP_CMSG_TS;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//还没有读完这个skb的数据 继续读</span></span><br><span class="line">		<span class="keyword">if</span> (used + offset &lt; skb-&gt;len)</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (TCP_SKB_CB(skb)-&gt;tcp_flags &amp; TCPHDR_FIN)</span><br><span class="line">			<span class="keyword">goto</span> found_fin_ok;</span><br><span class="line">		<span class="keyword">if</span> (!(flags &amp; MSG_PEEK))</span><br><span class="line">		<span class="comment">//从接收队列中移除skb</span></span><br><span class="line">			tcp_eat_recv_skb(sk, skb);</span><br><span class="line">		<span class="keyword">continue</span>;</span><br><span class="line"></span><br><span class="line">found_fin_ok:</span><br><span class="line">		<span class="comment">/* Process the FIN. */</span></span><br><span class="line">		<span class="comment">//处理fin包</span></span><br><span class="line">		WRITE_ONCE(*seq, *seq + <span class="number">1</span>);</span><br><span class="line">		<span class="keyword">if</span> (!(flags &amp; MSG_PEEK))</span><br><span class="line">			tcp_eat_recv_skb(sk, skb);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125; <span class="keyword">while</span> (len &gt; <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* According to UNIX98, msg_name/msg_namelen are ignored</span></span><br><span class="line"><span class="comment">	 * on connected socket. I was just happy when found this 8) --ANK</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Clean up data we have read: This will do ACK frames. */</span></span><br><span class="line">	<span class="comment">//是否需要立即回复ack</span></span><br><span class="line">	tcp_cleanup_rbuf(sk, copied);</span><br><span class="line">	<span class="keyword">return</span> copied;</span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line"></span><br><span class="line">recv_urg:</span><br><span class="line">	err = tcp_recv_urg(sk, msg, len, flags);</span><br><span class="line">	<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">recv_sndq:</span><br><span class="line">	err = tcp_peek_sndq(sk, msg, len);</span><br><span class="line">	<span class="keyword">goto</span> out;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p> <code>tcp_recvmsg_locked</code>中首先判断用户是否启用INQ，启用时会将接收队列的剩余字节数通过<code>put_cmsg</code>返给用户，之后获取用户的超时时间和当前用户已经读到的序列号的位置，以及获取至少需要读多少才允许返回的阈值（默认是1）。</p>
+<p>接下进入大循环中，核心就是按照序列号找到对应的<code>skb</code>，计算<code>offset</code>，把数据包拷贝到用户态，如果没找到，就处理后备队列或者睡眠等待。</p>
+<p>首先获取当前接收队列尾部的<code>skb</code>之后计算当前序列号在当前<code>skb</code>中的偏移位置，同时进行一系列的安全检查（<strong>如果是<code>fin</code>包则会有专门的处理逻辑，因为<code>fin</code>包是会放到接收队列中的</strong>）。如果没找到<code>skb</code> 同时没有读够数据，且<code>backlog</code>为空，则直接退出循环。如果读取了部分数据，同时非阻塞|| 存在错误||已经close||被动关闭||等情况，则也直接退出循环。</p>
+<p>如果没有拷贝数据包到用户态，并且主动关闭||收到rst报文||被动关闭||非阻塞|| ctrl+c 等情况也会直接退出循环。</p>
+<p>如果读够了数据，则处理后备队列，之后继续执行大循环。如果没有读够足够的数据则调用<code>tcp_cleanup_rbuf</code>决定是否立即回复<code>ack</code>并根据超时时间决定是否睡眠，上述<code>tcp_cleanup_rbuf</code>由于历史原因导致名字和逻辑不太符合，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_cleanup_rbuf</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">int</span> copied)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span> =</span> skb_peek(&amp;sk-&gt;sk_receive_queue);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="comment">//copy seq必须小于skb的end seq</span></span><br><span class="line">	WARN(skb &amp;&amp; !before(tp-&gt;copied_seq, TCP_SKB_CB(skb)-&gt;end_seq),</span><br><span class="line">	     <span class="string">&quot;cleanup rbuf bug: copied %X seq %X rcvnxt %X\n&quot;</span>,</span><br><span class="line">	     tp-&gt;copied_seq, TCP_SKB_CB(skb)-&gt;end_seq, tp-&gt;rcv_nxt);</span><br><span class="line">	__tcp_cleanup_rbuf(sk, copied);</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">/* Clean up the receive buffer for full frames taken by the user,</span></span><br><span class="line"><span class="comment"> * then send an ACK if necessary.  COPIED is the number of bytes</span></span><br><span class="line"><span class="comment"> * tcp_recvmsg has given to the user so far, it speeds up the</span></span><br><span class="line"><span class="comment"> * calculation of whether or not we must ACK for the sake of</span></span><br><span class="line"><span class="comment"> * a window update.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="type">void</span> __tcp_cleanup_rbuf(<span class="keyword">struct</span> sock *sk, <span class="type">int</span> copied)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="type">bool</span> time_to_ack = <span class="literal">false</span>;</span><br><span class="line">	<span class="comment">//需要发送ack</span></span><br><span class="line">	<span class="keyword">if</span> (inet_csk_ack_scheduled(sk)) &#123;</span><br><span class="line">		<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">		<span class="comment">//收到了一个mss</span></span><br><span class="line">		<span class="keyword">if</span> (<span class="comment">/* Once-per-two-segments ACK was not sent by tcp_input.c */</span></span><br><span class="line">		    tp-&gt;rcv_nxt - tp-&gt;rcv_wup &gt; icsk-&gt;icsk_ack.rcv_mss ||</span><br><span class="line">		    <span class="comment">/*</span></span><br><span class="line"><span class="comment">		     * If this read emptied read buffer, we send ACK, if</span></span><br><span class="line"><span class="comment">		     * connection is not bidirectional, user drained</span></span><br><span class="line"><span class="comment">		     * receive buffer and there was a small segment</span></span><br><span class="line"><span class="comment">		     * in queue.</span></span><br><span class="line"><span class="comment">		     */</span></span><br><span class="line">		    (copied &gt; <span class="number">0</span> &amp;&amp;</span><br><span class="line">		     ((icsk-&gt;icsk_ack.pending &amp; ICSK_ACK_PUSHED2) ||	<span class="comment">//没有push标志</span></span><br><span class="line">		      ((icsk-&gt;icsk_ack.pending &amp; ICSK_ACK_PUSHED) &amp;&amp;</span><br><span class="line">		       !inet_csk_in_pingpong_mode(sk))) &amp;&amp;	<span class="comment">//不是pingpong模式，pingpong模式倾向捎带ack</span></span><br><span class="line">		      !<span class="type">atomic_read</span>(&amp;sk-&gt;sk_rmem_alloc)))<span class="comment">//没有数据了</span></span><br><span class="line">			time_to_ack = <span class="literal">true</span>;						<span class="comment">//立即发送ack</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* We send an ACK if we can now advertise a non-zero window</span></span><br><span class="line"><span class="comment">	 * which has been raised &quot;significantly&quot;.</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * Even if window raised up to infinity, do not send window open ACK</span></span><br><span class="line"><span class="comment">	 * in states, where we will not receive more. It is useless.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//如果拷贝了数据， 不是被动关闭的情况</span></span><br><span class="line">	<span class="keyword">if</span> (copied &gt; <span class="number">0</span> &amp;&amp; !time_to_ack &amp;&amp; !(sk-&gt;sk_shutdown &amp; RCV_SHUTDOWN)) &#123;</span><br><span class="line">		__u32 rcv_window_now = tcp_receive_window(tp); <span class="comment">//计算通告窗口大小</span></span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Optimize, __tcp_select_window() is not cheap. */</span></span><br><span class="line">		<span class="keyword">if</span> (<span class="number">2</span>*rcv_window_now &lt;= tp-&gt;window_clamp) &#123;</span><br><span class="line">			__u32 new_window = __tcp_select_window(sk);</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* Send ACK now, if this read freed lots of space</span></span><br><span class="line"><span class="comment">			 * in our buffer. Certainly, new_window is new window.</span></span><br><span class="line"><span class="comment">			 * We can advertise it now, if it is not less than current one.</span></span><br><span class="line"><span class="comment">			 * &quot;Lots&quot; means &quot;at least twice&quot; here.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="comment">//窗口大了很多，立即发送ack给对端</span></span><br><span class="line">			<span class="keyword">if</span> (new_window &amp;&amp; new_window &gt;= <span class="number">2</span> * rcv_window_now)</span><br><span class="line">				time_to_ack = <span class="literal">true</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//发送ack</span></span><br><span class="line">	<span class="keyword">if</span> (time_to_ack)</span><br><span class="line">		tcp_send_ack(sk);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>__tcp_cleanup_rbuf</code>主要逻辑就是如果当前已经有需要待发送的ack了，同时内核已经收到了超过&#96;&#96;mss<code>大小的一个报文则大概率会立即回复一个</code>ack<code>（不在</code>pingpong&#96;模型下等情况）。 否则会进一步判断是否拷贝数据包到了用户态，同时没有关闭套接字，且可用的窗口大了很多的情况下则会立即发送ack（目的是及时通告给对端）。</p>
+<p>回到大循环中，如果找到了需要拷贝数据包的起始偏移（比如上面逻辑中），<strong>则会计算当前数据包右多少可以拷贝的数据（同时不超过用户传进来的大小）</strong>，之后调用<code>skb_copy_datagram_msg</code>把数据包拷贝到用户态，并更新<code>	&amp;tp-&gt;copied_seq;</code>同时调用<code>tcp_rcv_space_adjust</code>尝试扩大接收缓冲区，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_rcv_space_adjust</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	u32 copied;</span><br><span class="line">	<span class="type">int</span> time;</span><br><span class="line"></span><br><span class="line">	trace_tcp_rcv_space_adjust(sk);</span><br><span class="line">	<span class="comment">//刷新时间戳</span></span><br><span class="line">	tcp_mstamp_refresh(tp);</span><br><span class="line">	<span class="comment">//间隔</span></span><br><span class="line">	time = tcp_stamp_us_delta(tp-&gt;tcp_mstamp, tp-&gt;rcvq_space.time);</span><br><span class="line">	<span class="comment">//小于一个rtt 直接返回</span></span><br><span class="line">	<span class="keyword">if</span> (time &lt; (tp-&gt;rcv_rtt_est.rtt_us &gt;&gt; <span class="number">3</span>) || tp-&gt;rcv_rtt_est.rtt_us == <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Number of bytes copied to user in last RTT */</span></span><br><span class="line">	<span class="comment">//计算上一个rtt 读走了多少数据</span></span><br><span class="line">	copied = tp-&gt;copied_seq - tp-&gt;rcvq_space.seq;</span><br><span class="line">	<span class="comment">//当前这个周期没有比上次读的更快，不需要变化</span></span><br><span class="line">	<span class="keyword">if</span> (copied &lt;= tp-&gt;rcvq_space.space)</span><br><span class="line">		<span class="keyword">goto</span> new_measure;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* A bit of theory :</span></span><br><span class="line"><span class="comment">	 * copied = bytes received in previous RTT, our base window</span></span><br><span class="line"><span class="comment">	 * To cope with packet losses, we need a 2x factor</span></span><br><span class="line"><span class="comment">	 * To cope with slow start, and sender growing its cwin by 100 %</span></span><br><span class="line"><span class="comment">	 * every RTT, we need a 4x factor, because the ACK we are sending</span></span><br><span class="line"><span class="comment">	 * now is for the next RTT, not the current one :</span></span><br><span class="line"><span class="comment">	 * &lt;prev RTT . &gt;&lt;current RTT .. &gt;&lt;next RTT .... &gt;</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//系统参数容许调整缓冲区大小，用户没有显示修改过缓冲区大小</span></span><br><span class="line">	<span class="keyword">if</span> (READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_moderate_rcvbuf) &amp;&amp;</span><br><span class="line">	    !(sk-&gt;sk_userlocks &amp; SOCK_RCVBUF_LOCK)) &#123;</span><br><span class="line">		u64 rcvwin, grow;</span><br><span class="line">		<span class="type">int</span> rcvbuf;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* minimal window to cope with packet losses, assuming</span></span><br><span class="line"><span class="comment">		 * steady state. Add some cushion because of small variations.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//先算一个比较靠谱的窗口大小</span></span><br><span class="line">		rcvwin = ((u64)copied &lt;&lt; <span class="number">1</span>) + <span class="number">16</span> * tp-&gt;advmss;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Accommodate for sender rate increase (eg. slow start) */</span></span><br><span class="line">		<span class="comment">//计算应用读取的速率是不是在上升</span></span><br><span class="line">		grow = rcvwin * (copied - tp-&gt;rcvq_space.space);</span><br><span class="line">		do_div(grow, tp-&gt;rcvq_space.space);</span><br><span class="line">		rcvwin += (grow &lt;&lt; <span class="number">1</span>);</span><br><span class="line">		<span class="comment">//换算成需要的缓存区大小，但是钳制一下</span></span><br><span class="line">		rcvbuf = <span class="type">min_t</span>(u64, tcp_space_from_win(sk, rcvwin),</span><br><span class="line">			       READ_ONCE(sock_net(sk)-&gt;ipv4.sysctl_tcp_rmem[<span class="number">2</span>]));</span><br><span class="line">		<span class="keyword">if</span> (rcvbuf &gt; sk-&gt;sk_rcvbuf) &#123;</span><br><span class="line">			WRITE_ONCE(sk-&gt;sk_rcvbuf, rcvbuf);</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* Make the window clamp follow along.  */</span></span><br><span class="line">			<span class="comment">//更新最大窗口的上限</span></span><br><span class="line">			tp-&gt;window_clamp = tcp_win_from_space(sk, rcvbuf);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	tp-&gt;rcvq_space.space = copied;</span><br><span class="line"></span><br><span class="line">new_measure:</span><br><span class="line">	<span class="comment">//更新下一次计算需要使用到的字段</span></span><br><span class="line">	tp-&gt;rcvq_space.seq = tp-&gt;copied_seq;</span><br><span class="line">	tp-&gt;rcvq_space.time = tp-&gt;tcp_mstamp;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_rcv_space_adjust</code>核心思想就是计算一个<code>rtt</code>内读取的数据是否比上一次读取的多，同时系统参数允许修改缓存并且用户没有显示修改缓冲区的话则会扩大接收缓存区，并更新通告窗口的最大上限。</p>
+<p>回到循环中，如果读完了当前<code>skb</code>的所有数据，则会调用<code>tcp_eat_recv_skb</code>释放数据包。如果结束了循环（上面的break或者拷贝了足够的用户数据）则会直接返回拷贝的字节数：-）。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E8%BE%93%E5%85%A5/" rel="tag"># TCP输入</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/01/09/TCPtcp_rcv_established%E8%BE%93%E5%85%A5%EF%BC%88%E5%9B%9B%EF%BC%89/" rel="prev" title="TCP输入 慢速路径（二）">
+      <i class="fa fa-chevron-left"></i> TCP输入 慢速路径（二）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">88</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">20</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
