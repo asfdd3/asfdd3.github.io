@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="tcp_time_wait主要做了四件事，创建tw套接字，拷贝sk必要的字段到tw sock中，插入ehash中（完成hashdance），释放sk资源。 上述创建tw套接字的过程中设置了tw定时器的回调(注意并没有激活定时器)，具体代码如下所示： 123456789101112131415161718192021222324252627282930313233343536373839404142">
+<meta property="og:type" content="article">
+<meta property="og:title" content="TCP四次挥手-主动关闭（二）">
+<meta property="og:url" content="http://example.com/2026/01/27/TCP%E8%BF%9E%E6%8E%A5%E7%9A%84%E7%BB%88%E6%AD%A2%EF%BC%88%E4%BA%94%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="tcp_time_wait主要做了四件事，创建tw套接字，拷贝sk必要的字段到tw sock中，插入ehash中（完成hashdance），释放sk资源。 上述创建tw套接字的过程中设置了tw定时器的回调(注意并没有激活定时器)，具体代码如下所示： 123456789101112131415161718192021222324252627282930313233343536373839404142">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-01-27T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-01-26T15:34:50.280Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="TCP">
+<meta property="article:tag" content="TCP断连">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/01/27/TCP%E8%BF%9E%E6%8E%A5%E7%9A%84%E7%BB%88%E6%AD%A2%EF%BC%88%E4%BA%94%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>TCP四次挥手-主动关闭（二） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/01/27/TCP%E8%BF%9E%E6%8E%A5%E7%9A%84%E7%BB%88%E6%AD%A2%EF%BC%88%E4%BA%94%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          TCP四次挥手-主动关闭（二）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-01-27 22:00:00" itemprop="dateCreated datePublished" datetime="2026-01-27T22:00:00+08:00">2026-01-27</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-01-26 23:34:50" itemprop="dateModified" datetime="2026-01-26T23:34:50+08:00">2026-01-26</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/01/27/TCP%E8%BF%9E%E6%8E%A5%E7%9A%84%E7%BB%88%E6%AD%A2%EF%BC%88%E4%BA%94%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/01/27/TCP%E8%BF%9E%E6%8E%A5%E7%9A%84%E7%BB%88%E6%AD%A2%EF%BC%88%E4%BA%94%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p><code>tcp_time_wait</code>主要做了四件事，创建<code>tw</code>套接字，拷贝sk必要的字段到<code>tw sock</code>中，插入<code>ehash</code>中（完成<code>hashdance</code>），释放<code>sk</code>资源。</p>
+<p>上述创建<code>tw</code>套接字的过程中设置了<code>tw</code>定时器的回调(注意并没有激活定时器)，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> inet_timewait_sock *<span class="title function_">inet_twsk_alloc</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">					   <span class="keyword">struct</span> inet_timewait_death_row *dr,</span></span><br><span class="line"><span class="params">					   <span class="type">const</span> <span class="type">int</span> state)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_timewait_sock</span> *<span class="title">tw</span>;</span></span><br><span class="line">	<span class="comment">//是否超过了最大的tw套接字的数量</span></span><br><span class="line">	<span class="keyword">if</span> (refcount_read(&amp;dr-&gt;tw_refcount) - <span class="number">1</span> &gt;=</span><br><span class="line">	    READ_ONCE(dr-&gt;sysctl_max_tw_buckets))</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="comment">//申请tw套接字</span></span><br><span class="line">	tw = kmem_cache_alloc(sk-&gt;sk_prot_creator-&gt;twsk_prot-&gt;twsk_slab,</span><br><span class="line">			      GFP_ATOMIC);</span><br><span class="line">	<span class="comment">//copy必要的字段</span></span><br><span class="line">	<span class="keyword">if</span> (tw) &#123;</span><br><span class="line">		<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">inet_sock</span> *<span class="title">inet</span> =</span> inet_sk(sk);</span><br><span class="line"></span><br><span class="line">		tw-&gt;tw_dr	    = dr;</span><br><span class="line">		<span class="comment">/* Give us an identity. */</span></span><br><span class="line">		tw-&gt;tw_daddr	    = inet-&gt;inet_daddr;</span><br><span class="line">		tw-&gt;tw_rcv_saddr    = inet-&gt;inet_rcv_saddr;</span><br><span class="line">		tw-&gt;tw_bound_dev_if = sk-&gt;sk_bound_dev_if;</span><br><span class="line">		tw-&gt;tw_tos	    = inet-&gt;tos;</span><br><span class="line">		tw-&gt;tw_num	    = inet-&gt;inet_num;</span><br><span class="line">		tw-&gt;tw_state	    = TCP_TIME_WAIT;</span><br><span class="line">		tw-&gt;tw_substate	    = state; <span class="comment">//这个状态很关键，用于区别是什么状态下收到的套接字</span></span><br><span class="line">		tw-&gt;tw_sport	    = inet-&gt;inet_sport;</span><br><span class="line">		tw-&gt;tw_dport	    = inet-&gt;inet_dport;</span><br><span class="line">		tw-&gt;tw_family	    = sk-&gt;sk_family;</span><br><span class="line">		tw-&gt;tw_reuse	    = sk-&gt;sk_reuse;</span><br><span class="line">		tw-&gt;tw_reuseport    = sk-&gt;sk_reuseport;</span><br><span class="line">		tw-&gt;tw_hash	    = sk-&gt;sk_hash;</span><br><span class="line">		tw-&gt;tw_ipv6only	    = <span class="number">0</span>;</span><br><span class="line">		tw-&gt;tw_transparent  = inet_test_bit(TRANSPARENT, sk);</span><br><span class="line">		tw-&gt;tw_prot	    = sk-&gt;sk_prot_creator;</span><br><span class="line">		atomic64_set(&amp;tw-&gt;tw_cookie, atomic64_read(&amp;sk-&gt;sk_cookie));</span><br><span class="line">		twsk_net_set(tw, sock_net(sk));</span><br><span class="line">		<span class="comment">//这里设置tw 定时器的回调</span></span><br><span class="line">		timer_setup(&amp;tw-&gt;tw_timer, tw_timer_handler, TIMER_PINNED);</span><br><span class="line">		<span class="comment">/*</span></span><br><span class="line"><span class="comment">		 * Because we use RCU lookups, we should not set tw_refcnt</span></span><br><span class="line"><span class="comment">		 * to a non null value before everything is setup for this</span></span><br><span class="line"><span class="comment">		 * timewait socket.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		refcount_set(&amp;tw-&gt;tw_refcnt, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">		__module_get(tw-&gt;tw_prot-&gt;owner);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> tw;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>重点关注<code>tw-&gt;tw_substate</code>状态的处理，这里区分了当前<code>tw sock</code> 是finwait2状态创建的还是<code>timewati</code>状态下创建的。当创建<code>tw</code>状态套接字插入到<code>ehash</code>中之后，后续收到的数据包都找到的是<code>tw</code>状态的<code>sk</code>并跳转到<code>tw</code>状态进行处理，具体代码逻辑如下</strong>：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">tcp_v4_rcv</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	...</span><br><span class="line">	sk = __inet_lookup_skb(net-&gt;ipv4.tcp_death_row.hashinfo,</span><br><span class="line">			       skb, __tcp_hdrlen(th), th-&gt;source,</span><br><span class="line">			       th-&gt;dest, sdif, &amp;refcounted);</span><br><span class="line">	<span class="keyword">if</span> (!sk)</span><br><span class="line">		<span class="keyword">goto</span> no_tcp_socket;</span><br><span class="line"></span><br><span class="line">process:</span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_state == TCP_TIME_WAIT)</span><br><span class="line">		<span class="keyword">goto</span> do_time_wait;</span><br><span class="line">	...</span><br><span class="line"><span class="comment">//tw状态的处理</span></span><br><span class="line">do_time_wait:</span><br><span class="line">	<span class="keyword">if</span> (!xfrm4_policy_check(<span class="literal">NULL</span>, XFRM_POLICY_IN, skb)) &#123;</span><br><span class="line">		drop_reason = SKB_DROP_REASON_XFRM_POLICY;</span><br><span class="line">		inet_twsk_put(inet_twsk(sk));</span><br><span class="line">		<span class="keyword">goto</span> discard_it;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	tcp_v4_fill_cb(skb, iph, th);</span><br><span class="line">	<span class="comment">//计算校验和</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_checksum_complete(skb)) &#123;</span><br><span class="line">		inet_twsk_put(inet_twsk(sk));</span><br><span class="line">		<span class="keyword">goto</span> csum_error;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//决定怎么处理这个包</span></span><br><span class="line">	<span class="keyword">switch</span> (tcp_timewait_state_process(inet_twsk(sk), skb, th)) &#123;</span><br><span class="line">	<span class="comment">//允许重新开始三次握手</span></span><br><span class="line">	<span class="keyword">case</span> TCP_TW_SYN: &#123;</span><br><span class="line">		<span class="comment">//找到监听套接字</span></span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk2</span> =</span> inet_lookup_listener(net,</span><br><span class="line">							net-&gt;ipv4.tcp_death_row.hashinfo,</span><br><span class="line">							skb, __tcp_hdrlen(th),</span><br><span class="line">							iph-&gt;saddr, th-&gt;source,</span><br><span class="line">							iph-&gt;daddr, th-&gt;dest,</span><br><span class="line">							inet_iif(skb),</span><br><span class="line">							sdif);</span><br><span class="line">		<span class="keyword">if</span> (sk2) &#123;</span><br><span class="line">			<span class="comment">//将tw套接字直接释放</span></span><br><span class="line">			inet_twsk_deschedule_put(inet_twsk(sk));</span><br><span class="line">			sk = sk2;</span><br><span class="line">			tcp_v4_restore_cb(skb);</span><br><span class="line">			refcounted = <span class="literal">false</span>;</span><br><span class="line">			<span class="keyword">goto</span> process;<span class="comment">//注意这里回到三次握手的处理中</span></span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">		<span class="comment">/* to ACK */</span></span><br><span class="line">		fallthrough;</span><br><span class="line">	<span class="keyword">case</span> TCP_TW_ACK:</span><br><span class="line">		<span class="comment">//对端重传fin，或者发了窗口外的数据包这里在回复一个ack，或者最后一个ack</span></span><br><span class="line">		tcp_v4_timewait_ack(sk, skb);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> TCP_TW_RST:</span><br><span class="line">		<span class="comment">//比如在finwait2阶段收到了syn包</span></span><br><span class="line">		tcp_v4_send_reset(sk, skb);</span><br><span class="line">		<span class="comment">//真正释放资源</span></span><br><span class="line">		inet_twsk_deschedule_put(inet_twsk(sk));</span><br><span class="line">		<span class="keyword">goto</span> discard_it;</span><br><span class="line">	<span class="keyword">case</span> TCP_TW_SUCCESS:;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">goto</span> discard_it;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>goto</code>到<code>timewait</code>处理逻辑后首先调用<code>tcp_timewait_state_process</code>根据返回值决定怎么处理这个数据包，<code>tcp_timewait_state_process</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">enum</span> tcp_tw_status</span><br><span class="line"><span class="title function_">tcp_timewait_state_process</span><span class="params">(<span class="keyword">struct</span> inet_timewait_sock *tw, <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">			   <span class="type">const</span> <span class="keyword">struct</span> tcphdr *th)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_options_received</span> <span class="title">tmp_opt</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_timewait_sock</span> *<span class="title">tcptw</span> =</span> tcp_twsk((<span class="keyword">struct</span> sock *)tw);</span><br><span class="line">	<span class="type">bool</span> paws_reject = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">	tmp_opt.saw_tstamp = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//如果存在时间戳，再通过PAWS机制判断是否合法</span></span><br><span class="line">	<span class="keyword">if</span> (th-&gt;doff &gt; (<span class="keyword">sizeof</span>(*th) &gt;&gt; <span class="number">2</span>) &amp;&amp; tcptw-&gt;tw_ts_recent_stamp) &#123;</span><br><span class="line">		tcp_parse_options(twsk_net(tw), skb, &amp;tmp_opt, <span class="number">0</span>, <span class="literal">NULL</span>);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (tmp_opt.saw_tstamp) &#123;</span><br><span class="line">			<span class="keyword">if</span> (tmp_opt.rcv_tsecr)</span><br><span class="line">				tmp_opt.rcv_tsecr -= tcptw-&gt;tw_ts_offset;</span><br><span class="line">			tmp_opt.ts_recent	= tcptw-&gt;tw_ts_recent;</span><br><span class="line">			tmp_opt.ts_recent_stamp	= tcptw-&gt;tw_ts_recent_stamp;</span><br><span class="line">			paws_reject = tcp_paws_reject(&amp;tmp_opt, th-&gt;rst);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//如果是finwait2状态下创建的套接字</span></span><br><span class="line">	<span class="keyword">if</span> (tw-&gt;tw_substate == TCP_FIN_WAIT2) &#123;</span><br><span class="line">		<span class="comment">/* Just repeat all the checks of tcp_rcv_state_process() */</span></span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Out of window, send ACK */</span></span><br><span class="line">		<span class="comment">//如果没有通过paws机制检查，或者超出了窗口则会回一个ack</span></span><br><span class="line">		<span class="keyword">if</span> (paws_reject ||</span><br><span class="line">		    !tcp_in_window(TCP_SKB_CB(skb)-&gt;seq, TCP_SKB_CB(skb)-&gt;end_seq,</span><br><span class="line">				   tcptw-&gt;tw_rcv_nxt,</span><br><span class="line">				   tcptw-&gt;tw_rcv_nxt + tcptw-&gt;tw_rcv_wnd))</span><br><span class="line">			<span class="keyword">return</span> tcp_timewait_check_oow_rate_limit(</span><br><span class="line">				tw, skb, LINUX_MIB_TCPACKSKIPPEDFINWAIT2);</span><br><span class="line">		<span class="comment">//如果通过了检查携带rst，直接清除tw套接字释放资源</span></span><br><span class="line">		<span class="keyword">if</span> (th-&gt;rst)</span><br><span class="line">			<span class="keyword">goto</span> kill;</span><br><span class="line">		<span class="comment">//TCP_FIN_WAIT2状态下收到syn包 同时syn包大于下一个待接收的序列号，则直接回rst</span></span><br><span class="line">		<span class="keyword">if</span> (th-&gt;syn &amp;&amp; !before(TCP_SKB_CB(skb)-&gt;seq, tcptw-&gt;tw_rcv_nxt))</span><br><span class="line">			<span class="keyword">return</span> TCP_TW_RST;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Dup ACK? */</span></span><br><span class="line">		<span class="comment">//没有ack标志位，或者是重复的ack</span></span><br><span class="line">		<span class="keyword">if</span> (!th-&gt;ack ||</span><br><span class="line">		    !after(TCP_SKB_CB(skb)-&gt;end_seq, tcptw-&gt;tw_rcv_nxt) ||</span><br><span class="line">		    TCP_SKB_CB(skb)-&gt;end_seq == TCP_SKB_CB(skb)-&gt;seq) &#123;</span><br><span class="line">			inet_twsk_put(tw);</span><br><span class="line">			<span class="keyword">return</span> TCP_TW_SUCCESS; <span class="comment">//外面默默丢弃了</span></span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* New data or FIN. If new data arrive after half-duplex close,</span></span><br><span class="line"><span class="comment">		 * reset.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//不是fin或者是新数据，直接回rst，这里是意味着finwait2就不能接对端继续发呆数据包吗？</span></span><br><span class="line">		<span class="comment">//注意可能是因为这里是tw套接字承载着finwait2</span></span><br><span class="line">		<span class="keyword">if</span> (!th-&gt;fin ||</span><br><span class="line">		    TCP_SKB_CB(skb)-&gt;end_seq != tcptw-&gt;tw_rcv_nxt + <span class="number">1</span>)</span><br><span class="line">			<span class="keyword">return</span> TCP_TW_RST;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* FIN arrived, enter true time-wait state. */</span></span><br><span class="line">		<span class="comment">//走到这里表示收到了合法的fin包</span></span><br><span class="line">		tw-&gt;tw_substate	  = TCP_TIME_WAIT;</span><br><span class="line">		<span class="comment">//更新下一个待接收的序号</span></span><br><span class="line">		tcptw-&gt;tw_rcv_nxt = TCP_SKB_CB(skb)-&gt;end_seq;</span><br><span class="line">		<span class="keyword">if</span> (tmp_opt.saw_tstamp) &#123;</span><br><span class="line">			tcptw-&gt;tw_ts_recent_stamp = ktime_get_seconds();</span><br><span class="line">			tcptw-&gt;tw_ts_recent	  = tmp_opt.rcv_tsval;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//注意这里是重新开始tw 计时</span></span><br><span class="line">		inet_twsk_reschedule(tw, TCP_TIMEWAIT_LEN);</span><br><span class="line">		<span class="keyword">return</span> TCP_TW_ACK;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	Now real TIME-WAIT state.</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 *	RFC 1122:</span></span><br><span class="line"><span class="comment">	 *	&quot;When a connection is [...] on TIME-WAIT state [...]</span></span><br><span class="line"><span class="comment">	 *	[a TCP] MAY accept a new SYN from the remote TCP to</span></span><br><span class="line"><span class="comment">	 *	reopen the connection directly, if it:</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 *	(1)  assigns its initial sequence number for the new</span></span><br><span class="line"><span class="comment">	 *	connection to be larger than the largest sequence</span></span><br><span class="line"><span class="comment">	 *	number it used on the previous connection incarnation,</span></span><br><span class="line"><span class="comment">	 *	and</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 *	(2)  returns to TIME-WAIT state if the SYN turns out</span></span><br><span class="line"><span class="comment">	 *	to be an old duplicate&quot;.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//正常timewait状态的处理，通过了检查如果是纯ack或者是rst</span></span><br><span class="line">	<span class="keyword">if</span> (!paws_reject &amp;&amp;</span><br><span class="line">	    (TCP_SKB_CB(skb)-&gt;seq == tcptw-&gt;tw_rcv_nxt &amp;&amp;</span><br><span class="line">	     (TCP_SKB_CB(skb)-&gt;seq == TCP_SKB_CB(skb)-&gt;end_seq || th-&gt;rst))) &#123;</span><br><span class="line">		<span class="comment">/* In window segment, it may be only reset or bare ack. */</span></span><br><span class="line">		<span class="comment">//如果收到了rst 直接释放资源</span></span><br><span class="line">		<span class="keyword">if</span> (th-&gt;rst) &#123;</span><br><span class="line">			<span class="comment">/* This is TIME_WAIT assassination, in two flavors.</span></span><br><span class="line"><span class="comment">			 * Oh well... nobody has a sufficient solution to this</span></span><br><span class="line"><span class="comment">			 * protocol bug yet.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="keyword">if</span> (!READ_ONCE(twsk_net(tw)-&gt;ipv4.sysctl_tcp_rfc1337)) &#123;</span><br><span class="line">kill:</span><br><span class="line">				inet_twsk_deschedule_put(tw);</span><br><span class="line">				<span class="keyword">return</span> TCP_TW_SUCCESS;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			<span class="comment">//重新开始定时器，因为可能是ack丢失了</span></span><br><span class="line">			inet_twsk_reschedule(tw, TCP_TIMEWAIT_LEN);</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (tmp_opt.saw_tstamp) &#123;</span><br><span class="line">			tcptw-&gt;tw_ts_recent	  = tmp_opt.rcv_tsval;</span><br><span class="line">			tcptw-&gt;tw_ts_recent_stamp = ktime_get_seconds();</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		inet_twsk_put(tw);</span><br><span class="line">		<span class="keyword">return</span> TCP_TW_SUCCESS;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Out of window segment.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">	   All the segments are ACKed immediately.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">	   The only exception is new SYN. We accept it, if it is</span></span><br><span class="line"><span class="comment">	   not old duplicate and we are not in danger to be killed</span></span><br><span class="line"><span class="comment">	   by delayed old duplicates. RFC check is that it has</span></span><br><span class="line"><span class="comment">	   newer sequence number works at rates &lt;40Mbit/sec.</span></span><br><span class="line"><span class="comment">	   However, if paws works, it is reliable AND even more,</span></span><br><span class="line"><span class="comment">	   we even may relax silly seq space cutoff.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">	   RED-PEN: we violate main RFC requirement, if this SYN will appear</span></span><br><span class="line"><span class="comment">	   old duplicate (i.e. we receive RST in reply to SYN-ACK),</span></span><br><span class="line"><span class="comment">	   we must return socket to time-wait state. It is not good,</span></span><br><span class="line"><span class="comment">	   but not fatal yet.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//窗口外的数据包，如果是纯syn包，注意这里会重新在外面找listne套接字</span></span><br><span class="line">	<span class="keyword">if</span> (th-&gt;syn &amp;&amp; !th-&gt;rst &amp;&amp; !th-&gt;ack &amp;&amp; !paws_reject &amp;&amp;</span><br><span class="line">	    (after(TCP_SKB_CB(skb)-&gt;seq, tcptw-&gt;tw_rcv_nxt) ||<span class="comment">//序列号大于下一个待接收的</span></span><br><span class="line">	     (tmp_opt.saw_tstamp &amp;&amp;</span><br><span class="line">	      (s32)(tcptw-&gt;tw_ts_recent - tmp_opt.rcv_tsval) &lt; <span class="number">0</span>))) &#123;<span class="comment">//时间戳合理</span></span><br><span class="line">		u32 isn = tcptw-&gt;tw_snd_nxt + <span class="number">65535</span> + <span class="number">2</span>;<span class="comment">//必须大于旧连接的序列号</span></span><br><span class="line">		<span class="keyword">if</span> (isn == <span class="number">0</span>)</span><br><span class="line">			isn++;</span><br><span class="line">		TCP_SKB_CB(skb)-&gt;tcp_tw_isn = isn;</span><br><span class="line">		<span class="keyword">return</span> TCP_TW_SYN;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//由于PAWS拒绝</span></span><br><span class="line">	<span class="keyword">if</span> (paws_reject)</span><br><span class="line">		__NET_INC_STATS(twsk_net(tw), LINUX_MIB_PAWSESTABREJECTED);</span><br><span class="line">	<span class="comment">//没有携带rst，但是由于序列号被拒绝 会ack，但是限速</span></span><br><span class="line">	<span class="keyword">if</span> (!th-&gt;rst) &#123;</span><br><span class="line">		<span class="comment">/* In this case we must reset the TIMEWAIT timer.</span></span><br><span class="line"><span class="comment">		 *</span></span><br><span class="line"><span class="comment">		 * If it is ACKless SYN it may be both old duplicate</span></span><br><span class="line"><span class="comment">		 * and new good SYN with random sequence number &lt;rcv_nxt.</span></span><br><span class="line"><span class="comment">		 * Do not reschedule in the last case.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="keyword">if</span> (paws_reject || th-&gt;ack)</span><br><span class="line">			inet_twsk_reschedule(tw, TCP_TIMEWAIT_LEN);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">return</span> tcp_timewait_check_oow_rate_limit(</span><br><span class="line">			tw, skb, LINUX_MIB_TCPACKSKIPPEDTIMEWAIT);</span><br><span class="line">	&#125;</span><br><span class="line">	inet_twsk_put(tw);</span><br><span class="line">	<span class="keyword">return</span> TCP_TW_SUCCESS;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>tcp_timewait_state_process</code>首先PAWS机制检查数据包是否合法，</p>
+<p>如果当前的<code>tw</code>套接字是<code>fin_wait2</code>状态下创建的，具体处理情况如下所示：</p>
+<ul>
+<li>窗口外 &#x2F; PAWS 失 回 ACK（限速）</li>
+<li>收到 RST 直接 <code>kill tw_sock</code></li>
+<li>收到 SYN 且 seq 合法 → 回 RST</li>
+<li>防止旧连接干扰新连接建立。</li>
+<li>纯 ACK &#x2F; 重复 ACK  丢弃报文</li>
+<li>如果不是 FIN，或者 FIN 位置不对 回RST</li>
+<li>收到了和发<code>fin</code>真正进入<code>timewait</code>状态</li>
+</ul>
+<p>如果当前的<code>tw</code>套接字是<code>time_wait</code>状态下创建的则具体处理逻辑如下所示：</p>
+<ul>
+<li>窗口内收到纯 ACK 重置 TIME_WAIT</li>
+<li>窗口内收到 RST 什么也不做？</li>
+<li>窗口外默认回 ACK（限速）</li>
+<li>窗口外新 SYN 可能复活连接（返回 TCP_TW_SYN）</li>
+</ul>
+<p>回到外层<code>timewait</code>的处理逻辑，这里根据不同的返回值执行具体的动作，具体处理逻辑如下：</p>
+<p><strong>TCP_TW_SYN</strong>： 去查是否有对应的监听 socket，有的话：<strong>直接销毁 timewait sock</strong>，把这个包交回正常三次握手流程（相当于 TIME_WAIT 让路，复活四元组）</p>
+<p><strong>TCP_TW_ACK</strong>：通常是对端重传 FIN 或发了窗口外数据，<strong>回一个 ACK</strong>，维持协议正确性（同时不让对方继续重传）</p>
+<p><strong>TCP_TW_RST</strong>：这个包在当前语义下是非法的（比如 FIN_WAIT2 阶段收到 SYN）<strong>回 RST</strong>，并把 timewait sock 彻底释放</p>
+<p><strong>TCP_TW_SUCCESS</strong>：什么都不用做<strong>说明这个包已经被判定为可以默默丢弃</strong></p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/TCP/" rel="tag"># TCP</a>
+              <a href="/tags/TCP%E6%96%AD%E8%BF%9E/" rel="tag"># TCP断连</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/01/24/TCP%E8%BF%9E%E6%8E%A5%E7%9A%84%E7%BB%88%E6%AD%A2%EF%BC%88%E4%B8%89%EF%BC%89/" rel="prev" title="TCP四次挥手-被动关闭">
+      <i class="fa fa-chevron-left"></i> TCP四次挥手-被动关闭
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2026/01/28/TCP%E8%BF%9E%E6%8E%A5%E7%9A%84%E7%BB%88%E6%AD%A2%EF%BC%88%E5%9B%9B%EF%BC%89/" rel="next" title="TCP四次挥手-主动关闭">
+      TCP四次挥手-主动关闭 <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">93</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">21</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
