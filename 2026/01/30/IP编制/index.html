@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="本文将分析内核IP地址是如何被管理及介绍操作IP地址的常用接口。要知道在内核网络协议栈中，IP地址是设置到主机的网络接口，同时一个网口可以有多个IP地址。net_device可以视作驱动与协议栈沟通的桥梁之一，其中IPv4相关的配置被net_device的in_device结构中，而具体的IP地址，子网掩码，广播地址等信息存放到in_device的in_ifaddr中，具体关系如下所示： 1234">
+<meta property="og:type" content="article">
+<meta property="og:title" content="如何管理IP地址">
+<meta property="og:url" content="http://example.com/2026/01/30/IP%E7%BC%96%E5%88%B6/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="本文将分析内核IP地址是如何被管理及介绍操作IP地址的常用接口。要知道在内核网络协议栈中，IP地址是设置到主机的网络接口，同时一个网口可以有多个IP地址。net_device可以视作驱动与协议栈沟通的桥梁之一，其中IPv4相关的配置被net_device的in_device结构中，而具体的IP地址，子网掩码，广播地址等信息存放到in_device的in_ifaddr中，具体关系如下所示： 1234">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-01-30T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-01-29T15:31:27.497Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="IP编址">
+<meta property="article:tag" content="IP">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/01/30/IP%E7%BC%96%E5%88%B6/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>如何管理IP地址 | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/01/30/IP%E7%BC%96%E5%88%B6/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          如何管理IP地址
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-01-30 22:00:00" itemprop="dateCreated datePublished" datetime="2026-01-30T22:00:00+08:00">2026-01-30</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-01-29 23:31:27" itemprop="dateModified" datetime="2026-01-29T23:31:27+08:00">2026-01-29</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/01/30/IP%E7%BC%96%E5%88%B6/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/01/30/IP%E7%BC%96%E5%88%B6/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>本文将分析内核IP地址是如何被管理及介绍操作IP地址的常用接口。要知道在内核网络协议栈中，IP地址是设置到主机的网络接口，同时一个网口可以有多个IP地址。<br><code>net_device</code>可以视作驱动与协议栈沟通的桥梁之一，其中IPv4相关的配置被<code>net_device</code>的<code>in_device</code>结构中，而具体的IP地址，子网掩码，广播地址等信息存放到<code>in_device</code>的<code>in_ifaddr</code>中，具体关系如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line">        ┌──────────────────────────┐</span><br><span class="line">        │     <span class="class"><span class="keyword">struct</span> <span class="title">net_device</span>     │</span></span><br><span class="line"><span class="class">        │         (<span class="title">e</span>.<span class="title">g</span>. <span class="title">eth0</span>)       │</span></span><br><span class="line"><span class="class">        └─────────────┬────────────┘</span></span><br><span class="line"><span class="class">                      │</span></span><br><span class="line"><span class="class">                      │  <span class="title">dev</span>-&gt;</span>ip_ptr / dev-&gt;__in_dev (IPv4)</span><br><span class="line">                      ▼</span><br><span class="line">        ┌──────────────────────────┐</span><br><span class="line">        │      <span class="class"><span class="keyword">struct</span> <span class="title">in_device</span>     │</span></span><br><span class="line"><span class="class">        │   (<span class="title">IPv4</span> <span class="title">per</span>-<span class="title">device</span> <span class="title">state</span>) │</span></span><br><span class="line"><span class="class">        └─────────────┬────────────┘</span></span><br><span class="line"><span class="class">                      │</span></span><br><span class="line"><span class="class">                      │  <span class="title">in_dev</span>-&gt;</span>ifa_list (链表头)</span><br><span class="line">                      ▼</span><br><span class="line">┌──────────────────────────┐</span><br><span class="line">│     <span class="class"><span class="keyword">struct</span> <span class="title">in_ifaddr</span>      │   ← 一个 <span class="title">IPv4</span> 地址对象</span></span><br><span class="line"><span class="class">│  <span class="title">ifa_local</span> / <span class="title">ifa_mask</span> ... │</span></span><br><span class="line"><span class="class">└─────────────┬────────────┘</span></span><br><span class="line"><span class="class">              │ <span class="title">ifa_next</span></span></span><br><span class="line"><span class="class">              ▼</span></span><br><span class="line"><span class="class">┌──────────────────────────┐</span></span><br><span class="line"><span class="class">│     <span class="keyword">struct</span> <span class="title">in_ifaddr</span>      │   ← 另一个 <span class="title">IPv4</span> 地址</span></span><br><span class="line"><span class="class">└─────────────┬────────────┘</span></span><br><span class="line"><span class="class">              │</span></span><br><span class="line"><span class="class">              ▼</span></span><br><span class="line"><span class="class">             ...</span></span><br><span class="line"><span class="class"></span></span><br></pre></td></tr></table></figure>
+
+<h3 id="in-device-结构"><a href="#in-device-结构" class="headerlink" title="in_device 结构"></a><code>in_device</code> 结构</h3><p><code>in_device</code> 是 **每个网络接口对应的 IPv4 管理结构。当驱动注册<code>net_device</code>时，内核在 <code>inetdev_init()</code> 中为该 <code>net_device</code> 创建一个 <code>in_device</code>，并通过 <code>dev-&gt;ip_ptr</code> 与之关联。<code>in_device</code> 本身并不保存具体的 IP 地址，而是维护一个链表，用来管理该网口上的所有 IPv4 地址。同时，<code>in_device</code> 还保存了该接口的 IPv4 行为配置（如 <code>rp_filter</code>、<code>arp_ignore</code>、<code>arp_announce</code>、<code>forwarding</code> 等）。</p>
+<p>具体结构如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">in_device</span> &#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span>	*<span class="title">dev</span>;</span>	<span class="comment">//对应的netdev</span></span><br><span class="line">	netdevice_tracker	dev_tracker;</span><br><span class="line"></span><br><span class="line">	<span class="type">refcount_t</span>		refcnt;		<span class="comment">//引用计数</span></span><br><span class="line">	<span class="type">int</span>			dead;			<span class="comment">//标识设备是否已经销毁</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_ifaddr</span>	__<span class="title">rcu</span> *<span class="title">ifa_list</span>;</span><span class="comment">/* IP ifaddr chain		*/</span><span class="comment">//管理所有ip地址的链表</span></span><br><span class="line"></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_mc_list</span> __<span class="title">rcu</span>	*<span class="title">mc_list</span>;</span>	<span class="comment">/* IP multicast filter chain    */</span><span class="comment">//多播地址的链表</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_mc_list</span> __<span class="title">rcu</span>	* __<span class="title">rcu</span> *<span class="title">mc_hash</span>;</span>	<span class="comment">//多播组hash表</span></span><br><span class="line"></span><br><span class="line">	<span class="type">int</span>			mc_count;	<span class="comment">/* Number of installed mcasts	*/</span><span class="comment">//加入多播组的数量</span></span><br><span class="line">	<span class="type">spinlock_t</span>		mc_tomb_lock;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_mc_list</span>	*<span class="title">mc_tomb</span>;</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span>		mr_v1_seen;		<span class="comment">//igmpv1 查询时间</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span>		mr_v2_seen;		<span class="comment">//igmpv2 查询时间</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span>		mr_maxdelay;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span>		mr_qi;		<span class="comment">/* Query Interval */</span><span class="comment">//查询间隔</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span>		mr_qri;		<span class="comment">/* Query Response Interval */</span><span class="comment">//查询响应间隔</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span>		mr_qrv;		<span class="comment">/* Query Robustness Variable */</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span>		mr_gq_running;</span><br><span class="line">	u32			mr_ifc_count;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">timer_list</span>	<span class="title">mr_gq_timer</span>;</span>	<span class="comment">/* general query timer */</span><span class="comment">//igmp的定时器</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">timer_list</span>	<span class="title">mr_ifc_timer</span>;</span>	<span class="comment">/* interface change timer */</span></span><br><span class="line"></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">neigh_parms</span>	*<span class="title">arp_parms</span>;</span>	<span class="comment">//指向arp表</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ipv4_devconf</span>	<span class="title">cnf</span>;</span>		<span class="comment">//具体的配置，例如forward，反向路由过滤，arp ignore等</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rcu_head</span>		<span class="title">rcu_head</span>;</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<h3 id="in-ifaddr结构"><a href="#in-ifaddr结构" class="headerlink" title="in_ifaddr结构"></a><code>in_ifaddr</code>结构</h3><p><code>in_ifaddr</code> 是 Linux 内核中 <strong>一个具体 IPv4 地址的实体对象</strong>。<strong>当执行 <code>ip addr add ... dev eth0</code> 时，内核并不是把 IP 直接写进网口，而是创建一个 <code>in_ifaddr</code> 结构体，并将其挂到该网口对应的 <code>in_device-&gt;ifa_list</code> 链表中</strong>。这个结构体中保存了该地址的核心信息，如本机地址、广播地址、子网掩码、作用域、标志位等。具体结构如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">in_ifaddr</span> &#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">hlist_node</span>	<span class="title">hash</span>;</span>			<span class="comment">//这个结构体同时也被一个全局hash表管理</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_ifaddr</span>	__<span class="title">rcu</span> *<span class="title">ifa_next</span>;</span><span class="comment">//同一个设备的下一个ip地址</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_device</span>	*<span class="title">ifa_dev</span>;</span>		<span class="comment">//指向in_device 也就是管理结构</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rcu_head</span>		<span class="title">rcu_head</span>;</span></span><br><span class="line">	__be32			ifa_local;			<span class="comment">//用户配置的ip地址</span></span><br><span class="line">	__be32			ifa_address;		<span class="comment">//子网？</span></span><br><span class="line">	__be32			ifa_mask;			<span class="comment">//子网掩码</span></span><br><span class="line">	__u32			ifa_rt_priority;	<span class="comment">//路由优先级影响的是metric</span></span><br><span class="line">	__be32			ifa_broadcast;		<span class="comment">//广播地址</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span>		ifa_scope;		<span class="comment">//这个地址的可达范围，默认是全局可达</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span>		ifa_prefixlen;	<span class="comment">//前缀长度</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span>		ifa_proto;		<span class="comment">//标识路由的来源，比如是用户加的还是kernel自己生成的</span></span><br><span class="line">	__u32			ifa_flags;			<span class="comment">//标志位，比如是否是主ip地址</span></span><br><span class="line">	<span class="type">char</span>			ifa_label[IFNAMSIZ];<span class="comment">//接口的别名</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* In seconds, relative to tstamp. Expiry is at tstamp + HZ * lft. */</span></span><br><span class="line">	__u32			ifa_valid_lft;		<span class="comment">//存活的时间</span></span><br><span class="line">	__u32			ifa_preferred_lft;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span>		ifa_cstamp; <span class="comment">/* created timestamp */</span><span class="comment">//时间戳</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span>		ifa_tstamp; <span class="comment">/* updated timestamp */</span></span><br><span class="line">&#125;;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h3 id="IP-操作函数"><a href="#IP-操作函数" class="headerlink" title="IP 操作函数"></a>IP 操作函数</h3><h4 id="inetdev-init"><a href="#inetdev-init" class="headerlink" title="inetdev_init"></a><code>inetdev_init</code></h4><p><code>inetdev_init</code>的作用是为一个net_device分配一个in_device结构，当网卡驱动注册设备时，会通过通知链机制调用到该函数（<code>devinet_init</code>中注册）</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//分配in_dev结构，从通知连调用过来的</span></span><br><span class="line"><span class="type">static</span> <span class="keyword">struct</span> in_device *<span class="title function_">inetdev_init</span><span class="params">(<span class="keyword">struct</span> net_device *dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_device</span> *<span class="title">in_dev</span>;</span></span><br><span class="line">	<span class="type">int</span> err = -ENOMEM;</span><br><span class="line"></span><br><span class="line">	ASSERT_RTNL();</span><br><span class="line">	<span class="comment">//申请in_dev结构</span></span><br><span class="line">	in_dev = kzalloc(<span class="keyword">sizeof</span>(*in_dev), GFP_KERNEL);</span><br><span class="line">	<span class="keyword">if</span> (!in_dev)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	<span class="comment">//这把网络命名空间当前的配置给到了in_dev中</span></span><br><span class="line">	<span class="built_in">memcpy</span>(&amp;in_dev-&gt;cnf, dev_net(dev)-&gt;ipv4.devconf_dflt,</span><br><span class="line">			<span class="keyword">sizeof</span>(in_dev-&gt;cnf));</span><br><span class="line">	in_dev-&gt;cnf.sysctl = <span class="literal">NULL</span>; </span><br><span class="line">	<span class="comment">//关联netdev</span></span><br><span class="line">	in_dev-&gt;dev = dev;</span><br><span class="line">	<span class="comment">//关联 arp表</span></span><br><span class="line">	in_dev-&gt;arp_parms = neigh_parms_alloc(dev, &amp;arp_tbl);</span><br><span class="line">	<span class="keyword">if</span> (!in_dev-&gt;arp_parms)</span><br><span class="line">		<span class="keyword">goto</span> out_kfree;</span><br><span class="line">	<span class="comment">//这里注意如果启用了转发是关闭了lro的</span></span><br><span class="line">	<span class="keyword">if</span> (IPV4_DEVCONF(in_dev-&gt;cnf, FORWARDING))</span><br><span class="line">		dev_disable_lro(dev);</span><br><span class="line">	<span class="comment">/* Reference in_dev-&gt;dev */</span></span><br><span class="line">	netdev_hold(dev, &amp;in_dev-&gt;dev_tracker, GFP_KERNEL);</span><br><span class="line">	<span class="comment">/* Account for reference dev-&gt;ip_ptr (below) */</span></span><br><span class="line">	refcount_set(&amp;in_dev-&gt;refcnt, <span class="number">1</span>);</span><br><span class="line">	<span class="comment">//创建 /proc/sys/net/ipv4/conf/dev/</span></span><br><span class="line">	err = devinet_sysctl_register(in_dev);</span><br><span class="line">	<span class="keyword">if</span> (err) &#123;</span><br><span class="line">		in_dev-&gt;dead = <span class="number">1</span>;</span><br><span class="line">		neigh_parms_release(&amp;arp_tbl, in_dev-&gt;arp_parms);</span><br><span class="line">		in_dev_put(in_dev);</span><br><span class="line">		in_dev = <span class="literal">NULL</span>;</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//挂上igmp 用到的定时器</span></span><br><span class="line">	ip_mc_init_dev(in_dev);</span><br><span class="line">	<span class="comment">//设备open了</span></span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;flags &amp; IFF_UP)</span><br><span class="line">		ip_mc_up(in_dev);<span class="comment">//初始化igmp相关的字段</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* we can receive as soon as ip_ptr is set -- do this last */</span></span><br><span class="line">	<span class="comment">//关联net</span></span><br><span class="line">	rcu_assign_pointer(dev-&gt;ip_ptr, in_dev);</span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">return</span> in_dev ?: ERR_PTR(err);</span><br><span class="line">out_kfree:</span><br><span class="line">	kfree(in_dev);</span><br><span class="line">	in_dev = <span class="literal">NULL</span>;</span><br><span class="line">	<span class="keyword">goto</span> out;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>inetdev_init()</code> 的作用很简单：<strong>让一个网口具备 IPv4 能力</strong>。它为新注册的 <code>net_device</code> 分配一个 <code>in_device</code>，把当前网络命名空间的 IPv4 默认配置拷贝过来，建立与网口的关联，并初始化 ARP 参数、IGMP 多播相关结构以及 <code>/proc/sys/net/ipv4/conf/&lt;dev&gt;/</code> 下的配置入口。如果开启了转发，还会关闭 LRO （保证转发正确性）。最后把这个 <code>in_device</code> 挂到 <code>dev-&gt;ip_ptr</code> 上。</p>
+<p>同理<code>inetdev_destroy</code>在设备注销时候被调用，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">inetdev_destroy</span><span class="params">(<span class="keyword">struct</span> in_device *in_dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_ifaddr</span> *<span class="title">ifa</span>;</span></span><br><span class="line"></span><br><span class="line">	ASSERT_RTNL();</span><br><span class="line"></span><br><span class="line">	dev = in_dev-&gt;dev;</span><br><span class="line">	<span class="comment">//标记为dead</span></span><br><span class="line">	in_dev-&gt;dead = <span class="number">1</span>;</span><br><span class="line">	<span class="comment">//释放多播相关资源</span></span><br><span class="line">	ip_mc_destroy_dev(in_dev);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">while</span> ((ifa = rtnl_dereference(in_dev-&gt;ifa_list)) != <span class="literal">NULL</span>) &#123;</span><br><span class="line">		<span class="comment">//调用通知连告诉路由等模块</span></span><br><span class="line">		inet_del_ifa(in_dev, &amp;in_dev-&gt;ifa_list, <span class="number">0</span>);</span><br><span class="line">		<span class="comment">//释放资源</span></span><br><span class="line">		inet_free_ifa(ifa);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	RCU_INIT_POINTER(dev-&gt;ip_ptr, <span class="literal">NULL</span>);</span><br><span class="line">	<span class="comment">//删除 syisctl 接口</span></span><br><span class="line">	devinet_sysctl_unregister(in_dev);</span><br><span class="line">	<span class="comment">//释放arp相关资源</span></span><br><span class="line">	neigh_parms_release(&amp;arp_tbl, in_dev-&gt;arp_parms);</span><br><span class="line">	arp_ifdown(dev);</span><br><span class="line">	<span class="comment">//释放in_dev结构</span></span><br><span class="line">	in_dev_put(in_dev);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h4 id="inet-select-addr"><a href="#inet-select-addr" class="headerlink" title="inet_select_addr"></a>inet_select_addr</h4><p>inet_select_addr的作用就是在封装数据包的时候如果没有指定数据包的源ip地址，则会调用该接口，根据指定设备目的地址以及地址范围遍历当前<code>netdev</code>并选择一个合适的源ip地址，<strong>如果当前设备没有ip地址的话则会<code>fallback</code>获取其他设备的IP地址</strong>。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br></pre></td><td class="code"><pre><span class="line">/发送数据包选择源ip的时候会用到</span><br><span class="line">__be32 <span class="title function_">inet_select_addr</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> net_device *dev, __be32 dst, <span class="type">int</span> scope)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">in_ifaddr</span> *<span class="title">ifa</span>;</span></span><br><span class="line">	__be32 addr = <span class="number">0</span>;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span> localnet_scope = RT_SCOPE_HOST;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_device</span> *<span class="title">in_dev</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> dev_net(dev);</span><br><span class="line">	<span class="type">int</span> master_idx;</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	<span class="comment">//拿到管理ip的in_device</span></span><br><span class="line">	in_dev = __in_dev_get_rcu(dev);<span class="comment">//不太可能吧</span></span><br><span class="line">	<span class="keyword">if</span> (!in_dev)</span><br><span class="line">		<span class="keyword">goto</span> no_in_dev;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (unlikely(IN_DEV_ROUTE_LOCALNET(in_dev)))</span><br><span class="line">		localnet_scope = RT_SCOPE_LINK;</span><br><span class="line">	<span class="comment">//遍历这个网口上的所有ipv4地址</span></span><br><span class="line">	in_dev_for_each_ifa_rcu(ifa, in_dev) &#123;</span><br><span class="line">		<span class="comment">//跳过次地址</span></span><br><span class="line">		<span class="keyword">if</span> (ifa-&gt;ifa_flags &amp; IFA_F_SECONDARY)</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="comment">//范围不满足也跳过</span></span><br><span class="line">		<span class="keyword">if</span> (min(ifa-&gt;ifa_scope, localnet_scope) &gt; scope)</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="comment">//优先选同一个子网的的地址</span></span><br><span class="line">		<span class="keyword">if</span> (!dst || inet_ifa_match(dst, ifa)) &#123;</span><br><span class="line">			addr = ifa-&gt;ifa_local;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//相当于是先记录一个备用选择</span></span><br><span class="line">		<span class="keyword">if</span> (!addr)</span><br><span class="line">			addr = ifa-&gt;ifa_local;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (addr)</span><br><span class="line">		<span class="keyword">goto</span> out_unlock;</span><br><span class="line">no_in_dev:</span><br><span class="line">	<span class="comment">//vrf的处理</span></span><br><span class="line">	master_idx = l3mdev_master_ifindex_rcu(dev);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* For VRFs, the VRF device takes the place of the loopback device,</span></span><br><span class="line"><span class="comment">	 * with addresses on it being preferred.  Note in such cases the</span></span><br><span class="line"><span class="comment">	 * loopback device will be among the devices that fail the master_idx</span></span><br><span class="line"><span class="comment">	 * equality check in the loop below.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">////vrf的处理</span></span><br><span class="line">	<span class="keyword">if</span> (master_idx &amp;&amp;</span><br><span class="line">	    (dev = dev_get_by_index_rcu(net, master_idx)) &amp;&amp;</span><br><span class="line">	    (in_dev = __in_dev_get_rcu(dev))) &#123;</span><br><span class="line">		addr = in_dev_select_addr(in_dev, scope);</span><br><span class="line">		<span class="keyword">if</span> (addr)</span><br><span class="line">			<span class="keyword">goto</span> out_unlock;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Not loopback addresses on loopback should be preferred</span></span><br><span class="line"><span class="comment">	   in this case. It is important that lo is the first interface</span></span><br><span class="line"><span class="comment">	   in dev_base list.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//这里开始遍历所有的网络设备！！！ 宁可借一个网络设备也不能没有？ </span></span><br><span class="line">	<span class="comment">// 比如ip route add default via 192.168.1.1 dev eth0 但是eth0根本没有ip地址？</span></span><br><span class="line">	for_each_netdev_rcu(net, dev) &#123;</span><br><span class="line">		<span class="comment">//如果上面没有返回则大概率会走到这里false</span></span><br><span class="line">		<span class="keyword">if</span> (l3mdev_master_ifindex_rcu(dev) != master_idx)</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="comment">//找到in_device</span></span><br><span class="line">		in_dev = __in_dev_get_rcu(dev);</span><br><span class="line">		<span class="keyword">if</span> (!in_dev)</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="comment">//随便找一个能用的，前提不能是链路本地地址</span></span><br><span class="line">		addr = in_dev_select_addr(in_dev, scope);</span><br><span class="line">		<span class="keyword">if</span> (addr)</span><br><span class="line">			<span class="keyword">goto</span> out_unlock;</span><br><span class="line">	&#125;</span><br><span class="line">out_unlock:</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">	<span class="keyword">return</span> addr;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="inet-confirm-addr"><a href="#inet-confirm-addr" class="headerlink" title="inet_confirm_addr"></a>inet_confirm_addr</h4><p><code>inet_confirm_addr</code>用于在给定参数的条件下找到一个属于本机的IP地址，如果没有给定具体IP地址还会自动选择一个，**在收到包时，判断是不是需要被处理的（例如arp模块）**会调用该接口。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 如果没有给定具体IP地址（比如arp_ignore==1 ）.</span></span><br><span class="line">__be32 <span class="title function_">inet_confirm_addr</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> in_device *in_dev,</span></span><br><span class="line"><span class="params">			 __be32 dst, __be32 local, <span class="type">int</span> scope)</span></span><br><span class="line">&#123;</span><br><span class="line">	__be32 addr = <span class="number">0</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span>;</span></span><br><span class="line">	<span class="comment">//相当于指定了dev</span></span><br><span class="line">	<span class="keyword">if</span> (in_dev)</span><br><span class="line">		<span class="keyword">return</span> confirm_addr_indev(in_dev, dst, local, scope);</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	<span class="comment">//相当于遍历所有dev</span></span><br><span class="line">	for_each_netdev_rcu(net, dev) &#123;</span><br><span class="line">		in_dev = __in_dev_get_rcu(dev);</span><br><span class="line">		<span class="keyword">if</span> (in_dev) &#123;</span><br><span class="line">			addr = confirm_addr_indev(in_dev, dst, local, scope);</span><br><span class="line">			<span class="keyword">if</span> (addr)</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> addr;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>inet_confirm_addr</code>如果指定了<code>dev</code>则调用<code>confirm_addr_indev</code>判断是否有满足条件的地址，否则遍历所有的网络设备之后调用**<code>confirm_addr_indev</code> 来根据指定网口上，按范围和是否是同一个子网来，返回一个属于本机的 IPv4 地址**</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> __be32 <span class="title function_">confirm_addr_indev</span><span class="params">(<span class="keyword">struct</span> in_device *in_dev, __be32 dst,</span></span><br><span class="line"><span class="params">			      __be32 local, <span class="type">int</span> scope)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span> localnet_scope = RT_SCOPE_HOST;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">in_ifaddr</span> *<span class="title">ifa</span>;</span></span><br><span class="line">	__be32 addr = <span class="number">0</span>;</span><br><span class="line">	<span class="type">int</span> same = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (unlikely(IN_DEV_ROUTE_LOCALNET(in_dev)))</span><br><span class="line">		localnet_scope = RT_SCOPE_LINK;</span><br><span class="line">	<span class="comment">//遍历该网卡的所有ip地址</span></span><br><span class="line">	in_dev_for_each_ifa_rcu(ifa, in_dev) &#123;</span><br><span class="line">		<span class="comment">//拿到这个地址本身的scope</span></span><br><span class="line">		<span class="type">unsigned</span> <span class="type">char</span> min_scope = min(ifa-&gt;ifa_scope, localnet_scope);</span><br><span class="line">		<span class="comment">//两个地址相同或者没传入地址则先记录一个addr</span></span><br><span class="line">		<span class="keyword">if</span> (!addr &amp;&amp;</span><br><span class="line">		    (local == ifa-&gt;ifa_local || !local) &amp;&amp;</span><br><span class="line">		    min_scope &lt;= scope) &#123;</span><br><span class="line">			addr = ifa-&gt;ifa_local;</span><br><span class="line">			<span class="keyword">if</span> (same)<span class="comment">//same表示同一个子网，直接退出</span></span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//没找到同一个子网的</span></span><br><span class="line">		<span class="keyword">if</span> (!same) &#123;</span><br><span class="line">			<span class="comment">//是不是同一个子网</span></span><br><span class="line">			same = (!local || inet_ifa_match(local, ifa)) &amp;&amp;</span><br><span class="line">				(!dst || inet_ifa_match(dst, ifa));</span><br><span class="line">			<span class="keyword">if</span> (same &amp;&amp; addr) &#123; <span class="comment">//当 same 成立且 addr 已经有了</span></span><br><span class="line">				<span class="keyword">if</span> (local || !dst)</span><br><span class="line">					<span class="keyword">break</span>;</span><br><span class="line">				<span class="comment">/* Is the selected addr into dst subnet? */</span></span><br><span class="line">				<span class="comment">//在接口上挑一个落在 dst 子网里的本地地址</span></span><br><span class="line">				<span class="keyword">if</span> (inet_ifa_match(addr, ifa))</span><br><span class="line">					<span class="keyword">break</span>;</span><br><span class="line">				<span class="comment">/* No, then can we use new local src? */</span></span><br><span class="line">				<span class="keyword">if</span> (min_scope &lt;= scope) &#123;</span><br><span class="line">					addr = ifa-&gt;ifa_local;</span><br><span class="line">					<span class="keyword">break</span>;</span><br><span class="line">				&#125;</span><br><span class="line">				<span class="comment">/* search for large dst subnet for addr */</span></span><br><span class="line">				same = <span class="number">0</span>;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> same ? addr : <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="inet-addr-onlink"><a href="#inet-addr-onlink" class="headerlink" title="inet_addr_onlink"></a><code>inet_addr_onlink</code></h4><p><code>inet_addr_onlink</code>用于判断 <code>a</code> 是否和这块网卡上的某个 IP 在同一子网</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">inet_addr_onlink</span><span class="params">(<span class="keyword">struct</span> in_device *in_dev, __be32 a, __be32 b)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">in_ifaddr</span> *<span class="title">ifa</span>;</span></span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	in_dev_for_each_ifa_rcu(ifa, in_dev) &#123;</span><br><span class="line">		<span class="keyword">if</span> (inet_ifa_match(a, ifa)) &#123;</span><br><span class="line">			<span class="keyword">if</span> (!b || inet_ifa_match(b, ifa)) &#123;</span><br><span class="line">				rcu_read_unlock();</span><br><span class="line">				<span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="inetdev-by-index"><a href="#inetdev-by-index" class="headerlink" title="inetdev_by_index"></a><code>inetdev_by_index</code></h4><p><code>inetdev_by_index</code>作用是通过接口编号，找到这块网卡的 IPv4 地址管理结构其实就是调用了<code>dev_get_by_index_rcu</code></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> in_device *<span class="title function_">inetdev_by_index</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="type">int</span> ifindex)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_device</span> *<span class="title">in_dev</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	dev = dev_get_by_index_rcu(net, ifindex);</span><br><span class="line">	<span class="keyword">if</span> (dev)</span><br><span class="line">		in_dev = rcu_dereference_rtnl(dev-&gt;ip_ptr);</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">	<span class="keyword">return</span> in_dev;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="inet-ifa-byprefix"><a href="#inet-ifa-byprefix" class="headerlink" title="inet_ifa_byprefix"></a>inet_ifa_byprefix</h4><p><strong><code>inet_ifa_byprefix</code>作用为在某接口上，按子网前缀 + 掩码查找对应的 IPv4 地址结构</strong>就是比较子网是不是相同吧（比如inet_ifa_byprefix(in_dev, 192.168.1.0, 255.255.255.0)）</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> in_ifaddr *<span class="title function_">inet_ifa_byprefix</span><span class="params">(<span class="keyword">struct</span> in_device *in_dev, __be32 prefix,</span></span><br><span class="line"><span class="params">				    __be32 mask)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_ifaddr</span> *<span class="title">ifa</span>;</span></span><br><span class="line"></span><br><span class="line">	ASSERT_RTNL();</span><br><span class="line"></span><br><span class="line">	in_dev_for_each_ifa_rtnl(ifa, in_dev) &#123;</span><br><span class="line">		<span class="keyword">if</span> (ifa-&gt;ifa_mask == mask &amp;&amp; inet_ifa_match(prefix, ifa))</span><br><span class="line">			<span class="keyword">return</span> ifa;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="inet-abc-len"><a href="#inet-abc-len" class="headerlink" title="inet_abc_len"></a><code>inet_abc_len</code></h4><p>根据指定的IP地址获取默认的掩码长度</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//根据指定的IP地址获取默认的掩码长度</span></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">inet_abc_len</span><span class="params">(__be32 addr)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> rc = <span class="number">-1</span>;	<span class="comment">/* Something else, probably a multicast. */</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (ipv4_is_zeronet(addr) || ipv4_is_lbcast(addr))</span><br><span class="line">		rc = <span class="number">0</span>;</span><br><span class="line">	<span class="keyword">else</span> &#123;</span><br><span class="line">		__u32 haddr = ntohl(addr);</span><br><span class="line">		<span class="keyword">if</span> (IN_CLASSA(haddr))</span><br><span class="line">			rc = <span class="number">8</span>;</span><br><span class="line">		<span class="keyword">else</span> <span class="keyword">if</span> (IN_CLASSB(haddr))</span><br><span class="line">			rc = <span class="number">16</span>;</span><br><span class="line">		<span class="keyword">else</span> <span class="keyword">if</span> (IN_CLASSC(haddr))</span><br><span class="line">			rc = <span class="number">24</span>;</span><br><span class="line">		<span class="keyword">else</span> <span class="keyword">if</span> (IN_CLASSE(haddr))</span><br><span class="line">			rc = <span class="number">32</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> rc;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/IP%E7%BC%96%E5%9D%80/" rel="tag"># IP编址</a>
+              <a href="/tags/IP/" rel="tag"># IP</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/01/28/TCP%E8%BF%9E%E6%8E%A5%E7%9A%84%E7%BB%88%E6%AD%A2%EF%BC%88%E4%BA%94%EF%BC%89/" rel="prev" title="TCP四次挥手-主动关闭（二）">
+      <i class="fa fa-chevron-left"></i> TCP四次挥手-主动关闭（二）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#in-device-%E7%BB%93%E6%9E%84"><span class="nav-number">1.</span> <span class="nav-text">in_device 结构</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#in-ifaddr%E7%BB%93%E6%9E%84"><span class="nav-number">2.</span> <span class="nav-text">in_ifaddr结构</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#IP-%E6%93%8D%E4%BD%9C%E5%87%BD%E6%95%B0"><span class="nav-number">3.</span> <span class="nav-text">IP 操作函数</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#inetdev-init"><span class="nav-number">3.1.</span> <span class="nav-text">inetdev_init</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#inet-select-addr"><span class="nav-number">3.2.</span> <span class="nav-text">inet_select_addr</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#inet-confirm-addr"><span class="nav-number">3.3.</span> <span class="nav-text">inet_confirm_addr</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#inet-addr-onlink"><span class="nav-number">3.4.</span> <span class="nav-text">inet_addr_onlink</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#inetdev-by-index"><span class="nav-number">3.5.</span> <span class="nav-text">inetdev_by_index</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#inet-ifa-byprefix"><span class="nav-number">3.6.</span> <span class="nav-text">inet_ifa_byprefix</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#inet-abc-len"><span class="nav-number">3.7.</span> <span class="nav-text">inet_abc_len</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">94</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">23</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
