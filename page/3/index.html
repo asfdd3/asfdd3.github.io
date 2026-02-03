@@ -193,6 +193,106 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/12/09/tcp%E5%8F%91%E5%8C%85tcp_transmit_skb%EF%BC%882%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/12/09/tcp%E5%8F%91%E5%8C%85tcp_transmit_skb%EF%BC%882%EF%BC%89/" class="post-title-link" itemprop="url">TCP输出 __tcp_transmit_skb(二)</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-12-09 22:00:00 / 修改时间：22:59:44" itemprop="dateCreated datePublished" datetime="2025-12-09T22:00:00+08:00">2025-12-09</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/12/09/tcp%E5%8F%91%E5%8C%85tcp_transmit_skb%EF%BC%882%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/12/09/tcp%E5%8F%91%E5%8C%85tcp_transmit_skb%EF%BC%882%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p><code>__tcp_select_window</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br></pre></td><td class="code"><pre><span class="line">u32 __tcp_select_window(<span class="keyword">struct</span> sock *sk)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">inet_connection_sock</span> *<span class="title">icsk</span> =</span> inet_csk(sk);</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> sock_net(sk);</span><br><span class="line">    <span class="comment">/* MSS for the peer&#x27;s data.  Previous versions used mss_clamp</span></span><br><span class="line"><span class="comment">     * here.  I don&#x27;t know if the value based on our guesses</span></span><br><span class="line"><span class="comment">     * of peer&#x27;s MSS is better for the performance.  It&#x27;s more correct</span></span><br><span class="line"><span class="comment">     * but may be worse for the performance because of rcv_mss</span></span><br><span class="line"><span class="comment">     * fluctuations.  --SAW  1998/11/1</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="type">int</span> mss = icsk-&gt;icsk_ack.rcv_mss;  <span class="comment">//估计对端的mss</span></span><br><span class="line">    <span class="type">int</span> free_space = tcp_space(sk); <span class="comment">//这里是rcvbuf大小减去backlog还有接收队列之后实际剩余真实的内存量，当前可用的剩余空间</span></span><br><span class="line">    <span class="type">int</span> allowed_space = tcp_full_space(sk);<span class="comment">//这里是rcvbuf大小</span></span><br><span class="line">    <span class="type">int</span> full_space, window;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (sk_is_mptcp(sk))</span><br><span class="line">        mptcp_space(sk, &amp;free_space, &amp;allowed_space);</span><br><span class="line">    <span class="comment">//取一个最大的 接收端硬限制的最大窗口</span></span><br><span class="line">    full_space = <span class="type">min_t</span>(<span class="type">int</span>, tp-&gt;window_clamp, allowed_space);</span><br><span class="line">    <span class="comment">//连一个mss都装不下</span></span><br><span class="line">    <span class="keyword">if</span> (unlikely(mss &gt; full_space)) &#123;</span><br><span class="line">        mss = full_space;</span><br><span class="line">        <span class="keyword">if</span> (mss &lt;= <span class="number">0</span>)</span><br><span class="line">            <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Only allow window shrink if the sysctl is enabled and we have</span></span><br><span class="line"><span class="comment">     * a non-zero scaling factor in effect.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="comment">//是否允许窗口缩小，默认不容许</span></span><br><span class="line">    <span class="keyword">if</span> (READ_ONCE(net-&gt;ipv4.sysctl_tcp_shrink_window) &amp;&amp; tp-&gt;rx_opt.rcv_wscale)</span><br><span class="line">        <span class="keyword">goto</span> shrink_window_allowed;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* do not allow window to shrink */</span></span><br><span class="line">    <span class="comment">//当 free_space 比 full_space 的一半要小，这里可以理解为小于实际窗口的一半吧</span></span><br><span class="line">    <span class="keyword">if</span> (free_space &lt; (full_space &gt;&gt; <span class="number">1</span>)) &#123;</span><br><span class="line">        icsk-&gt;icsk_ack.quick = <span class="number">0</span>;  <span class="comment">//关闭 quick ACK 避免频繁ack</span></span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (tcp_under_memory_pressure(sk)) <span class="comment">//是否在内存压力之下</span></span><br><span class="line">            tcp_adjust_rcv_ssthresh(sk);    <span class="comment">//设置rcv_ssthresh</span></span><br><span class="line"></span><br><span class="line">        <span class="comment">/* free_space might become our new window, make sure we don&#x27;t</span></span><br><span class="line"><span class="comment">         * increase it due to wscale.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="comment">//free_space 齐到 wscale </span></span><br><span class="line">        free_space = round_down(free_space, <span class="number">1</span> &lt;&lt; tp-&gt;rx_opt.rcv_wscale);</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* if free space is less than mss estimate, or is below 1/16th</span></span><br><span class="line"><span class="comment">         * of the maximum allowed, try to move to zero-window, else</span></span><br><span class="line"><span class="comment">         * tcp_clamp_window() will grow rcv buf up to tcp_rmem[2], and</span></span><br><span class="line"><span class="comment">         * new incoming data is dropped due to memory limits.</span></span><br><span class="line"><span class="comment">         * With large window, mss test triggers way too late in order</span></span><br><span class="line"><span class="comment">         * to announce zero window in time before rmem limit kicks in.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="comment">//是否直接变成 0 窗口  当前可用空间 小于最大允许空间的 1/16 || 连一个 MSS 都没有</span></span><br><span class="line">        <span class="keyword">if</span> (free_space &lt; (allowed_space &gt;&gt; <span class="number">4</span>) || free_space &lt; mss)</span><br><span class="line">            <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//大于发送慢启动阈值，设置为慢启动阈值！</span></span><br><span class="line">    <span class="keyword">if</span> (free_space &gt; tp-&gt;rcv_ssthresh)</span><br><span class="line">        free_space = tp-&gt;rcv_ssthresh;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Don&#x27;t do rounding if we are using window scaling, since the</span></span><br><span class="line"><span class="comment">     * scaled window will not line up with the MSS boundary anyway.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">     <span class="comment">//开启了窗口缩放</span></span><br><span class="line">    <span class="keyword">if</span> (tp-&gt;rx_opt.rcv_wscale) &#123;</span><br><span class="line">        window = free_space;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Advertise enough space so that it won&#x27;t get scaled away.</span></span><br><span class="line"><span class="comment">         * Import case: prevent zero window announcement if</span></span><br><span class="line"><span class="comment">         * 1&lt;&lt;rcv_wscale &gt; mss.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="comment">//对齐窗口缩放</span></span><br><span class="line">        window = ALIGN(window, (<span class="number">1</span> &lt;&lt; tp-&gt;rx_opt.rcv_wscale));</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">//没启用窗口缩放的情况</span></span><br><span class="line">        window = tp-&gt;rcv_wnd;</span><br><span class="line">        <span class="comment">/* Get the largest window that is a nice multiple of mss.</span></span><br><span class="line"><span class="comment">         * Window clamp already applied above.</span></span><br><span class="line"><span class="comment">         * If our current window offering is within 1 mss of the</span></span><br><span class="line"><span class="comment">         * free space we just keep it. This prevents the divide</span></span><br><span class="line"><span class="comment">         * and multiply from happening most of the time.</span></span><br><span class="line"><span class="comment">         * We also don&#x27;t do any window rounding when the free space</span></span><br><span class="line"><span class="comment">         * is too small.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">         <span class="comment">//窗口变化太大了，就重新设定一个新的 对齐到 MSS 的整倍数的窗口</span></span><br><span class="line">        <span class="keyword">if</span> (window &lt;= free_space - mss || window &gt; free_space)</span><br><span class="line">            window = rounddown(free_space, mss);</span><br><span class="line">        <span class="keyword">else</span> <span class="keyword">if</span> (mss == full_space &amp;&amp;   <span class="comment">//一次最大窗口只能装一个 MSS   可用空间超过 window + 一半的实际窗口）</span></span><br><span class="line">             free_space &gt; window + (full_space &gt;&gt; <span class="number">1</span>))</span><br><span class="line">            window = free_space;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> window;</span><br><span class="line"></span><br><span class="line">shrink_window_allowed: <span class="comment">//是否更激进的缩小拥塞窗口吧</span></span><br><span class="line">    <span class="comment">/* new window should always be an exact multiple of scaling factor */</span></span><br><span class="line">    <span class="comment">//向下对齐</span></span><br><span class="line">    free_space = round_down(free_space, <span class="number">1</span> &lt;&lt; tp-&gt;rx_opt.rcv_wscale);</span><br><span class="line">    <span class="comment">//如果 free_space 已经小于 full_space 的一半</span></span><br><span class="line">    <span class="keyword">if</span> (free_space &lt; (full_space &gt;&gt; <span class="number">1</span>)) &#123;</span><br><span class="line">        icsk-&gt;icsk_ack.quick = <span class="number">0</span>;</span><br><span class="line">        <span class="comment">//是否内存压力，修改慢启动阈值</span></span><br><span class="line">        <span class="keyword">if</span> (tcp_under_memory_pressure(sk))</span><br><span class="line">            tcp_adjust_rcv_ssthresh(sk);</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* if free space is too low, return a zero window */</span></span><br><span class="line">        <span class="comment">//表示空闲空间只剩下不足 1/16  ||  不足一个mss</span></span><br><span class="line">        <span class="keyword">if</span> (free_space &lt; (allowed_space &gt;&gt; <span class="number">4</span>) || free_space &lt; mss ||</span><br><span class="line">            free_space &lt; (<span class="number">1</span> &lt;&lt; tp-&gt;rx_opt.rcv_wscale))</span><br><span class="line">            <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//大于接收端慢启动阈值</span></span><br><span class="line">    <span class="keyword">if</span> (free_space &gt; tp-&gt;rcv_ssthresh) &#123;</span><br><span class="line">        free_space = tp-&gt;rcv_ssthresh;</span><br><span class="line">        <span class="comment">/* new window should always be an exact multiple of scaling factor</span></span><br><span class="line"><span class="comment">         *</span></span><br><span class="line"><span class="comment">         * For this case, we ALIGN &quot;up&quot; (increase free_space) because</span></span><br><span class="line"><span class="comment">         * we know free_space is not zero here, it has been reduced from</span></span><br><span class="line"><span class="comment">         * the memory-based limit, and rcv_ssthresh is not a hard limit</span></span><br><span class="line"><span class="comment">         * (unlike sk_rcvbuf).</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="comment">//对齐</span></span><br><span class="line">        free_space = ALIGN(free_space, (<span class="number">1</span> &lt;&lt; tp-&gt;rx_opt.rcv_wscale));</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> free_space;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>__tcp_select_window</code>中首先计算接收缓冲区的剩余空间<code>free_space</code> 然后计算接收缓冲区全部的可用大小（按比例计算）<code>allowed_space</code>，拿到这两个值后，计算<strong>理论允许的最大接收窗口</strong><code>full_space</code>。</p>
+<p>如果连一个<code>mss</code>都放不下直接0窗口，</p>
+<p>之后判断是否允许窗口收缩(是否可以激进的主动缩小窗口)，系统默认是不允许。如果是不收缩的逻辑，则进一步判断剩余的空间大小是否已经小于了缓冲区大小的一半（<strong>已经吃掉了超过半个接收窗口</strong>）则关闭快速<code>ack</code>，如果在内存压力之下，则调用<code>tcp_adjust_rcv_ssthresh</code>设置接收端慢启动阈值**(和拥塞窗口的类似，但是这里是控制接收窗口大小的**)，最后把 <code>free_space</code> 向下对齐到 <code>2^rcv_wscale</code> 的整数倍，如果 当前可用空间 小于最大允许空间的 1&#x2F;16 或连一个 MSS 都没有，则也直接0窗口</p>
+<p>上述<code>tcp_adjust_rcv_ssthresh</code> 代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">tcp_adjust_rcv_ssthresh</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;   </span><br><span class="line"></span><br><span class="line">    <span class="comment">//计算剩余的内存（用户配置），通常是0</span></span><br><span class="line">    <span class="type">int</span> unused_mem = sk_unused_reserved_mem(sk);</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">    <span class="comment">//钳制一下，最小4个mss</span></span><br><span class="line">    tp-&gt;rcv_ssthresh = min(tp-&gt;rcv_ssthresh, <span class="number">4U</span> * tp-&gt;advmss);</span><br><span class="line">    <span class="keyword">if</span> (unused_mem)</span><br><span class="line">        <span class="comment">//如果由保留的内存则取一个最大值</span></span><br><span class="line">        tp-&gt;rcv_ssthresh = <span class="type">max_t</span>(u32, tp-&gt;rcv_ssthresh,</span><br><span class="line">                     tcp_win_from_space(sk, unuserud_mem));</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>如果剩余空间大于了接收端慢启动阈值，则设置为接收端慢启动阈值，目的就是用来限制窗口增长不要太快。</p>
+<p>最后根据是否启用窗口缩放决定最终的window大小，具体分为两种情况，如果启用了窗口缩放，则 <code>window = free_space</code>，再往上对齐到 <code>2^wscale</code> 的倍数。否则判断现在的窗口 <code>（window）</code>是否比 <code>free_space</code> 小太多（差超过 1 MSS），说明应该再增大一点，重新设为 <code>free_space</code> 向下对齐到 MSS 倍数，上述位没开启<code>shrink</code>系统选项的逻辑</p>
+<p>如果开启了允许窗口<code>shrink</code>（允许缩小窗口的情况）如果<code>free_space &lt; full_space/2</code>，这里和上述主路径类似，关闭快速<code>ack</code>，内存紧张时候降低慢启动阈值，如果窗口过小则直接零窗口。如果<code>free_space &gt; rcv_ssthresh</code>这里和主路径不同， <strong>向上对齐</strong>到 <code>2^wscale</code> 的倍数。这里感觉主路径和<code>shrink</code>路径没什么区别。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/12/09/tcp%E5%8F%91%E5%8C%85tcp_transmit_skb%EF%BC%882%EF%BC%89/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/12/07/tcp%E5%8F%91%E5%8C%85tcp_transmit_skb/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1122,112 +1222,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/11/09/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-BBR%E7%AE%97%E6%B3%95%EF%BC%88%E4%B8%80%EF%BC%89/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/11/09/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-BBR%E7%AE%97%E6%B3%95%EF%BC%88%E4%B8%80%EF%BC%89/" class="post-title-link" itemprop="url">TCP拥塞控制-BBR算法（一）</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2025-11-09 22:00:00" itemprop="dateCreated datePublished" datetime="2025-11-09T22:00:00+08:00">2025-11-09</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-11-24 22:46:43" itemprop="dateModified" datetime="2025-11-24T22:46:43+08:00">2025-11-24</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/11/09/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-BBR%E7%AE%97%E6%B3%95%EF%BC%88%E4%B8%80%EF%BC%89/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/11/09/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-BBR%E7%AE%97%E6%B3%95%EF%BC%88%E4%B8%80%EF%BC%89/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p>BBR算法注册的回调函数如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="class"><span class="keyword">struct</span> <span class="title">tcp_congestion_ops</span> <span class="title">tcp_bbr_cong_ops</span> __<span class="title">read_mostly</span> =</span> &#123;</span><br><span class="line">	.flags		= TCP_CONG_NON_RESTRICTED,	<span class="comment">// 不受限的算法类型，可被任意 socket 使用（非专用）</span></span><br><span class="line">	.name		= <span class="string">&quot;bbr&quot;</span>,					</span><br><span class="line">	.owner		= THIS_MODULE,			</span><br><span class="line">	.init		= bbr_init,						<span class="comment">// 初始化函数：每条连接建立时调用，初始化 BBR 的内部状态（min_rtt、bw 等）</span></span><br><span class="line">	.cong_control	= bbr_main,					<span class="comment">// bbr控制核心函数！！！！！！！！！！！！,每次收到tcp_ack中会调用</span></span><br><span class="line">	.sndbuf_expand	= bbr_sndbuf_expand,		<span class="comment">// 发送缓存扩展函数：三次握手建立连接时调用</span></span><br><span class="line">	.undo_cwnd	= bbr_undo_cwnd,				<span class="comment">// 撤销 cwnd 缩减：如果丢包判断错误（如 DSACK 撤销），恢复 cwnd 到丢包前的值</span></span><br><span class="line">	.cwnd_event	= bbr_cwnd_event,				<span class="comment">// cwnd 事件处理这里bbr只处理用户发包太慢</span></span><br><span class="line">	.ssthresh	= bbr_ssthresh,					<span class="comment">// 计算慢启动阈值：进入丢包恢复时调用，BBR 不使用传统 ssthresh，通常直接返回当前值</span></span><br><span class="line">	.min_tso_segs	= bbr_min_tso_segs,			<span class="comment">// 设置最小 TSO 分段数</span></span><br><span class="line">	.get_info	= bbr_get_info,					<span class="comment">// 导出 BBR 运行时信息</span></span><br><span class="line">	.set_state	= bbr_set_state,				<span class="comment">// 状态切换回调</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
-
-<p>注意<code>BBR</code>算法的回调中没有实现拥塞避免的回调函数，而是实现了<code>cong_control</code>接口，原因是<code>BBR</code>不是基于丢包的算法。因此在收到<code>ack</code>后会调用<code>cong_control</code>，而不是传统的<code>cong_avoid</code>。</p>
-<h2 id="bbr-init"><a href="#bbr-init" class="headerlink" title="bbr_init"></a><code>bbr_init</code></h2><p>三次握手建立完成后会调用拥塞算法的初始化函数，如果此时是<code>bbr</code>算法，则会调用<code>bbr_init</code></p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">__bpf_kfunc <span class="type">static</span> <span class="type">void</span> <span class="title function_">bbr_init</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bbr</span> *<span class="title">bbr</span> =</span> inet_csk_ca(sk);</span><br><span class="line"></span><br><span class="line">	bbr-&gt;prior_cwnd = <span class="number">0</span>;</span><br><span class="line">	tp-&gt;snd_ssthresh = TCP_INFINITE_SSTHRESH; 	<span class="comment">//这里是无限大</span></span><br><span class="line">	bbr-&gt;rtt_cnt = <span class="number">0</span>;							<span class="comment">//包计时轮次计数器</span></span><br><span class="line">	bbr-&gt;next_rtt_delivered = tp-&gt;delivered; 	<span class="comment">//当前轮的结束 delivered 值</span></span><br><span class="line">	bbr-&gt;prev_ca_state = TCP_CA_Open;			<span class="comment">//Open</span></span><br><span class="line">	bbr-&gt;packet_conservation = <span class="number">0</span>;				<span class="comment">//包守恒标志</span></span><br><span class="line"></span><br><span class="line">	bbr-&gt;probe_rtt_done_stamp = <span class="number">0</span>; 				<span class="comment">//probe结束的时间戳</span></span><br><span class="line">	bbr-&gt;probe_rtt_round_done = <span class="number">0</span>;				<span class="comment">//probe完成一轮</span></span><br><span class="line">	bbr-&gt;min_rtt_us = tcp_min_rtt(tp); 			<span class="comment">//最小rtt</span></span><br><span class="line">	bbr-&gt;min_rtt_stamp = tcp_jiffies32; 		<span class="comment">//记录rtt的时间</span></span><br><span class="line">	minmax_reset(&amp;bbr-&gt;bw, bbr-&gt;rtt_cnt, <span class="number">0</span>);  <span class="comment">/* init max bw to 0 */</span></span><br><span class="line"></span><br><span class="line">	bbr-&gt;has_seen_rtt = <span class="number">0</span>;</span><br><span class="line">	bbr_init_pacing_rate_from_rtt(sk); 			<span class="comment">//计算发包速率 pacingrate！</span></span><br><span class="line"></span><br><span class="line">	bbr-&gt;round_start = <span class="number">0</span>;						<span class="comment">// 是否是新一轮的ack</span></span><br><span class="line">	bbr-&gt;idle_restart = <span class="number">0</span>;	 					<span class="comment">// 是否处于应用空闲后重启</span></span><br><span class="line">	bbr-&gt;full_bw_reached = <span class="number">0</span>;  					<span class="comment">//是否达到最大带宽</span></span><br><span class="line">	bbr-&gt;full_bw = <span class="number">0</span>;							<span class="comment">//最大带宽</span></span><br><span class="line">	bbr-&gt;full_bw_cnt = <span class="number">0</span>;						<span class="comment">//连续未显著增长的轮次</span></span><br><span class="line">	bbr-&gt;cycle_mstamp = <span class="number">0</span>;						<span class="comment">//PROBE_BW 8 相位循环的起点时间清零</span></span><br><span class="line">	bbr-&gt;cycle_idx = <span class="number">0</span>;							<span class="comment">//相位索引</span></span><br><span class="line">	bbr_reset_lt_bw_sampling(sk);  				<span class="comment">//长期带宽采样</span></span><br><span class="line">	bbr_reset_startup_mode(sk);  				<span class="comment">//初始状态 STARTUP 模式</span></span><br><span class="line"></span><br><span class="line">	bbr-&gt;ack_epoch_mstamp = tp-&gt;tcp_mstamp; 	<span class="comment">//ACK 聚合统计周期的起点时间</span></span><br><span class="line">	bbr-&gt;ack_epoch_acked = <span class="number">0</span>;					<span class="comment">//累计收到的 ACK 数量</span></span><br><span class="line">	bbr-&gt;extra_acked_win_rtts = <span class="number">0</span>;				 <span class="comment">//管理ack聚合的情况</span></span><br><span class="line">	bbr-&gt;extra_acked_win_idx = <span class="number">0</span>;</span><br><span class="line">	bbr-&gt;extra_acked[<span class="number">0</span>] = <span class="number">0</span>;</span><br><span class="line">	bbr-&gt;extra_acked[<span class="number">1</span>] = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	cmpxchg(&amp;sk-&gt;sk_pacing_status, SK_PACING_NONE, SK_PACING_NEEDED); <span class="comment">//发包通路上会判断这个标志</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p><code>bbr_init</code>中复位了算法使用的多个字段，例如<code>rtt</code>，最大带宽，管理探测周期的字段，相位的索引，长期带宽采样（丢包会用到），聚合<code>ack</code>数量，其中调用了<code>bbr_init_pacing_rate_from_rtt</code>设置了初始的发包速率，之后调用<code>bbr_reset_startup_mode</code>设置为<code>STARTUP</code>状态。</p>
-<p>上述<code>bbr_init_pacing_rate_from_rtt</code>代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">bbr_init_pacing_rate_from_rtt</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bbr</span> *<span class="title">bbr</span> =</span> inet_csk_ca(sk);</span><br><span class="line">	u64 bw;</span><br><span class="line">	u32 rtt_us;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (tp-&gt;srtt_us) &#123;		<span class="comment">/* any RTT sample yet? */</span><span class="comment">//平滑rtt</span></span><br><span class="line">		rtt_us = max(tp-&gt;srtt_us &gt;&gt; <span class="number">3</span>, <span class="number">1U</span>);</span><br><span class="line">		bbr-&gt;has_seen_rtt = <span class="number">1</span>;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;			 <span class="comment">/* no RTT sample yet */</span></span><br><span class="line">		rtt_us = USEC_PER_MSEC;	 <span class="comment">/* use nominal default RTT */</span><span class="comment">//1ms</span></span><br><span class="line">	&#125;</span><br><span class="line">	bw = (u64)tcp_snd_cwnd(tp) * BW_UNIT;</span><br><span class="line">	do_div(bw, rtt_us);<span class="comment">////计算bw</span></span><br><span class="line">	sk-&gt;sk_pacing_rate = bbr_bw_to_pacing_rate(sk, bw, bbr_high_gain);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p><code>bbr_init_pacing_rate_from_rtt</code>中首先判断是否能拿到平滑的<code>rtt</code>（这里大概率可以拿到），之后获取当前的拥塞窗口，两者运算后获取到<code>bw</code><strong>注意这里的单位是<code>mss</code>&#x2F;<code>us</code></strong>，之后调用<code>bbr_bw_to_pacing_rate</code>转换成发包速率，具体调用代码如下所示：</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/11/09/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-BBR%E7%AE%97%E6%B3%95%EF%BC%88%E4%B8%80%EF%BC%89/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1297,7 +1291,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">94</span>
+          <span class="site-state-item-count">95</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
@@ -1310,7 +1304,7 @@
       <div class="site-state-item site-state-tags">
             <a href="/tags/">
           
-        <span class="site-state-item-count">23</span>
+        <span class="site-state-item-count">22</span>
         <span class="site-state-item-name">标签</span></a>
       </div>
   </nav>
