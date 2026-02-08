@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="IP私有信息控制块协议栈的IP层处理中会依靠skb的控制字段（cb总计48个字节）来存储IP层用到的控制信息，这个控制块主要存储IP选项，分片路由等信息，具体结构如下所示: 123456789101112131415161718struct inet_skb_parm &#123;	int			iif;	struct ip_options	opt;		&#x2F;* Compiled IP options">
+<meta property="og:type" content="article">
+<meta property="og:title" content="IPv4 的控制与错误上报机制">
+<meta property="og:url" content="http://example.com/2026/02/08/IPv4%20%E7%9A%84%E6%8E%A7%E5%88%B6%E9%9D%A2%E3%80%81%E6%95%B0%E6%8D%AE%E8%B7%AF%E5%BE%84%E4%B8%8E%E9%94%99%E8%AF%AF%E4%B8%8A%E6%8A%A5%E6%9C%BA%E5%88%B6/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="IP私有信息控制块协议栈的IP层处理中会依靠skb的控制字段（cb总计48个字节）来存储IP层用到的控制信息，这个控制块主要存储IP选项，分片路由等信息，具体结构如下所示: 123456789101112131415161718struct inet_skb_parm &#123;	int			iif;	struct ip_options	opt;		&#x2F;* Compiled IP options">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-02-08T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-02-08T12:18:21.839Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="IP">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/02/08/IPv4%20%E7%9A%84%E6%8E%A7%E5%88%B6%E9%9D%A2%E3%80%81%E6%95%B0%E6%8D%AE%E8%B7%AF%E5%BE%84%E4%B8%8E%E9%94%99%E8%AF%AF%E4%B8%8A%E6%8A%A5%E6%9C%BA%E5%88%B6/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>IPv4 的控制与错误上报机制 | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/02/08/IPv4%20%E7%9A%84%E6%8E%A7%E5%88%B6%E9%9D%A2%E3%80%81%E6%95%B0%E6%8D%AE%E8%B7%AF%E5%BE%84%E4%B8%8E%E9%94%99%E8%AF%AF%E4%B8%8A%E6%8A%A5%E6%9C%BA%E5%88%B6/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          IPv4 的控制与错误上报机制
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-02-08 22:00:00 / 修改时间：20:18:21" itemprop="dateCreated datePublished" datetime="2026-02-08T22:00:00+08:00">2026-02-08</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/02/08/IPv4%20%E7%9A%84%E6%8E%A7%E5%88%B6%E9%9D%A2%E3%80%81%E6%95%B0%E6%8D%AE%E8%B7%AF%E5%BE%84%E4%B8%8E%E9%94%99%E8%AF%AF%E4%B8%8A%E6%8A%A5%E6%9C%BA%E5%88%B6/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/02/08/IPv4%20%E7%9A%84%E6%8E%A7%E5%88%B6%E9%9D%A2%E3%80%81%E6%95%B0%E6%8D%AE%E8%B7%AF%E5%BE%84%E4%B8%8E%E9%94%99%E8%AF%AF%E4%B8%8A%E6%8A%A5%E6%9C%BA%E5%88%B6/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h3 id="IP私有信息控制块"><a href="#IP私有信息控制块" class="headerlink" title="IP私有信息控制块"></a>IP私有信息控制块</h3><p>协议栈的IP层处理中会依靠<code>skb</code>的控制字段（<code>cb</code>总计48个字节）来存储IP层用到的控制信息，这个控制块主要存储IP选项，分片路由等信息，具体结构如下所示:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">inet_skb_parm</span> &#123;</span></span><br><span class="line">	<span class="type">int</span>			iif;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_options</span>	<span class="title">opt</span>;</span>		<span class="comment">/* Compiled IP options		*/</span></span><br><span class="line">	u16			flags;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_FORWARDED		BIT(0)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_XFRM_TUNNEL_SIZE	BIT(1)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_XFRM_TRANSFORMED	BIT(2)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_FRAG_COMPLETE	BIT(3)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_REROUTED		BIT(4)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_DOREDIRECT	BIT(5)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_FRAG_PMTU		BIT(6)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_L3SLAVE		BIT(7)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_NOPOLICY		BIT(8)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_MULTIPATH		BIT(9)</span></span><br><span class="line"></span><br><span class="line">	u16			frag_max_size;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>例如在接收数据包时，<code>ip_rcv_options</code>会解析数据包首部的IP选项保存到控制块中，在发送数据包时<code>ip_options_build</code>会将根据控制信息生成一个选项。上述<code>flags</code>用于标记是否被重组，是否需要被<code>ipsec</code>处理，是否需要重定向等信息。</p>
+<h3 id="ipv4-devconf-结构"><a href="#ipv4-devconf-结构" class="headerlink" title="ipv4_devconf 结构"></a><code>ipv4_devconf</code> 结构</h3><p> <code>ipv4_devconf</code> 是网口的IPv4系统配置，用于控制这个网口在IPv4协议栈里的所有策略行为，注意这个结构被之前介绍的in_device结构管理，每个网口都有自己的一份<code>ipv4_devconf</code> 具体结构如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">ipv4_devconf</span> &#123;</span></span><br><span class="line">	<span class="type">void</span>	*sysctl;</span><br><span class="line">	<span class="type">int</span>	data[IPV4_DEVCONF_MAX];</span><br><span class="line">	DECLARE_BITMAP(state, IPV4_DEVCONF_MAX);</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p><code>ipv4_devconf</code>结构中有一个<code>bitmap</code>和一个数组，<code>bitmap</code>用于标识当前设备是否显示修改过配置（正常应该是全局结构继承过来的），上述data数组中存的就是每个配置项的具体开关，标识是否开启，具体有如下配置项：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">enum</span></span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">    IPV4_DEVCONF_FORWARDING = <span class="number">1</span>,   <span class="comment">// forwarding：是否允许该接口进行三层转发（路由器开关）</span></span><br><span class="line">    IPV4_DEVCONF_MC_FORWARDING,    <span class="comment">// mc_forwarding：是否转发组播报文</span></span><br><span class="line">    IPV4_DEVCONF_PROXY_ARP,        <span class="comment">// proxy_arp：是否开启 ARP 代答（替别的主机回应 ARP）</span></span><br><span class="line">    IPV4_DEVCONF_ACCEPT_REDIRECTS, <span class="comment">// accept_redirects：是否接受 ICMP Redirect 重定向</span></span><br><span class="line">    IPV4_DEVCONF_SECURE_REDIRECTS, <span class="comment">// secure_redirects：只接受“可信网关”发来的 Redirect</span></span><br><span class="line">    IPV4_DEVCONF_SEND_REDIRECTS,   <span class="comment">// send_redirects：是否向对端发送 ICMP Redirect</span></span><br><span class="line">    IPV4_DEVCONF_SHARED_MEDIA,     <span class="comment">// shared_media：多接口共享链路场景，影响地址选择与 ARP 行为</span></span><br><span class="line">    IPV4_DEVCONF_RP_FILTER,        <span class="comment">// rp_filter：反向路径过滤，防止 IP 欺骗</span></span><br><span class="line">    IPV4_DEVCONF_ACCEPT_SOURCE_ROUTE, <span class="comment">// accept_source_route：是否允许源路由（极不安全）</span></span><br><span class="line">    IPV4_DEVCONF_BOOTP_RELAY,      <span class="comment">// bootp_relay：是否作为 BOOTP relay（遗留功能）</span></span><br><span class="line">    IPV4_DEVCONF_LOG_MARTIANS,     <span class="comment">// log_martians：记录异常/伪造源地址的报文</span></span><br><span class="line">    IPV4_DEVCONF_TAG,              <span class="comment">// tag：给地址/接口打标签，供策略路由等使用</span></span><br><span class="line">    IPV4_DEVCONF_ARPFILTER,        <span class="comment">// arp_filter：是否严格根据路由选择接口回应 ARP</span></span><br><span class="line">    IPV4_DEVCONF_MEDIUM_ID,        <span class="comment">// medium_id：介质标识，用于 shared_media 判断</span></span><br><span class="line">    IPV4_DEVCONF_NOXFRM,           <span class="comment">// disable_xfrm：禁止该接口进行 IPsec/xfrm 处理</span></span><br><span class="line">    IPV4_DEVCONF_NOPOLICY,         <span class="comment">// disable_policy：禁止该接口进行策略匹配（xfrm policy）</span></span><br><span class="line">    IPV4_DEVCONF_FORCE_IGMP_VERSION, <span class="comment">// force_igmp_version：强制 IGMP 版本（v2/v3）</span></span><br><span class="line">    IPV4_DEVCONF_ARP_ANNOUNCE,     <span class="comment">// arp_announce：ARP 宣告时使用哪个源 IP（防 ARP flux）</span></span><br><span class="line">    IPV4_DEVCONF_ARP_IGNORE,       <span class="comment">// arp_ignore：收到 ARP 请求时的忽略级别</span></span><br><span class="line">    IPV4_DEVCONF_PROMOTE_SECONDARIES, <span class="comment">// promote_secondaries：删除主地址时是否提升从地址为主地址</span></span><br><span class="line">    IPV4_DEVCONF_ARP_ACCEPT,       <span class="comment">// arp_accept：是否接受 Gratuitous ARP 更新邻居表</span></span><br><span class="line">    IPV4_DEVCONF_ARP_NOTIFY,       <span class="comment">// arp_notify：本接口 IP 变化时是否发送 Gratuitous ARP</span></span><br><span class="line">    IPV4_DEVCONF_ACCEPT_LOCAL,     <span class="comment">// accept_local：是否接受源地址是本机地址的报文</span></span><br><span class="line">    IPV4_DEVCONF_SRC_VMARK,        <span class="comment">// src_valid_mark：fwmark 参与源地址选择</span></span><br><span class="line">    IPV4_DEVCONF_PROXY_ARP_PVLAN,  <span class="comment">// proxy_arp_pvlan：PVLAN 场景下的 proxy ARP</span></span><br><span class="line">    IPV4_DEVCONF_ROUTE_LOCALNET,   <span class="comment">// route_localnet：是否允许路由 127.0.0.0/8 的流量</span></span><br><span class="line">    IPV4_DEVCONF_IGMPV2_UNSOLICITED_REPORT_INTERVAL, <span class="comment">// igmpv2 上报间隔</span></span><br><span class="line">    IPV4_DEVCONF_IGMPV3_UNSOLICITED_REPORT_INTERVAL, <span class="comment">// igmpv3 上报间隔</span></span><br><span class="line">    IPV4_DEVCONF_IGNORE_ROUTES_WITH_LINKDOWN, <span class="comment">// 接口 down 时忽略其相关路由</span></span><br><span class="line">    IPV4_DEVCONF_DROP_UNICAST_IN_L2_MULTICAST, <span class="comment">// 丢弃 L2 多播帧中承载的单播 IP 包（防欺骗）</span></span><br><span class="line">    IPV4_DEVCONF_DROP_GRATUITOUS_ARP, <span class="comment">// 丢弃 Gratuitous ARP</span></span><br><span class="line">    IPV4_DEVCONF_BC_FORWARDING,    <span class="comment">// 是否允许转发广播报文</span></span><br><span class="line">    IPV4_DEVCONF_ARP_EVICT_NOCARRIER, <span class="comment">// 接口无 carrier 时清空 ARP 邻居表</span></span><br><span class="line">    __IPV4_DEVCONF_MAX</span><br><span class="line">&#125;;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h3 id="套接字的错误队列"><a href="#套接字的错误队列" class="headerlink" title="套接字的错误队列"></a>套接字的错误队列</h3><p>在传输层的<code>sock</code>结构中存在一个用于保存错误信息的<code>sk_error_queue</code>当ICMP错误信息或者UDP或者RAW套接字产生错误报文的时候，会将该错误信息挂到该队列上，用户<code>recvmsg</code>的时候通过设置特定标志位，会直接从错误队列中获取详细的错误信息。<strong>这里需要注意TCP时没有使用这个错误 队列的因为如果TCP出现差错需要被快速的处理</strong>。</p>
+<h3 id="添加ICMP错误信息"><a href="#添加ICMP错误信息" class="headerlink" title="添加ICMP错误信息"></a>添加ICMP错误信息</h3><p><code>ip_icmp_error</code><strong>就是把收到的 ICMP 错误，包装后放入套接字错误队列（<code>sk_error_queue</code>）的核心函数</strong>。用户态以后用 <code>recvmsg(MSG_ERRQUEUE)</code> 读到的，就是这个<code>skb</code>。<code>ip_icmp_error</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">void</span> <span class="title function_">ip_icmp_error</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb, <span class="type">int</span> err,</span></span><br><span class="line"><span class="params">		   __be16 port, u32 info, u8 *payload)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock_exterr_skb</span> *<span class="title">serr</span>;</span></span><br><span class="line"></span><br><span class="line">	skb = skb_clone(skb, GFP_ATOMIC);</span><br><span class="line">	<span class="keyword">if</span> (!skb)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">	serr = SKB_EXT_ERR(skb);</span><br><span class="line">	serr-&gt;ee.ee_errno = err;</span><br><span class="line">	serr-&gt;ee.ee_origin = SO_EE_ORIGIN_ICMP;</span><br><span class="line">	serr-&gt;ee.ee_type = icmp_hdr(skb)-&gt;type;</span><br><span class="line">	serr-&gt;ee.ee_code = icmp_hdr(skb)-&gt;code;</span><br><span class="line">	serr-&gt;ee.ee_pad = <span class="number">0</span>;</span><br><span class="line">	serr-&gt;ee.ee_info = info;</span><br><span class="line">	serr-&gt;ee.ee_data = <span class="number">0</span>;</span><br><span class="line">	serr-&gt;addr_offset = (u8 *)&amp;(((<span class="keyword">struct</span> iphdr *)(icmp_hdr(skb) + <span class="number">1</span>))-&gt;daddr) -</span><br><span class="line">				   skb_network_header(skb);</span><br><span class="line">	serr-&gt;port = port;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (skb_pull(skb, payload - skb-&gt;data)) &#123;</span><br><span class="line">		<span class="keyword">if</span> (inet_test_bit(RECVERR_RFC4884, sk))</span><br><span class="line">			ipv4_icmp_error_rfc4884(skb, &amp;serr-&gt;ee.ee_rfc4884);</span><br><span class="line"></span><br><span class="line">		skb_reset_transport_header(skb);</span><br><span class="line">		<span class="keyword">if</span> (sock_queue_err_skb(sk, skb) == <span class="number">0</span>)</span><br><span class="line">			<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	kfree_skb(skb);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ip_icmp_error</code>用于构造一个<code>skb</code>并放入错误队列，注意：这里的<code>skb</code>这个参数时收到ICMP报文的<code>skb</code>，首先先<code>clone</code>一份数据包，之后填充<code>skb</code>的<code>cb</code>字段，其实就是把ICMP的错误信息（type code ，port等）放到<code>skb</code>中，用户态读取错误信息的时候会用到。之后调用<code>sock_queue_err_skb</code>将数据包入队。<code>sock_queue_err_skb</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//将数据包加入错误队列</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">sock_queue_err_skb</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//内存不够</span></span><br><span class="line">	<span class="keyword">if</span> (<span class="type">atomic_read</span>(&amp;sk-&gt;sk_rmem_alloc) + skb-&gt;truesize &gt;=</span><br><span class="line">	    (<span class="type">unsigned</span> <span class="type">int</span>)READ_ONCE(sk-&gt;sk_rcvbuf))</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">	<span class="comment">//不属于sk</span></span><br><span class="line">	skb_orphan(skb);</span><br><span class="line">	skb-&gt;sk = sk;</span><br><span class="line">	<span class="comment">//析构</span></span><br><span class="line">	skb-&gt;destructor = sock_rmem_free;</span><br><span class="line">	<span class="comment">//内存记账</span></span><br><span class="line">	<span class="type">atomic_add</span>(skb-&gt;truesize, &amp;sk-&gt;sk_rmem_alloc);</span><br><span class="line">	skb_set_err_queue(skb);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* before exiting rcu section, make sure dst is refcounted */</span></span><br><span class="line">	skb_dst_force(skb);</span><br><span class="line">	<span class="comment">//加入队列尾巴</span></span><br><span class="line">	skb_queue_tail(&amp;sk-&gt;sk_error_queue, skb);</span><br><span class="line">	<span class="keyword">if</span> (!sock_flag(sk, SOCK_DEAD))<span class="comment">//唤醒</span></span><br><span class="line">		sk_error_report(sk);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="添加本地产生的错误信息"><a href="#添加本地产生的错误信息" class="headerlink" title="添加本地产生的错误信息"></a>添加本地产生的错误信息</h3><p>当UDP套接字或者RAW套接字或者IPsec发送数据时，如果待发送数据的长度异常，则会调用<code>ip_local_error</code></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">ip_local_error</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">int</span> err, __be32 daddr, __be16 port, u32 info)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock_exterr_skb</span> *<span class="title">serr</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">iphdr</span> *<span class="title">iph</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>;</span></span><br><span class="line">	<span class="comment">//必须开启这个套接字选项</span></span><br><span class="line">	<span class="keyword">if</span> (!inet_test_bit(RECVERR, sk))</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//申请skb</span></span><br><span class="line">	skb = alloc_skb(<span class="keyword">sizeof</span>(<span class="keyword">struct</span> iphdr), GFP_ATOMIC);</span><br><span class="line">	<span class="keyword">if</span> (!skb)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//直接put</span></span><br><span class="line">	skb_put(skb, <span class="keyword">sizeof</span>(<span class="keyword">struct</span> iphdr));</span><br><span class="line">	skb_reset_network_header(skb);</span><br><span class="line">	iph = ip_hdr(skb);</span><br><span class="line">	iph-&gt;daddr = daddr;</span><br><span class="line">	<span class="comment">//构造错误信息</span></span><br><span class="line">	serr = SKB_EXT_ERR(skb);</span><br><span class="line">	serr-&gt;ee.ee_errno = err;</span><br><span class="line">	serr-&gt;ee.ee_origin = SO_EE_ORIGIN_LOCAL;</span><br><span class="line">	serr-&gt;ee.ee_type = <span class="number">0</span>;</span><br><span class="line">	serr-&gt;ee.ee_code = <span class="number">0</span>;</span><br><span class="line">	serr-&gt;ee.ee_pad = <span class="number">0</span>;</span><br><span class="line">	serr-&gt;ee.ee_info = info;</span><br><span class="line">	serr-&gt;ee.ee_data = <span class="number">0</span>;</span><br><span class="line">	serr-&gt;addr_offset = (u8 *)&amp;iph-&gt;daddr - skb_network_header(skb);</span><br><span class="line">	serr-&gt;port = port;</span><br><span class="line"></span><br><span class="line">	__skb_pull(skb, skb_tail_pointer(skb) - skb-&gt;data);</span><br><span class="line">	skb_reset_transport_header(skb);</span><br><span class="line">	<span class="comment">//入队</span></span><br><span class="line">	<span class="keyword">if</span> (sock_queue_err_skb(sk, skb))</span><br><span class="line">		kfree_skb(skb);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h3 id="读取错误信息"><a href="#读取错误信息" class="headerlink" title="读取错误信息"></a>读取错误信息</h3><p><code>recvmsg</code>通常读取对端发送的数据，但也可以通过设置标志位来读取<code>sk</code>中错误队列上的数据，在UDP和RAW套接字的<code>recvmsg</code>实现中，都会判断是否有<code>MSG_ERRQUEUE</code>标志，如果有则会直接调用<code>ip_recv_error</code>从错误队列中读取错误信息后返回，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">ip_recv_error</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> msghdr *msg, <span class="type">int</span> len, <span class="type">int</span> *addr_len)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock_exterr_skb</span> *<span class="title">serr</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>;</span></span><br><span class="line">	DECLARE_SOCKADDR(<span class="keyword">struct</span> sockaddr_in *, <span class="built_in">sin</span>, msg-&gt;msg_name);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">sock_extended_err</span> <span class="title">ee</span>;</span></span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">sockaddr_in</span>	 <span class="title">offender</span>;</span></span><br><span class="line">	&#125; errhdr;</span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="type">int</span> copied;</span><br><span class="line"></span><br><span class="line">	err = -EAGAIN;</span><br><span class="line">	<span class="comment">//从错误队列中取出数据不傲</span></span><br><span class="line">	skb = sock_dequeue_err_skb(sk);</span><br><span class="line">	<span class="keyword">if</span> (!skb)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	copied = skb-&gt;len;</span><br><span class="line">	<span class="comment">//决定考多少数据给用户</span></span><br><span class="line">	<span class="keyword">if</span> (copied &gt; len) &#123;</span><br><span class="line">		msg-&gt;msg_flags |= MSG_TRUNC;</span><br><span class="line">		copied = len;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//拷贝数据</span></span><br><span class="line">	err = skb_copy_datagram_msg(skb, <span class="number">0</span>, msg, copied);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(err)) &#123;</span><br><span class="line">		kfree_skb(skb);</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//把时间戳给用户</span></span><br><span class="line">	sock_recv_timestamp(msg, sk, skb);</span><br><span class="line">	<span class="comment">//拿到入队之前填写的错误信息</span></span><br><span class="line">	serr = SKB_EXT_ERR(skb);</span><br><span class="line">	<span class="comment">//如果用户传入了msg，并且这个错误支持返回地址的话，把这个地址返回给用户</span></span><br><span class="line">	<span class="keyword">if</span> (<span class="built_in">sin</span> &amp;&amp; ipv4_datagram_support_addr(serr)) &#123;</span><br><span class="line">		<span class="built_in">sin</span>-&gt;sin_family = AF_INET;</span><br><span class="line">		<span class="built_in">sin</span>-&gt;sin_addr.s_addr = *(__be32 *)(skb_network_header(skb) +</span><br><span class="line">						   serr-&gt;addr_offset);</span><br><span class="line">		<span class="built_in">sin</span>-&gt;sin_port = serr-&gt;port;</span><br><span class="line">		<span class="built_in">memset</span>(&amp;<span class="built_in">sin</span>-&gt;sin_zero, <span class="number">0</span>, <span class="keyword">sizeof</span>(<span class="built_in">sin</span>-&gt;sin_zero));</span><br><span class="line">		*addr_len = <span class="keyword">sizeof</span>(*<span class="built_in">sin</span>);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//也是把错误信息拷贝给用户</span></span><br><span class="line">	<span class="built_in">memcpy</span>(&amp;errhdr.ee, &amp;serr-&gt;ee, <span class="keyword">sizeof</span>(<span class="keyword">struct</span> sock_extended_err));</span><br><span class="line">	<span class="built_in">sin</span> = &amp;errhdr.offender;</span><br><span class="line">	<span class="built_in">memset</span>(<span class="built_in">sin</span>, <span class="number">0</span>, <span class="keyword">sizeof</span>(*<span class="built_in">sin</span>));</span><br><span class="line">	<span class="comment">//是否要填IP层的控制信息</span></span><br><span class="line">	<span class="keyword">if</span> (ipv4_datagram_support_cmsg(sk, skb, serr-&gt;ee.ee_origin)) &#123;</span><br><span class="line">		<span class="built_in">sin</span>-&gt;sin_family = AF_INET;</span><br><span class="line">		<span class="built_in">sin</span>-&gt;sin_addr.s_addr = ip_hdr(skb)-&gt;saddr;</span><br><span class="line">		<span class="keyword">if</span> (inet_cmsg_flags(inet_sk(sk)))</span><br><span class="line">			ip_cmsg_recv(msg, skb);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//最终给到用户传入的msg</span></span><br><span class="line">	put_cmsg(msg, SOL_IP, IP_RECVERR, <span class="keyword">sizeof</span>(errhdr), &amp;errhdr);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Now we could try to dump offended packet options */</span></span><br><span class="line">	<span class="comment">//标识从错误队列获取</span></span><br><span class="line">	msg-&gt;msg_flags |= MSG_ERRQUEUE;</span><br><span class="line">	<span class="comment">//拷贝的长度</span></span><br><span class="line">	err = copied;</span><br><span class="line"></span><br><span class="line">	consume_skb(skb);</span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ip_recv_error</code>干的事很简单：**当用户用 <code>recvmsg(MSG_ERRQUEUE)</code> 读错误时，它从 socket 的错误队列里取出一条错误记录，把里面保存的错误原因、相关的 IP 和端口、可能的报文片段和时间戳，按 <code>recvmsg</code> 的规则填进用户提供的结构里（msg_name 和 <code>cmsg</code> 中）。</p>
+<h3 id="报文控制信息的输出"><a href="#报文控制信息的输出" class="headerlink" title="报文控制信息的输出"></a>报文控制信息的输出</h3><p>UDP套接字和RAW套接字在通过<code>sendmsg</code>系统调用输出数据时，会检测用户是否配置了控制信息，如果存在则会调用<code>ip_cmsg_send</code>提取信息到指定的结构中，后续会影响发送等行为，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">ip_cmsg_send</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> msghdr *msg, <span class="keyword">struct</span> ipcm_cookie *ipc,</span></span><br><span class="line"><span class="params">		 <span class="type">bool</span> allow_ipv6)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> err, val;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">cmsghdr</span> *<span class="title">cmsg</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> sock_net(sk);</span><br><span class="line">	<span class="comment">//遍历所有 cmsg，并做合法性检查</span></span><br><span class="line">	for_each_cmsghdr(cmsg, msg) &#123;</span><br><span class="line">		<span class="keyword">if</span> (!CMSG_OK(msg, cmsg))</span><br><span class="line">			<span class="keyword">return</span> -EINVAL;</span><br><span class="line"><span class="meta">#<span class="keyword">if</span> IS_ENABLED(CONFIG_IPV6)</span></span><br><span class="line">		<span class="keyword">if</span> (allow_ipv6 &amp;&amp;</span><br><span class="line">		    cmsg-&gt;cmsg_level == SOL_IPV6 &amp;&amp;</span><br><span class="line">		    cmsg-&gt;cmsg_type == IPV6_PKTINFO) &#123;</span><br><span class="line">			<span class="class"><span class="keyword">struct</span> <span class="title">in6_pktinfo</span> *<span class="title">src_info</span>;</span></span><br><span class="line"></span><br><span class="line">			<span class="keyword">if</span> (cmsg-&gt;cmsg_len &lt; CMSG_LEN(<span class="keyword">sizeof</span>(*src_info)))</span><br><span class="line">				<span class="keyword">return</span> -EINVAL;</span><br><span class="line">			src_info = (<span class="keyword">struct</span> in6_pktinfo *)CMSG_DATA(cmsg);</span><br><span class="line">			<span class="keyword">if</span> (!ipv6_addr_v4mapped(&amp;src_info-&gt;ipi6_addr))</span><br><span class="line">				<span class="keyword">return</span> -EINVAL;</span><br><span class="line">			<span class="keyword">if</span> (src_info-&gt;ipi6_ifindex)</span><br><span class="line">				ipc-&gt;oif = src_info-&gt;ipi6_ifindex;</span><br><span class="line">			ipc-&gt;addr = src_info-&gt;ipi6_addr.s6_addr32[<span class="number">3</span>];</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">		<span class="comment">//处理 SOL_SOCKET 层的通用 cmsg（时间戳/mark 等）</span></span><br><span class="line">		<span class="keyword">if</span> (cmsg-&gt;cmsg_level == SOL_SOCKET) &#123;</span><br><span class="line">			err = __sock_cmsg_send(sk, cmsg, &amp;ipc-&gt;sockc);</span><br><span class="line">			<span class="keyword">if</span> (err)</span><br><span class="line">				<span class="keyword">return</span> err;</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (cmsg-&gt;cmsg_level != SOL_IP)</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="comment">//只处理 SOL_IP 的 cmsg，其他 level 忽略</span></span><br><span class="line">		<span class="keyword">switch</span> (cmsg-&gt;cmsg_type) &#123;</span><br><span class="line">			<span class="comment">//ip option处理</span></span><br><span class="line">		<span class="keyword">case</span> IP_RETOPTS:</span><br><span class="line">			err = cmsg-&gt;cmsg_len - <span class="keyword">sizeof</span>(<span class="keyword">struct</span> cmsghdr);</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* Our caller is responsible for freeing ipc-&gt;opt */</span></span><br><span class="line">			err = ip_options_get(net, &amp;ipc-&gt;opt,</span><br><span class="line">					     KERNEL_SOCKPTR(CMSG_DATA(cmsg)),</span><br><span class="line">					     err &lt; <span class="number">40</span> ? err : <span class="number">40</span>);</span><br><span class="line">			<span class="keyword">if</span> (err)</span><br><span class="line">				<span class="keyword">return</span> err;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">			<span class="comment">//指定了出接口</span></span><br><span class="line">		<span class="keyword">case</span> IP_PKTINFO:</span><br><span class="line">		&#123;</span><br><span class="line">			<span class="class"><span class="keyword">struct</span> <span class="title">in_pktinfo</span> *<span class="title">info</span>;</span></span><br><span class="line">			<span class="keyword">if</span> (cmsg-&gt;cmsg_len != CMSG_LEN(<span class="keyword">sizeof</span>(<span class="keyword">struct</span> in_pktinfo)))</span><br><span class="line">				<span class="keyword">return</span> -EINVAL;</span><br><span class="line">			info = (<span class="keyword">struct</span> in_pktinfo *)CMSG_DATA(cmsg);</span><br><span class="line">			<span class="keyword">if</span> (info-&gt;ipi_ifindex)</span><br><span class="line">				ipc-&gt;oif = info-&gt;ipi_ifindex;</span><br><span class="line">			ipc-&gt;addr = info-&gt;ipi_spec_dst.s_addr;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//指定ttl</span></span><br><span class="line">		<span class="keyword">case</span> IP_TTL:</span><br><span class="line">			<span class="keyword">if</span> (cmsg-&gt;cmsg_len != CMSG_LEN(<span class="keyword">sizeof</span>(<span class="type">int</span>)))</span><br><span class="line">				<span class="keyword">return</span> -EINVAL;</span><br><span class="line">			val = *(<span class="type">int</span> *)CMSG_DATA(cmsg);</span><br><span class="line">			<span class="keyword">if</span> (val &lt; <span class="number">1</span> || val &gt; <span class="number">255</span>)</span><br><span class="line">				<span class="keyword">return</span> -EINVAL;</span><br><span class="line">			ipc-&gt;ttl = val;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="comment">//指定dscp</span></span><br><span class="line">		<span class="keyword">case</span> IP_TOS:</span><br><span class="line">			<span class="keyword">if</span> (cmsg-&gt;cmsg_len == CMSG_LEN(<span class="keyword">sizeof</span>(<span class="type">int</span>)))</span><br><span class="line">				val = *(<span class="type">int</span> *)CMSG_DATA(cmsg);</span><br><span class="line">			<span class="keyword">else</span> <span class="keyword">if</span> (cmsg-&gt;cmsg_len == CMSG_LEN(<span class="keyword">sizeof</span>(u8)))</span><br><span class="line">				val = *(u8 *)CMSG_DATA(cmsg);</span><br><span class="line">			<span class="keyword">else</span></span><br><span class="line">				<span class="keyword">return</span> -EINVAL;</span><br><span class="line">			<span class="keyword">if</span> (val &lt; <span class="number">0</span> || val &gt; <span class="number">255</span>)</span><br><span class="line">				<span class="keyword">return</span> -EINVAL;</span><br><span class="line">			ipc-&gt;tos = val;</span><br><span class="line">			ipc-&gt;priority = rt_tos2priority(ipc-&gt;tos);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="comment">//指定 IP 头 protocol 字段</span></span><br><span class="line">		<span class="keyword">case</span> IP_PROTOCOL:</span><br><span class="line">			<span class="keyword">if</span> (cmsg-&gt;cmsg_len != CMSG_LEN(<span class="keyword">sizeof</span>(<span class="type">int</span>)))</span><br><span class="line">				<span class="keyword">return</span> -EINVAL;</span><br><span class="line">			val = *(<span class="type">int</span> *)CMSG_DATA(cmsg);</span><br><span class="line">			<span class="keyword">if</span> (val &lt; <span class="number">1</span> || val &gt; <span class="number">255</span>)</span><br><span class="line">				<span class="keyword">return</span> -EINVAL;</span><br><span class="line">			ipc-&gt;protocol = val;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">default</span>:</span><br><span class="line">			<span class="keyword">return</span> -EINVAL;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ip_cmsg_send()</code> 的作用是在用户用 <code>sendmsg</code> 发送数据时，解析 <code>msg_control</code> 里带来的各种 <code>cmsg</code>（控制消息），并把这些参数提取出来。这些参数包括：指定源 IP、指定出接口、TTL、TOS&#x2F;DSCP、IP 选项、IP 协议号，以及一些通用的 socket 控制信息。后续真正构造和发送 IP 报文时，协议栈就会按照 <code>ipc</code> 里的设置来发包。</p>
+<h3 id="报文控制信息的输入"><a href="#报文控制信息的输入" class="headerlink" title="报文控制信息的输入"></a>报文控制信息的输入</h3><p><code>ip_cmsg_recv_offset</code>用于获取报文的控制信息，在UDP或者RAW套接字的<code>recvmsg</code>实现中，如果用户设置相应的标志位，会调用<code>ip_cmsg_recv_offset</code>把需要的信息放到<code>msg</code>字段中。具体代码实现如下所示</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">ip_cmsg_recv_offset</span><span class="params">(<span class="keyword">struct</span> msghdr *msg, <span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">			 <span class="keyword">struct</span> sk_buff *skb, <span class="type">int</span> tlen, <span class="type">int</span> offset)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//获取需要接收哪些控制消息，用户通过setsockopt设置</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> flags = inet_cmsg_flags(inet_sk(sk));</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!flags)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Ordered by supposed usage frequency */</span></span><br><span class="line">	<span class="comment">//收到数据包的接口索引，目的ip</span></span><br><span class="line">	<span class="keyword">if</span> (flags &amp; IP_CMSG_PKTINFO) &#123;</span><br><span class="line">		ip_cmsg_recv_pktinfo(msg, skb);</span><br><span class="line"></span><br><span class="line">		flags &amp;= ~IP_CMSG_PKTINFO;</span><br><span class="line">		<span class="keyword">if</span> (!flags)</span><br><span class="line">			<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//当前的ttl</span></span><br><span class="line">	<span class="keyword">if</span> (flags &amp; IP_CMSG_TTL) &#123;</span><br><span class="line">		ip_cmsg_recv_ttl(msg, skb);</span><br><span class="line"></span><br><span class="line">		flags &amp;= ~IP_CMSG_TTL;</span><br><span class="line">		<span class="keyword">if</span> (!flags)</span><br><span class="line">			<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//dscp字段</span></span><br><span class="line">	<span class="keyword">if</span> (flags &amp; IP_CMSG_TOS) &#123;</span><br><span class="line">		ip_cmsg_recv_tos(msg, skb);</span><br><span class="line"></span><br><span class="line">		flags &amp;= ~IP_CMSG_TOS;</span><br><span class="line">		<span class="keyword">if</span> (!flags)</span><br><span class="line">			<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (flags &amp; IP_CMSG_RECVOPTS) &#123;</span><br><span class="line">		ip_cmsg_recv_opts(msg, skb);</span><br><span class="line"></span><br><span class="line">		flags &amp;= ~IP_CMSG_RECVOPTS;</span><br><span class="line">		<span class="keyword">if</span> (!flags)</span><br><span class="line">			<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (flags &amp; IP_CMSG_RETOPTS) &#123;</span><br><span class="line">		ip_cmsg_recv_retopts(sock_net(sk), msg, skb);</span><br><span class="line"></span><br><span class="line">		flags &amp;= ~IP_CMSG_RETOPTS;</span><br><span class="line">		<span class="keyword">if</span> (!flags)</span><br><span class="line">			<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (flags &amp; IP_CMSG_PASSSEC) &#123;</span><br><span class="line">		ip_cmsg_recv_security(msg, skb);</span><br><span class="line"></span><br><span class="line">		flags &amp;= ~IP_CMSG_PASSSEC;</span><br><span class="line">		<span class="keyword">if</span> (!flags)</span><br><span class="line">			<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (flags &amp; IP_CMSG_ORIGDSTADDR) &#123;</span><br><span class="line">		ip_cmsg_recv_dstaddr(msg, skb);</span><br><span class="line"></span><br><span class="line">		flags &amp;= ~IP_CMSG_ORIGDSTADDR;</span><br><span class="line">		<span class="keyword">if</span> (!flags)</span><br><span class="line">			<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (flags &amp; IP_CMSG_CHECKSUM)</span><br><span class="line">		ip_cmsg_recv_checksum(msg, skb, tlen, offset);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (flags &amp; IP_CMSG_RECVFRAGSIZE)</span><br><span class="line">		ip_cmsg_recv_fragsize(msg, skb);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p> <code>ip_cmsg_recv_offset</code> 的作用是<strong>在用户调用 <code>recvmsg</code>接收数据时，根据这个 socket 之前通过 <code>setsockopt</code> 打开的接收选项，从数据包中提取对应的控制信息（如收到包的接口和目的 IP、TTL、TOS&#x2F;DSCP、等），并把这些信息逐个作为 <code>cmsg</code> 填入 <code>msg-&gt;msg_control</code> 返回给用户态</strong>。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/IP/" rel="tag"># IP</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/02/03/IP%E5%9C%B0%E5%9D%80%E7%9A%84%E9%85%8D%E7%BD%AE/" rel="prev" title="netlink配置IPv4地址">
+      <i class="fa fa-chevron-left"></i> netlink配置IPv4地址
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#IP%E7%A7%81%E6%9C%89%E4%BF%A1%E6%81%AF%E6%8E%A7%E5%88%B6%E5%9D%97"><span class="nav-number">1.</span> <span class="nav-text">IP私有信息控制块</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#ipv4-devconf-%E7%BB%93%E6%9E%84"><span class="nav-number">2.</span> <span class="nav-text">ipv4_devconf 结构</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A5%97%E6%8E%A5%E5%AD%97%E7%9A%84%E9%94%99%E8%AF%AF%E9%98%9F%E5%88%97"><span class="nav-number">3.</span> <span class="nav-text">套接字的错误队列</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%B7%BB%E5%8A%A0ICMP%E9%94%99%E8%AF%AF%E4%BF%A1%E6%81%AF"><span class="nav-number">4.</span> <span class="nav-text">添加ICMP错误信息</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%B7%BB%E5%8A%A0%E6%9C%AC%E5%9C%B0%E4%BA%A7%E7%94%9F%E7%9A%84%E9%94%99%E8%AF%AF%E4%BF%A1%E6%81%AF"><span class="nav-number">5.</span> <span class="nav-text">添加本地产生的错误信息</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%AF%BB%E5%8F%96%E9%94%99%E8%AF%AF%E4%BF%A1%E6%81%AF"><span class="nav-number">6.</span> <span class="nav-text">读取错误信息</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%8A%A5%E6%96%87%E6%8E%A7%E5%88%B6%E4%BF%A1%E6%81%AF%E7%9A%84%E8%BE%93%E5%87%BA"><span class="nav-number">7.</span> <span class="nav-text">报文控制信息的输出</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%8A%A5%E6%96%87%E6%8E%A7%E5%88%B6%E4%BF%A1%E6%81%AF%E7%9A%84%E8%BE%93%E5%85%A5"><span class="nav-number">8.</span> <span class="nav-text">报文控制信息的输入</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">96</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">22</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
