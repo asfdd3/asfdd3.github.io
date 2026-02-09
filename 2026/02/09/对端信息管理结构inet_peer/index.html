@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="协议栈会创建inet_peer结构来保存通信对端的一些信息，例如对端的地址，主要用于重组IP时判断是否为来自同一源IP的分片攻击。inet_peer结构具体如下所示： 1234567891011121314151617181920212223242526struct inet_peer &#123;	struct rb_node		rb_node;    &#x2F;&#x2F;红黑树管理用到	struct inet">
+<meta property="og:type" content="article">
+<meta property="og:title" content="对端信息管理结构-inet_peer">
+<meta property="og:url" content="http://example.com/2026/02/09/%E5%AF%B9%E7%AB%AF%E4%BF%A1%E6%81%AF%E7%AE%A1%E7%90%86%E7%BB%93%E6%9E%84inet_peer/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="协议栈会创建inet_peer结构来保存通信对端的一些信息，例如对端的地址，主要用于重组IP时判断是否为来自同一源IP的分片攻击。inet_peer结构具体如下所示： 1234567891011121314151617181920212223242526struct inet_peer &#123;	struct rb_node		rb_node;    &#x2F;&#x2F;红黑树管理用到	struct inet">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-02-09T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-02-09T15:46:04.360Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="IP">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/02/09/%E5%AF%B9%E7%AB%AF%E4%BF%A1%E6%81%AF%E7%AE%A1%E7%90%86%E7%BB%93%E6%9E%84inet_peer/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>对端信息管理结构-inet_peer | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/02/09/%E5%AF%B9%E7%AB%AF%E4%BF%A1%E6%81%AF%E7%AE%A1%E7%90%86%E7%BB%93%E6%9E%84inet_peer/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          对端信息管理结构-inet_peer
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-02-09 22:00:00 / 修改时间：23:46:04" itemprop="dateCreated datePublished" datetime="2026-02-09T22:00:00+08:00">2026-02-09</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/02/09/%E5%AF%B9%E7%AB%AF%E4%BF%A1%E6%81%AF%E7%AE%A1%E7%90%86%E7%BB%93%E6%9E%84inet_peer/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/02/09/%E5%AF%B9%E7%AB%AF%E4%BF%A1%E6%81%AF%E7%AE%A1%E7%90%86%E7%BB%93%E6%9E%84inet_peer/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>协议栈会创建<code>inet_peer</code>结构来保存通信对端的一些信息，<strong>例如对端的地址，主要用于重组IP时判断是否为来自同一源IP的分片攻击。</strong><code>inet_peer</code>结构具体如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">inet_peer</span> &#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rb_node</span>		<span class="title">rb_node</span>;</span>    <span class="comment">//红黑树管理用到</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inetpeer_addr</span>	<span class="title">daddr</span>;</span>  <span class="comment">//inet_peer</span></span><br><span class="line"></span><br><span class="line">	u32			metrics[RTAX_MAX];</span><br><span class="line">	u32			rate_tokens;	<span class="comment">/* rate limiting for ICMP */</span><span class="comment">//icmp令牌限速</span></span><br><span class="line">	u32			n_redirects;	<span class="comment">//防止redirect攻击</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span>		rate_last; <span class="comment">//icpmi</span></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * Once inet_peer is queued for deletion (refcnt == 0), following field</span></span><br><span class="line"><span class="comment">	 * is not available: rid</span></span><br><span class="line"><span class="comment">	 * We can share memory with rcu_head to help keep inet_peer small.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="class"><span class="keyword">union</span> &#123;</span></span><br><span class="line">		<span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">			<span class="type">atomic_t</span>			rid;		<span class="comment">/* Frag reception counter */</span><span class="comment">//ip分片计数！</span></span><br><span class="line">		&#125;;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">rcu_head</span>         <span class="title">rcu</span>;</span></span><br><span class="line">	&#125;;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* following fields might be frequently dirtied */</span></span><br><span class="line">	__u32			dtime;	<span class="comment">/* the time of last use of not referenced entries */</span> <span class="comment">//老化时间</span></span><br><span class="line">	<span class="type">refcount_t</span>		refcnt;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h3 id="初始化"><a href="#初始化" class="headerlink" title="初始化"></a>初始化</h3><p>在初始化路由模块的最后会为每个网络命令空间创建一个管理<code>inet_peer</code>的结构，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> __net_init <span class="title function_">ipv4_inetpeer_init</span><span class="params">(<span class="keyword">struct</span> net *net)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_peer_base</span> *<span class="title">bp</span> =</span> kmalloc(<span class="keyword">sizeof</span>(*bp), GFP_KERNEL);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!bp)</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">	inet_peer_base_init(bp);</span><br><span class="line">	net-&gt;ipv4.peers = bp;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">void</span> <span class="title function_">inet_peer_base_init</span><span class="params">(<span class="keyword">struct</span> inet_peer_base *bp)</span></span><br><span class="line">&#123;</span><br><span class="line">	bp-&gt;rb_root = RB_ROOT;</span><br><span class="line">	seqlock_init(&amp;bp-&gt;lock);</span><br><span class="line">	bp-&gt;total = <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ipv4_inetpeer_init()</code> 负责分配一块 <code>inet_peer_base</code> 内存并挂到 <code>net-&gt;ipv4.peers</code> 上， <code>inet_peer_base_init()</code> 把这块内存初始化好，建一棵空的红黑树、初始化锁、把计数清零。</p>
+<p>在初始化路由模块完成后会调用<code>inet_initpeers</code>计算本机可以创建的最多<code>peer</code>数量和相对应的<code>slab</code>，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> __init <span class="title function_">inet_initpeers</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	u64 nr_entries;</span><br><span class="line"></span><br><span class="line">	 <span class="comment">/* 1% of physical memory */</span></span><br><span class="line">	<span class="comment">//计算物理内存的百分之1是多少</span></span><br><span class="line">	nr_entries = div64_ul((u64)totalram_pages() &lt;&lt; PAGE_SHIFT,</span><br><span class="line">			      <span class="number">100</span> * L1_CACHE_ALIGN(<span class="keyword">sizeof</span>(<span class="keyword">struct</span> inet_peer)));</span><br><span class="line">	<span class="comment">//钳制一下</span></span><br><span class="line">	inet_peer_threshold = clamp_val(nr_entries, <span class="number">4096</span>, <span class="number">65536</span> + <span class="number">128</span>);</span><br><span class="line">	<span class="comment">//创建对应的slab</span></span><br><span class="line">	peer_cachep = kmem_cache_create(<span class="string">&quot;inet_peer_cache&quot;</span>,</span><br><span class="line">			<span class="keyword">sizeof</span>(<span class="keyword">struct</span> inet_peer),</span><br><span class="line">			<span class="number">0</span>, SLAB_HWCACHE_ALIGN | SLAB_PANIC,</span><br><span class="line">			<span class="literal">NULL</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="对端信息块的创建和查找"><a href="#对端信息块的创建和查找" class="headerlink" title="对端信息块的创建和查找"></a>对端信息块的创建和查找</h3><p>对端信息结构的查找和创建都是<code>inet_getpeer</code>来实现的，由参数<code>create</code>确定是否需要创建，首先根据指定ip地址从红黑树中查找对应的结构，如果没有找到则会尝试创建对端信息块，同时还可能会由同步清理的操作，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> inet_peer *<span class="title function_">inet_getpeer</span><span class="params">(<span class="keyword">struct</span> inet_peer_base *base,</span></span><br><span class="line"><span class="params">			       <span class="type">const</span> <span class="keyword">struct</span> inetpeer_addr *daddr,</span></span><br><span class="line"><span class="params">			       <span class="type">int</span> create)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_peer</span> *<span class="title">p</span>, *<span class="title">gc_stack</span>[<span class="title">PEER_MAX_GC</span>];</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rb_node</span> **<span class="title">pp</span>, *<span class="title">parent</span>;</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> gc_cnt, seq;</span><br><span class="line">	<span class="type">int</span> invalidated;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Attempt a lockless lookup first.</span></span><br><span class="line"><span class="comment">	 * Because of a concurrent writer, we might not find an existing entry.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	seq = read_seqbegin(&amp;base-&gt;lock);</span><br><span class="line">	<span class="comment">//根据目的ip查找，遍历红黑树，注意第四个参数不为空则会标记为需要清除的peer</span></span><br><span class="line">	p = lookup(daddr, base, seq, <span class="literal">NULL</span>, &amp;gc_cnt, &amp;parent, &amp;pp);</span><br><span class="line">	invalidated = read_seqretry(&amp;base-&gt;lock, seq);</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">	<span class="comment">//找到直接返回</span></span><br><span class="line">	<span class="keyword">if</span> (p)</span><br><span class="line">		<span class="keyword">return</span> p;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* If no writer did a change during our lookup, we can return early. */</span></span><br><span class="line">	<span class="comment">//没找到</span></span><br><span class="line">	<span class="keyword">if</span> (!create &amp;&amp; !invalidated)</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* retry an exact lookup, taking the lock before.</span></span><br><span class="line"><span class="comment">	 * At least, nodes should be hot in our cache.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	parent = <span class="literal">NULL</span>;</span><br><span class="line">	write_seqlock_bh(&amp;base-&gt;lock);</span><br><span class="line"></span><br><span class="line">	gc_cnt = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//注意这里第四次参数非空</span></span><br><span class="line">	p = lookup(daddr, base, seq, gc_stack, &amp;gc_cnt, &amp;parent, &amp;pp);</span><br><span class="line">	<span class="keyword">if</span> (!p &amp;&amp; create) &#123; <span class="comment">//需要创建</span></span><br><span class="line">		p = kmem_cache_alloc(peer_cachep, GFP_ATOMIC);</span><br><span class="line">		<span class="keyword">if</span> (p) &#123;</span><br><span class="line">			<span class="comment">//填充信息</span></span><br><span class="line">			p-&gt;daddr = *daddr;</span><br><span class="line">			p-&gt;dtime = (__u32)jiffies;</span><br><span class="line">			refcount_set(&amp;p-&gt;refcnt, <span class="number">2</span>);</span><br><span class="line">			<span class="type">atomic_set</span>(&amp;p-&gt;rid, <span class="number">0</span>);</span><br><span class="line">			p-&gt;metrics[RTAX_LOCK<span class="number">-1</span>] = INETPEER_METRICS_NEW;</span><br><span class="line">			p-&gt;rate_tokens = <span class="number">0</span>;</span><br><span class="line">			p-&gt;n_redirects = <span class="number">0</span>;</span><br><span class="line">			<span class="comment">/* 60*HZ is arbitrary, but chosen enough high so that the first</span></span><br><span class="line"><span class="comment">			 * calculation of tokens is at its maximum.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			p-&gt;rate_last = jiffies - <span class="number">60</span>*HZ;</span><br><span class="line">			<span class="comment">//插入红黑树</span></span><br><span class="line">			rb_link_node(&amp;p-&gt;rb_node, parent, pp);</span><br><span class="line">			rb_insert_color(&amp;p-&gt;rb_node, &amp;base-&gt;rb_root);</span><br><span class="line">			base-&gt;total++;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//需要同步清理</span></span><br><span class="line">	<span class="keyword">if</span> (gc_cnt)</span><br><span class="line">		inet_peer_gc(base, gc_stack, gc_cnt);</span><br><span class="line">	write_sequnlock_bh(&amp;base-&gt;lock);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> p;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这段代码的作用是：<strong>按目的 IP 查找对应的 <code>inet_peer</code>，先无锁快速查，找不到再加锁精查；如果允许创建就新建并插入红黑树，同时会同步清理过期的 peer。</strong></p>
+<p>上述查找peer的代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Called with rcu_read_lock() or base-&gt;lock held */</span></span><br><span class="line"><span class="type">static</span> <span class="keyword">struct</span> inet_peer *<span class="title function_">lookup</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> inetpeer_addr *daddr,</span></span><br><span class="line"><span class="params">				<span class="keyword">struct</span> inet_peer_base *base,</span></span><br><span class="line"><span class="params">				<span class="type">unsigned</span> <span class="type">int</span> seq,</span></span><br><span class="line"><span class="params">				<span class="keyword">struct</span> inet_peer *gc_stack[],</span></span><br><span class="line"><span class="params">				<span class="type">unsigned</span> <span class="type">int</span> *gc_cnt,</span></span><br><span class="line"><span class="params">				<span class="keyword">struct</span> rb_node **parent_p,</span></span><br><span class="line"><span class="params">				<span class="keyword">struct</span> rb_node ***pp_p)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rb_node</span> **<span class="title">pp</span>, *<span class="title">parent</span>, *<span class="title">next</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_peer</span> *<span class="title">p</span>;</span></span><br><span class="line">	<span class="comment">//遍历红黑树</span></span><br><span class="line">	pp = &amp;base-&gt;rb_root.rb_node;</span><br><span class="line">	parent = <span class="literal">NULL</span>;</span><br><span class="line">	<span class="keyword">while</span> (<span class="number">1</span>) &#123;</span><br><span class="line">		<span class="type">int</span> cmp;</span><br><span class="line"></span><br><span class="line">		next = rcu_dereference_raw(*pp);</span><br><span class="line">		<span class="keyword">if</span> (!next)</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		parent = next;</span><br><span class="line">		p = rb_entry(parent, <span class="keyword">struct</span> inet_peer, rb_node);</span><br><span class="line">		cmp = inetpeer_addr_cmp(daddr, &amp;p-&gt;daddr);</span><br><span class="line">		<span class="keyword">if</span> (cmp == <span class="number">0</span>) &#123;</span><br><span class="line">			<span class="keyword">if</span> (!refcount_inc_not_zero(&amp;p-&gt;refcnt))</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			<span class="keyword">return</span> p;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//通过参数指定，需要同步清理</span></span><br><span class="line">		<span class="keyword">if</span> (gc_stack) &#123;</span><br><span class="line">			<span class="keyword">if</span> (*gc_cnt &lt; PEER_MAX_GC)</span><br><span class="line">				gc_stack[(*gc_cnt)++] = p;</span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> (unlikely(read_seqretry(&amp;base-&gt;lock, seq))) &#123;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">if</span> (cmp == <span class="number">-1</span>)</span><br><span class="line">			pp = &amp;next-&gt;rb_left;</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			pp = &amp;next-&gt;rb_right;</span><br><span class="line">	&#125;</span><br><span class="line">	*parent_p = parent;</span><br><span class="line">	*pp_p = pp;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述代码逻辑为在 <code>inet_peer</code> 的红黑树里按目的 IP 查找节点，找到就加引用返回，找不到就把插入的位置返回，并可能记录需要同步清理的的<code>peer</code>。</p>
+<p>上述同步清理的代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">inet_peer_gc</span><span class="params">(<span class="keyword">struct</span> inet_peer_base *base,</span></span><br><span class="line"><span class="params">			 <span class="keyword">struct</span> inet_peer *gc_stack[],</span></span><br><span class="line"><span class="params">			 <span class="type">unsigned</span> <span class="type">int</span> gc_cnt)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> peer_threshold, peer_maxttl, peer_minttl;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_peer</span> *<span class="title">p</span>;</span></span><br><span class="line">	__u32 delta, ttl;</span><br><span class="line">	<span class="type">int</span> i;</span><br><span class="line">	<span class="comment">//最大数量，以及存活的时间</span></span><br><span class="line">	peer_threshold = READ_ONCE(inet_peer_threshold);</span><br><span class="line">	peer_maxttl = READ_ONCE(inet_peer_maxttl);</span><br><span class="line">	peer_minttl = READ_ONCE(inet_peer_minttl);</span><br><span class="line">	<span class="comment">//计算ttl 越接近 阈值 越小</span></span><br><span class="line">	<span class="keyword">if</span> (base-&gt;total &gt;= peer_threshold)</span><br><span class="line">		ttl = <span class="number">0</span>; <span class="comment">/* be aggressive */</span></span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		ttl = peer_maxttl - (peer_maxttl - peer_minttl) / HZ *</span><br><span class="line">			base-&gt;total / peer_threshold * HZ;</span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; gc_cnt; i++) &#123;</span><br><span class="line">		p = gc_stack[i];</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* The READ_ONCE() pairs with the WRITE_ONCE()</span></span><br><span class="line"><span class="comment">		 * in inet_putpeer()</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		delta = (__u32)jiffies - READ_ONCE(p-&gt;dtime); <span class="comment">//距离上次使用过了多久的时间</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (delta &lt; ttl || !refcount_dec_if_one(&amp;p-&gt;refcnt))<span class="comment">//不能删除</span></span><br><span class="line">			gc_stack[i] = <span class="literal">NULL</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//真正的删除</span></span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; gc_cnt; i++) &#123;</span><br><span class="line">		p = gc_stack[i];</span><br><span class="line">		<span class="keyword">if</span> (p) &#123;</span><br><span class="line">			rb_erase(&amp;p-&gt;rb_node, &amp;base-&gt;rb_root);</span><br><span class="line">			base-&gt;total--;</span><br><span class="line">			call_rcu(&amp;p-&gt;rcu, inetpeer_free_rcu);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="对端信息块的释放"><a href="#对端信息块的释放" class="headerlink" title="对端信息块的释放"></a>对端信息块的释放</h3><p>例如当<code>ip</code>分片重组完成时候释放对应的<code>peer</code>此时会调用<code>inet_putpeer</code>完成释放操作具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">inet_putpeer</span><span class="params">(<span class="keyword">struct</span> inet_peer *p)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/* The WRITE_ONCE() pairs with itself (we run lockless)</span></span><br><span class="line"><span class="comment">	 * and the READ_ONCE() in inet_peer_gc()</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	WRITE_ONCE(p-&gt;dtime, (__u32)jiffies);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (refcount_dec_and_test(&amp;p-&gt;refcnt))</span><br><span class="line">		call_rcu(&amp;p-&gt;rcu, inetpeer_free_rcu);</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">inetpeer_free_rcu</span><span class="params">(<span class="keyword">struct</span> rcu_head *head)</span></span><br><span class="line">&#123;</span><br><span class="line">	kmem_cache_free(peer_cachep, container_of(head, <span class="keyword">struct</span> inet_peer, rcu));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>inet_putpeer</code>把这个 peer 的最后使用时间设置为当前，然后减少引用计数，如果引用为0，就用 RCU 延迟释放。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/IP/" rel="tag"># IP</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/02/08/IPv4%20%E7%9A%84%E6%8E%A7%E5%88%B6%E9%9D%A2%E3%80%81%E6%95%B0%E6%8D%AE%E8%B7%AF%E5%BE%84%E4%B8%8E%E9%94%99%E8%AF%AF%E4%B8%8A%E6%8A%A5%E6%9C%BA%E5%88%B6/" rel="prev" title="IPv4 的控制与错误上报机制">
+      <i class="fa fa-chevron-left"></i> IPv4 的控制与错误上报机制
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%88%9D%E5%A7%8B%E5%8C%96"><span class="nav-number">1.</span> <span class="nav-text">初始化</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AF%B9%E7%AB%AF%E4%BF%A1%E6%81%AF%E5%9D%97%E7%9A%84%E5%88%9B%E5%BB%BA%E5%92%8C%E6%9F%A5%E6%89%BE"><span class="nav-number">2.</span> <span class="nav-text">对端信息块的创建和查找</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AF%B9%E7%AB%AF%E4%BF%A1%E6%81%AF%E5%9D%97%E7%9A%84%E9%87%8A%E6%94%BE"><span class="nav-number">3.</span> <span class="nav-text">对端信息块的释放</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">97</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">22</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

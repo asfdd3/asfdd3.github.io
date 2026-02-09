@@ -193,6 +193,108 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/11/16/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-BBR%E7%AE%97%E6%B3%95%EF%BC%88%E4%B8%89%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/11/16/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-BBR%E7%AE%97%E6%B3%95%EF%BC%88%E4%B8%89%EF%BC%89/" class="post-title-link" itemprop="url">TCP拥塞控制-BBR算法（三）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2025-11-16 22:00:00 / 修改时间：18:57:38" itemprop="dateCreated datePublished" datetime="2025-11-16T22:00:00+08:00">2025-11-16</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/11/16/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-BBR%E7%AE%97%E6%B3%95%EF%BC%88%E4%B8%89%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/11/16/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-BBR%E7%AE%97%E6%B3%95%EF%BC%88%E4%B8%89%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p><code>bbr_main</code>中调用<code>bbr_update_model</code>完成后，会调用<code>bbr_bw</code>获取瓶颈带宽（取决于是否开启长期带宽检测）具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> u32 <span class="title function_">bbr_bw</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bbr</span> *<span class="title">bbr</span> =</span> inet_csk_ca(sk);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> bbr-&gt;lt_use_bw ? bbr-&gt;lt_bw : bbr_max_bw(sk);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>拿到<code>bw</code>后调用<code>bbr_set_pacing_rate</code>设置发包速率，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">bbr_set_pacing_rate</span><span class="params">(<span class="keyword">struct</span> sock *sk, u32 bw, <span class="type">int</span> gain)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bbr</span> *<span class="title">bbr</span> =</span> inet_csk_ca(sk);</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> rate = bbr_bw_to_pacing_rate(sk, bw, gain);  	   <span class="comment">//计算pacing速率</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (unlikely(!bbr-&gt;has_seen_rtt &amp;&amp; tp-&gt;srtt_us)) 			  <span class="comment">//没有rtt?</span></span><br><span class="line">		bbr_init_pacing_rate_from_rtt(sk); 						 <span class="comment">//没有记录rtt的情况，设置rtt 计算bw</span></span><br><span class="line">	<span class="keyword">if</span> (bbr_full_bw_reached(sk) || rate &gt; sk-&gt;sk_pacing_rate)	   <span class="comment">//达到最大带宽，或者大于pacing速率</span></span><br><span class="line">		sk-&gt;sk_pacing_rate = rate;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>更新发包速率后，接下调用<code>bbr_set_cwnd</code>设置拥塞窗口的大小，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">bbr_set_cwnd</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">const</span> <span class="keyword">struct</span> rate_sample *rs,</span></span><br><span class="line"><span class="params">			 u32 acked, u32 bw, <span class="type">int</span> gain)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bbr</span> *<span class="title">bbr</span> =</span> inet_csk_ca(sk);</span><br><span class="line">	u32 cwnd = tcp_snd_cwnd(tp), target_cwnd = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//确认报文段的个数</span></span><br><span class="line">	<span class="keyword">if</span> (!acked)</span><br><span class="line">		<span class="keyword">goto</span> done;  <span class="comment">/* no packet fully ACKed; just apply caps */</span></span><br><span class="line">	<span class="comment">//设置cwnd 如果是包守恒（第一轮进入recovery）就就直接返回了</span></span><br><span class="line">	<span class="keyword">if</span> (bbr_set_cwnd_to_recover_or_restore(sk, rs, acked, &amp;cwnd))</span><br><span class="line">		<span class="keyword">goto</span> done;</span><br><span class="line">	<span class="comment">//根据bw(段数/us)计算bdp</span></span><br><span class="line">	target_cwnd = bbr_bdp(sk, bw, gain);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Increment the cwnd to account for excess ACKed data that seems</span></span><br><span class="line"><span class="comment">	 * due to aggregation (of data and/or ACKs) visible in the ACK stream.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//考虑聚合后的cwnd</span></span><br><span class="line">	target_cwnd += bbr_ack_aggregation_cwnd(sk);</span><br><span class="line">	<span class="comment">//考虑tc 和tso/gso等</span></span><br><span class="line">	target_cwnd = bbr_quantization_budget(sk, target_cwnd);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* If we&#x27;re below target cwnd, slow start cwnd toward target cwnd. */</span></span><br><span class="line">	<span class="comment">//是否达到最大带宽</span></span><br><span class="line">	<span class="keyword">if</span> (bbr_full_bw_reached(sk))  <span class="comment">/* only cut cwnd if we filled the pipe */</span></span><br><span class="line">	<span class="comment">//每次按 +acked 线性涨，但不超过 target_cwnd（BDP×gain 得到的目标）。</span></span><br><span class="line">		cwnd = min(cwnd + acked, target_cwnd);</span><br><span class="line">	<span class="keyword">else</span> <span class="keyword">if</span> (cwnd &lt; target_cwnd || tp-&gt;delivered &lt; TCP_INIT_CWND) <span class="comment">//Startup 阶段</span></span><br><span class="line">		cwnd = cwnd + acked;</span><br><span class="line">	cwnd = max(cwnd, bbr_cwnd_min_target);<span class="comment">//确保大于4</span></span><br><span class="line"></span><br><span class="line">done:</span><br><span class="line">	tcp_snd_cwnd_set(tp, min(cwnd, tp-&gt;snd_cwnd_clamp));	<span class="comment">/* apply global cap */</span> <span class="comment">//设置拥塞窗口</span></span><br><span class="line">	<span class="keyword">if</span> (bbr-&gt;mode == BBR_PROBE_RTT)  <span class="comment">/* drain queue, refresh min_rtt */</span> <span class="comment">//probe状态的特殊处理</span></span><br><span class="line">		tcp_snd_cwnd_set(tp, min(tcp_snd_cwnd(tp), bbr_cwnd_min_target));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>bbr_set_cwnd</code>中首先判断是否确认了数据包，如果没有确认这里直接返回。</p>
+<p>否则调用<code>bbr_set_cwnd_to_recover_or_restore</code>决定是进入包守恒模式、恢复旧 <code>cwnd</code> 还是继续按正常 <code>BBR</code> 计算，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">bool</span> <span class="title function_">bbr_set_cwnd_to_recover_or_restore</span><span class="params">(</span></span><br><span class="line"><span class="params">	<span class="keyword">struct</span> sock *sk, <span class="type">const</span> <span class="keyword">struct</span> rate_sample *rs, u32 acked, u32 *new_cwnd)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bbr</span> *<span class="title">bbr</span> =</span> inet_csk_ca(sk);</span><br><span class="line">	u8 prev_state = bbr-&gt;prev_ca_state, state = inet_csk(sk)-&gt;icsk_ca_state;</span><br><span class="line">	u32 cwnd = tcp_snd_cwnd(tp);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* An ACK for P pkts should release at most 2*P packets. We do this</span></span><br><span class="line"><span class="comment">	 * in two steps. First, here we deduct the number of lost packets.</span></span><br><span class="line"><span class="comment">	 * Then, in bbr_set_cwnd() we slow start up toward the target cwnd.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//减去丢包数</span></span><br><span class="line">	<span class="keyword">if</span> (rs-&gt;losses &gt; <span class="number">0</span>)</span><br><span class="line">		cwnd = <span class="type">max_t</span>(s32, cwnd - rs-&gt;losses, <span class="number">1</span>);</span><br><span class="line">	<span class="comment">//进入recovery状态，且上次不是这个状态，表示刚进入这个状态</span></span><br><span class="line">	<span class="keyword">if</span> (state == TCP_CA_Recovery &amp;&amp; prev_state != TCP_CA_Recovery) &#123;</span><br><span class="line">		<span class="comment">/* Starting 1st round of Recovery, so do packet conservation. */</span></span><br><span class="line">		bbr-&gt;packet_conservation = <span class="number">1</span>; <span class="comment">//包守恒</span></span><br><span class="line">		bbr-&gt;next_rtt_delivered = tp-&gt;delivered;  <span class="comment">/* start round now */</span> <span class="comment">//当前确认的数据包数</span></span><br><span class="line">		<span class="comment">/* Cut unused cwnd from app behavior, TSQ, or TSO deferral: */</span></span><br><span class="line">		cwnd = tcp_packets_in_flight(tp) + acked;</span><br><span class="line">		<span class="comment">//从更严重的状态到 正常状态或者乱序</span></span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (prev_state &gt;= TCP_CA_Recovery &amp;&amp; state &lt; TCP_CA_Recovery) &#123; </span><br><span class="line">		<span class="comment">/* Exiting loss recovery; restore cwnd saved before recovery. */</span></span><br><span class="line">		cwnd = max(cwnd, bbr-&gt;prior_cwnd); <span class="comment">//相当于撤销</span></span><br><span class="line">		bbr-&gt;packet_conservation = <span class="number">0</span>; <span class="comment">//关闭包守恒</span></span><br><span class="line">	&#125;</span><br><span class="line">	bbr-&gt;prev_ca_state = state;<span class="comment">//记录本次的状态</span></span><br><span class="line">	<span class="comment">//在包守恒模式下</span></span><br><span class="line">	<span class="keyword">if</span> (bbr-&gt;packet_conservation) &#123;</span><br><span class="line">		*new_cwnd = max(cwnd, tcp_packets_in_flight(tp) + acked);</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">true</span>;	<span class="comment">/* yes, using packet conservation */</span></span><br><span class="line">	&#125;</span><br><span class="line">	*new_cwnd = cwnd;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>bbr_set_cwnd_to_recover_or_restore</code>首先判断是否丢包了，如果丢包了会将拥塞窗口减去丢包的数量，之后判断是否首次进入<code>Recovery</code>，如果是，则进入包守恒模式，把<code>cwnd</code>设置为<code>in_flight</code> + <code>acked</code></p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/11/16/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-BBR%E7%AE%97%E6%B3%95%EF%BC%88%E4%B8%89%EF%BC%89/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/11/11/TCP%E6%8B%A5%E5%A1%9E%E6%8E%A7%E5%88%B6-BBR%E7%AE%97%E6%B3%95%EF%BC%88%E4%BA%8C%EF%BC%89/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1163,114 +1265,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/10/19/TCP%E4%B8%BB%E5%8A%A8%E6%89%93%E5%BC%80%E5%8F%91%E9%80%81ack/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/10/19/TCP%E4%B8%BB%E5%8A%A8%E6%89%93%E5%BC%80%E5%8F%91%E9%80%81ack/" class="post-title-link" itemprop="url">TCP三次握手-发送ack</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2025-10-19 22:00:00" itemprop="dateCreated datePublished" datetime="2025-10-19T22:00:00+08:00">2025-10-19</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-10-20 21:45:53" itemprop="dateModified" datetime="2025-10-20T21:45:53+08:00">2025-10-20</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/10/19/TCP%E4%B8%BB%E5%8A%A8%E6%89%93%E5%BC%80%E5%8F%91%E9%80%81ack/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/10/19/TCP%E4%B8%BB%E5%8A%A8%E6%89%93%E5%BC%80%E5%8F%91%E9%80%81ack/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p>当在<code>tcp_rcv_synsent_state_process</code>中处理完成对端发送的<code>synack</code>报文后，会回复最后一个<code>ack</code>，<strong>这里注意，当收到对方的<code>synack</code>报文后，会唤醒用户阻塞的<code>connect</code>（如果是阻塞模式的话）此时还没有发送最后一个<code>ack</code>报文，就已经是TCP_ESTABLISHED状态了</strong>。具体是立即发送<code>ack</code>还是延迟发送<code>ack</code>取决于是否有待发送的数据，或者用户设置过选项，亦或是处于<code>pingpong</code>模式，如果处于上述三种情况则会延迟发送<code>ack</code>否则直接发送<code>ack</code>具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (sk-&gt;sk_write_pending ||  <span class="comment">//有待发的数据这时候刚建立连接 通常不会有吧</span></span><br><span class="line">    READ_ONCE(icsk-&gt;icsk_accept_queue.rskq_defer_accept) ||  <span class="comment">//setsockopt 设置</span></span><br><span class="line">    inet_csk_in_pingpong_mode(sk)) &#123; <span class="comment">//pingpong模式</span></span><br><span class="line">	<span class="comment">//进入这个分支的思想是，先慢发一个ack然后快发</span></span><br><span class="line">	<span class="comment">/* Save one ACK. Data will be ready after</span></span><br><span class="line"><span class="comment">	 * several ticks, if write_pending is set.</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * It may be deleted, but with this feature tcpdumps</span></span><br><span class="line"><span class="comment">	 * look so _wonderfully_ clever, that I was not able</span></span><br><span class="line"><span class="comment">	 * to stand against the temptation 8)     --ANK</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	inet_csk_schedule_ack(sk); <span class="comment">//设置ack pending位</span></span><br><span class="line">	tcp_enter_quickack_mode(sk, TCP_MAX_QUICKACKS);<span class="comment">//设置后面快发ack</span></span><br><span class="line">	inet_csk_reset_xmit_timer(sk, ICSK_TIME_DACK, <span class="comment">//启动延迟ack定时器</span></span><br><span class="line">				  TCP_DELACK_MAX, TCP_RTO_MAX);</span><br><span class="line">	<span class="comment">//注意这里直接返回了 没有发ack</span></span><br><span class="line">	<span class="keyword">goto</span> consume;</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">//发送最后一个ack</span></span><br><span class="line">tcp_send_ack(sk);</span><br></pre></td></tr></table></figure>
-
-<p><strong>大多数情况会立即发送一个<code>ack</code>报文</strong>，<strong>然后返回-1</strong>，外层会针对这个返回值进行进一步处理，具体代码代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">case</span> TCP_SYN_SENT:</span><br><span class="line">		tp-&gt;rx_opt.saw_tstamp = <span class="number">0</span>;</span><br><span class="line">		tcp_mstamp_refresh(tp);<span class="comment">//更新收包时间戳</span></span><br><span class="line">		<span class="comment">//真正的处理函数 正常时返回-1 返回1 会发送rst 返回0 什么也不做</span></span><br><span class="line">		queued = tcp_rcv_synsent_state_process(sk, skb, th);</span><br><span class="line">		<span class="keyword">if</span> (queued &gt;= <span class="number">0</span>)</span><br><span class="line">			<span class="keyword">return</span> queued;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Do step6 onward by hand. */</span></span><br><span class="line">		<span class="comment">//返回-1的情况</span></span><br><span class="line">		<span class="comment">//处理是否有urg 几乎不会有</span></span><br><span class="line">		tcp_urg(sk, skb, th);</span><br><span class="line">		__kfree_skb(skb);</span><br><span class="line">		<span class="comment">//是否需要扩充sndbuf 或者是否需发送可写事件</span></span><br><span class="line">		tcp_data_snd_check(sk);</span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br></pre></td></tr></table></figure>
-
-<p>内层返回-1后，会首先判断是否需要处理<code>urg</code>数据，如果有则会处理紧急数据（这里几乎直接返回了），因此接下来会释放数据包，然后调用<code>tcp_data_snd_check</code>，判断是否有数据需要发送，或者是否需要通知应用层有可写事件，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">tcp_data_snd_check</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//检查是否有待发送的数据</span></span><br><span class="line">	tcp_push_pending_frames(sk);</span><br><span class="line">	tcp_check_space(sk);</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">tcp_push_pending_frames</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//是否有待发送的数据</span></span><br><span class="line">	<span class="keyword">if</span> (tcp_send_head(sk)) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">tcp_sock</span> *<span class="title">tp</span> =</span> tcp_sk(sk);</span><br><span class="line">		<span class="comment">//尝试发包</span></span><br><span class="line">		__tcp_push_pending_frames(sk, tcp_current_mss(sk), tp-&gt;nonagle);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>上述<code>tcp_data_snd_check</code>调用<code>tcp_push_pending_frames</code>判断是否有发送的数据，如果有，则直接调用发送接口发送数据包，之后调用</p>
-<p><code>tcp_check_space</code>检查是否<strong>检测发送缓冲区原本满了以及是否需要唤醒应用层</strong>具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">tcp_check_space</span><span class="params">(<span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/* pairs with tcp_poll() */</span></span><br><span class="line">	smp_mb();</span><br><span class="line">	<span class="comment">//是否没有空间</span></span><br><span class="line">	<span class="keyword">if</span> (sk-&gt;sk_socket &amp;&amp;</span><br><span class="line">	    test_bit(SOCK_NOSPACE, &amp;sk-&gt;sk_socket-&gt;flags)) &#123;</span><br><span class="line">		tcp_new_space(sk);</span><br><span class="line">		<span class="keyword">if</span> (!test_bit(SOCK_NOSPACE, &amp;sk-&gt;sk_socket-&gt;flags))</span><br><span class="line">			tcp_chrono_stop(sk, TCP_CHRONO_SNDBUF_LIMITED);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<p><code>tcp_check_space</code>首先判断当前sock是否处于NOSPACE状态，即是否之前标记为不可写状态，如果标记过则调用<code>tcp_new_space</code>进一步进行检查，如果有空间了则唤醒用户阻塞的进程。具体代码呢如下所示：</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/10/19/TCP%E4%B8%BB%E5%8A%A8%E6%89%93%E5%BC%80%E5%8F%91%E9%80%81ack/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1340,7 +1334,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">96</span>
+          <span class="site-state-item-count">97</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>

@@ -193,6 +193,112 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/24/sock%E7%9A%84%E5%88%9B%E5%BB%BA%E4%B8%8E%E5%88%9D%E5%A7%8B%E5%8C%96/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/05/24/sock%E7%9A%84%E5%88%9B%E5%BB%BA%E4%B8%8E%E5%88%9D%E5%A7%8B%E5%8C%96/" class="post-title-link" itemprop="url">sock的创建与初始化</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-05-24 22:00:00" itemprop="dateCreated datePublished" datetime="2025-05-24T22:00:00+08:00">2025-05-24</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-06-22 23:16:59" itemprop="dateModified" datetime="2025-06-22T23:16:59+08:00">2025-06-22</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/05/24/sock%E7%9A%84%E5%88%9B%E5%BB%BA%E4%B8%8E%E5%88%9D%E5%A7%8B%E5%8C%96/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/24/sock%E7%9A%84%E5%88%9B%E5%BB%BA%E4%B8%8E%E5%88%9D%E5%A7%8B%E5%8C%96/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>以IPv4协议族为例，当用户态执行socket系统调用后，会调用到<code>inet_create()</code>,在<code>inet_create()</code>中会创建与socket关联的sock结构体，具体代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">inet_create</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> socket *sock, <span class="type">int</span> protocol,</span></span><br><span class="line"><span class="params">		       <span class="type">int</span> kern)</span></span><br><span class="line">&#123;</span><br><span class="line">    .....</span><br><span class="line">	<span class="comment">//注意： 这里申请一个sock结构，这个sock结构可以理解为传输层协议和socket之间的一个中间层</span></span><br><span class="line">	<span class="comment">//对上提供socket层的结构，</span></span><br><span class="line">	<span class="comment">//对下与具体的协议相关</span></span><br><span class="line">	<span class="comment">//kern 标识这个套接字是否是内核创建的</span></span><br><span class="line">	sk = sk_alloc(net, PF_INET, GFP_KERNEL, answer_prot, kern);</span><br><span class="line">	<span class="keyword">if</span> (!sk)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">    .....</span><br><span class="line">	<span class="comment">//这里初始化了上面申请的sock结构体的各个字段</span></span><br><span class="line">	sock_init_data(sock, sk);</span><br><span class="line"></span><br><span class="line">    .....</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h2 id="sk-alloc"><a href="#sk-alloc" class="headerlink" title="sk_alloc()"></a>sk_alloc()</h2><p>上述<code>sk_alloc()</code>其实就是使用slab分配其分配了prot-&gt;size大小的的内存，也就是说分配了一个比sock结构体size还要大的内存，举个例子，如果是TCP协议，则分配的大小为sizeof(tcp_sock),也就是说tcp_sock内嵌了sock结构体，类似继承的关系，关系如下图所示：</p>
+<p><img src="/images/socket/sock%E5%85%B3%E7%B3%BB.jpeg" alt="sock之间的关系"></p>
+<p>接下来具体看一下<code>sk_alloc()</code>的实现：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> sock *<span class="title function_">sk_alloc</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="type">int</span> family, <span class="type">gfp_t</span> priority,</span></span><br><span class="line"><span class="params">		      <span class="keyword">struct</span> proto *prot, <span class="type">int</span> kern)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span>;</span></span><br><span class="line">	<span class="comment">//调用slab 分配一个sk结构体，注意这个结构体的大小取决与prot参数的size字段</span></span><br><span class="line">	<span class="comment">//__GFP_ZERO表示为内存申请后需要清零的标志位</span></span><br><span class="line">	sk = sk_prot_alloc(prot, priority | __GFP_ZERO, family);</span><br><span class="line">	<span class="keyword">if</span> (sk) &#123;</span><br><span class="line">		<span class="comment">//设置协议族</span></span><br><span class="line">		sk-&gt;sk_family = family;</span><br><span class="line">		<span class="comment">/*</span></span><br><span class="line"><span class="comment">		 * See comment in struct sock definition to understand</span></span><br><span class="line"><span class="comment">		 * why we need sk_prot_creator -acme</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//这里很关键，将具体协议的prot关联到了sock上</span></span><br><span class="line">		sk-&gt;sk_prot = sk-&gt;sk_prot_creator = prot;</span><br><span class="line">		<span class="comment">//记录是否是内核创建的</span></span><br><span class="line">		sk-&gt;sk_kern_sock = kern;</span><br><span class="line">		sock_lock_init(sk);</span><br><span class="line">		<span class="comment">//如果是用户进程创建的，就增加网络命名空间的引用计数</span></span><br><span class="line">		sk-&gt;sk_net_refcnt = kern ? <span class="number">0</span> : <span class="number">1</span>;</span><br><span class="line">		<span class="comment">//更新当前core上所有活跃套接字的引用计数。</span></span><br><span class="line">		<span class="keyword">if</span> (likely(sk-&gt;sk_net_refcnt)) &#123;</span><br><span class="line">			get_net_track(net, &amp;sk-&gt;ns_tracker, priority);</span><br><span class="line">			sock_inuse_add(net, <span class="number">1</span>);</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			__netns_tracker_alloc(net, &amp;sk-&gt;ns_tracker,</span><br><span class="line">					      <span class="literal">false</span>, priority);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//将sock与网络命名空间关联</span></span><br><span class="line">		sock_net_set(sk, net);</span><br><span class="line">		<span class="comment">//发送缓冲区引用计数加1</span></span><br><span class="line">		refcount_set(&amp;sk-&gt;sk_wmem_alloc, <span class="number">1</span>);</span><br><span class="line"></span><br><span class="line">		mem_cgroup_sk_alloc(sk);</span><br><span class="line">		cgroup_sk_alloc(&amp;sk-&gt;sk_cgrp_data);</span><br><span class="line">		sock_update_classid(&amp;sk-&gt;sk_cgrp_data);</span><br><span class="line">		sock_update_netprioidx(&amp;sk-&gt;sk_cgrp_data);</span><br><span class="line">		sk_tx_queue_clear(sk);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> sk;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码中调用<code>sk_prot_alloc()</code> 根据不同的prot(也就是不同的协议)申请sock，同时设置了__GFP_ZERO 标志，表示需要将申请的内存memset，<code>sk_prot_alloc()</code> 的具体实现如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">struct</span> sock *<span class="title function_">sk_prot_alloc</span><span class="params">(<span class="keyword">struct</span> proto *prot, <span class="type">gfp_t</span> priority,</span></span><br><span class="line"><span class="params">		<span class="type">int</span> family)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">kmem_cache</span> *<span class="title">slab</span>;</span></span><br><span class="line">	<span class="comment">//从slab分配器中拿一个结构体，这个slabchace是inet_init中初始化的</span></span><br><span class="line">	slab = prot-&gt;slab;</span><br><span class="line">	<span class="keyword">if</span> (slab != <span class="literal">NULL</span>) &#123;</span><br><span class="line">		sk = kmem_cache_alloc(slab, priority &amp; ~__GFP_ZERO);</span><br><span class="line">		<span class="keyword">if</span> (!sk)</span><br><span class="line">			<span class="keyword">return</span> sk;</span><br><span class="line">		<span class="comment">//是否需要memset，可以看到这里的大小是objsize</span></span><br><span class="line">		<span class="keyword">if</span> (want_init_on_alloc(priority))</span><br><span class="line">			sk_prot_clear_nulls(sk, prot-&gt;obj_size);</span><br><span class="line">	&#125; <span class="keyword">else</span></span><br><span class="line">	<span class="comment">//如果没使用slab就用kmalloc，kamlloc不也是slab吗？</span></span><br><span class="line">		sk = kmalloc(prot-&gt;obj_size, priority);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (sk != <span class="literal">NULL</span>) &#123;</span><br><span class="line">		<span class="comment">//安全相关</span></span><br><span class="line">		<span class="keyword">if</span> (security_sk_alloc(sk, family, priority))</span><br><span class="line">			<span class="keyword">goto</span> out_free;</span><br><span class="line">		<span class="comment">//增加引用计数</span></span><br><span class="line">		<span class="keyword">if</span> (!try_module_get(prot-&gt;owner))</span><br><span class="line">			<span class="keyword">goto</span> out_free_sec;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> sk;</span><br><span class="line"></span><br><span class="line">out_free_sec:</span><br><span class="line">	security_sk_free(sk);</span><br><span class="line">out_free:</span><br><span class="line">	<span class="keyword">if</span> (slab != <span class="literal">NULL</span>)</span><br><span class="line">		kmem_cache_free(slab, sk);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		kfree(sk);</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>从上述代码可知是通过<code>slab = prot-&gt;slab;</code>获取了一个slab对象，这个slab管理的结构体大小是<code>inet_init()</code>中调用<code>proto_register()</code>创建slab时候确定的，具体函数如下所示：</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/05/24/sock%E7%9A%84%E5%88%9B%E5%BB%BA%E4%B8%8E%E5%88%9D%E5%A7%8B%E5%8C%96/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/23/%E7%BD%91%E5%8D%A1%E7%A1%AC%E4%BB%B6%E6%A8%A1%E5%9D%97/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -901,7 +1007,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">96</span>
+          <span class="site-state-item-count">97</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
