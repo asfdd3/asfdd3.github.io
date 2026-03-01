@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="IP数据包的转发IP数据包的转发由ip_forward完成，该函数是在ip_rcv_finish查找路由后确定的，是当报文不是本机而是需要转发时 的核心函数，具体代码如下所示： 123456789101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657585960">
+<meta property="og:type" content="article">
+<meta property="og:title" content="IP报文的转发与输出">
+<meta property="og:url" content="http://example.com/2026/03/01/IP%E5%B1%82%E7%9A%84%E8%BE%93%E5%85%A5%E8%BE%93%E5%87%BA%EF%BC%88%E4%BA%8C%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="IP数据包的转发IP数据包的转发由ip_forward完成，该函数是在ip_rcv_finish查找路由后确定的，是当报文不是本机而是需要转发时 的核心函数，具体代码如下所示： 123456789101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657585960">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-03-01T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-03-01T15:31:14.852Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="IP">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/03/01/IP%E5%B1%82%E7%9A%84%E8%BE%93%E5%85%A5%E8%BE%93%E5%87%BA%EF%BC%88%E4%BA%8C%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>IP报文的转发与输出 | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/03/01/IP%E5%B1%82%E7%9A%84%E8%BE%93%E5%85%A5%E8%BE%93%E5%87%BA%EF%BC%88%E4%BA%8C%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          IP报文的转发与输出
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-03-01 22:00:00 / 修改时间：23:31:14" itemprop="dateCreated datePublished" datetime="2026-03-01T22:00:00+08:00">2026-03-01</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/03/01/IP%E5%B1%82%E7%9A%84%E8%BE%93%E5%85%A5%E8%BE%93%E5%87%BA%EF%BC%88%E4%BA%8C%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/03/01/IP%E5%B1%82%E7%9A%84%E8%BE%93%E5%85%A5%E8%BE%93%E5%87%BA%EF%BC%88%E4%BA%8C%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="IP数据包的转发"><a href="#IP数据包的转发" class="headerlink" title="IP数据包的转发"></a><code>IP</code>数据包的转发</h2><p><code>IP</code>数据包的转发由<code>ip_forward</code>完成，该函数是在<code>ip_rcv_finish</code>查找路由后确定的，是<strong>当报文不是本机而是需要转发时</strong> 的核心函数，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">ip_forward</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	u32 mtu;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">iphdr</span> *<span class="title">iph</span>;</span>	<span class="comment">/* Our header */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rtable</span> *<span class="title">rt</span>;</span>	<span class="comment">/* Route we use */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_options</span> *<span class="title">opt</span>	=</span> &amp;(IPCB(skb)-&gt;opt);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span>;</span></span><br><span class="line">	SKB_DR(reason);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* that should never happen */</span></span><br><span class="line">	<span class="comment">//只处理是发给本机的帧</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;pkt_type != PACKET_HOST)</span><br><span class="line">		<span class="keyword">goto</span> drop;</span><br><span class="line">	<span class="comment">//不应该找到本机的sk</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(skb-&gt;sk))</span><br><span class="line">		<span class="keyword">goto</span> drop;</span><br><span class="line">	<span class="comment">//不应该有lro</span></span><br><span class="line">	<span class="keyword">if</span> (skb_warn_if_lro(skb))</span><br><span class="line">		<span class="keyword">goto</span> drop;</span><br><span class="line">	<span class="comment">//ipsec</span></span><br><span class="line">	<span class="keyword">if</span> (!xfrm4_policy_check(<span class="literal">NULL</span>, XFRM_POLICY_FWD, skb)) &#123;</span><br><span class="line">		SKB_DR_SET(reason, XFRM_POLICY);</span><br><span class="line">		<span class="keyword">goto</span> drop;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//Router Alert 选项 用户可以通过setsockopt设置</span></span><br><span class="line">	<span class="keyword">if</span> (IPCB(skb)-&gt;opt.router_alert &amp;&amp; ip_call_ra_chain(skb))</span><br><span class="line">		<span class="keyword">return</span> NET_RX_SUCCESS;</span><br><span class="line">	<span class="comment">//准备修改ttl，设置校验和为未计算</span></span><br><span class="line">	skb_forward_csum(skb);</span><br><span class="line">	net = dev_net(skb-&gt;dev);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	According to the RFC, we must first decrease the TTL field. If</span></span><br><span class="line"><span class="comment">	 *	that reaches zero, we must reply an ICMP control message telling</span></span><br><span class="line"><span class="comment">	 *	that the packet&#x27;s lifetime expired.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (ip_hdr(skb)-&gt;ttl &lt;= <span class="number">1</span>)</span><br><span class="line">		<span class="keyword">goto</span> too_many_hops;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!xfrm4_route_forward(skb)) &#123;</span><br><span class="line">		SKB_DR_SET(reason, XFRM_POLICY);</span><br><span class="line">		<span class="keyword">goto</span> drop;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	rt = skb_rtable(skb);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (opt-&gt;is_strictroute &amp;&amp; rt-&gt;rt_uses_gateway)</span><br><span class="line">		<span class="keyword">goto</span> sr_failed;</span><br><span class="line">	<span class="comment">//标记转发</span></span><br><span class="line">	IPCB(skb)-&gt;flags |= IPSKB_FORWARDED;</span><br><span class="line">	<span class="comment">//获取mtu，注意这里获取了mtu</span></span><br><span class="line">	mtu = ip_dst_mtu_maybe_forward(&amp;rt-&gt;dst, <span class="literal">true</span>);</span><br><span class="line">	<span class="comment">//超过了mtu，还不让分片</span></span><br><span class="line">	<span class="keyword">if</span> (ip_exceeds_mtu(skb, mtu)) &#123;</span><br><span class="line">		IP_INC_STATS(net, IPSTATS_MIB_FRAGFAILS);</span><br><span class="line">		icmp_send(skb, ICMP_DEST_UNREACH, ICMP_FRAG_NEEDED,</span><br><span class="line">			  htonl(mtu));</span><br><span class="line">		SKB_DR_SET(reason, PKT_TOO_BIG);</span><br><span class="line">		<span class="keyword">goto</span> drop;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* We are about to mangle packet. Copy it! */</span></span><br><span class="line">	<span class="comment">//可以修改数据包的接口</span></span><br><span class="line">	<span class="keyword">if</span> (skb_cow(skb, LL_RESERVED_SPACE(rt-&gt;dst.dev)+rt-&gt;dst.header_len))</span><br><span class="line">		<span class="keyword">goto</span> drop;</span><br><span class="line">	iph = ip_hdr(skb);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Decrease ttl after skb cow done */</span></span><br><span class="line">	<span class="comment">//减去ttl</span></span><br><span class="line">	ip_decrease_ttl(iph);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	We now generate an ICMP HOST REDIRECT giving the route</span></span><br><span class="line"><span class="comment">	 *	we calculated.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//如果没有源路由选项也不是ipsec相关，就回一个icmp重定向</span></span><br><span class="line">	<span class="keyword">if</span> (IPCB(skb)-&gt;flags &amp; IPSKB_DOREDIRECT &amp;&amp; !opt-&gt;srr &amp;&amp;</span><br><span class="line">	    !skb_sec_path(skb))</span><br><span class="line">		ip_rt_send_redirect(skb);</span><br><span class="line">	<span class="comment">//根据tos映射skb 的优先级</span></span><br><span class="line">	<span class="keyword">if</span> (READ_ONCE(net-&gt;ipv4.sysctl_ip_fwd_update_priority))</span><br><span class="line">		skb-&gt;priority = rt_tos2priority(iph-&gt;tos);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> NF_HOOK(NFPROTO_IPV4, NF_INET_FORWARD,</span><br><span class="line">		       net, <span class="literal">NULL</span>, skb, skb-&gt;dev, rt-&gt;dst.dev,</span><br><span class="line">		       ip_forward_finish);</span><br><span class="line"></span><br><span class="line">sr_failed:</span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	Strict routing permits no gatewaying</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	 icmp_send(skb, ICMP_DEST_UNREACH, ICMP_SR_FAILED, <span class="number">0</span>);</span><br><span class="line">	 <span class="keyword">goto</span> drop;</span><br><span class="line"></span><br><span class="line">too_many_hops:</span><br><span class="line">	<span class="comment">/* Tell the sender its packet died... */</span></span><br><span class="line">	__IP_INC_STATS(net, IPSTATS_MIB_INHDRERRORS);</span><br><span class="line">	icmp_send(skb, ICMP_TIME_EXCEEDED, ICMP_EXC_TTL, <span class="number">0</span>);</span><br><span class="line">	SKB_DR_SET(reason, IP_INHDR);</span><br><span class="line">drop:</span><br><span class="line">	kfree_skb_reason(skb, reason);</span><br><span class="line">	<span class="keyword">return</span> NET_RX_DROP;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>ip_forward</code>首先判断数据包是否需要由本机转发，之后判断<code>TTL</code>是否合法，不合法会回复 ICMP 报文。如果超过路径的 MTU 且不能分片，则也会回复ICMP报文。如果没有源路由选项则还可能回 ICMP 重定向，或者根据 TOS 设置包的优先级（<code>tc</code>会用到），接着交给 <code>netfilter</code> 的 FORWARD 挂载点。如果没有被丢弃，则会继续向下调用<code>ip_forward_finish</code>，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">ip_forward_finish</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_options</span> *<span class="title">opt</span>	=</span> &amp;(IPCB(skb)-&gt;opt);</span><br><span class="line">	<span class="comment">//统计转发的包数</span></span><br><span class="line">	__IP_INC_STATS(net, IPSTATS_MIB_OUTFORWDATAGRAMS);</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_NET_SWITCHDEV</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;offload_l3_fwd_mark) &#123;</span><br><span class="line">		consume_skb(skb);</span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="comment">//处理ip选项</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(opt-&gt;optlen))</span><br><span class="line">		ip_forward_options(skb);</span><br><span class="line"></span><br><span class="line">	skb_clear_tstamp(skb);</span><br><span class="line">	<span class="comment">//调用路由dst的output，把包发出去</span></span><br><span class="line">	<span class="keyword">return</span> dst_output(net, sk, skb);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="IP数据包的输出"><a href="#IP数据包的输出" class="headerlink" title="IP数据包的输出"></a><code>IP</code>数据包的输出</h2><p>无论是转发的数据包还是从本地输出的数据包，经过路由之后都要进一步输出，而输出的接口就是<code>ip_output</code>，该函数和上述转发类似，也是通过路由查找的结果关联的。<code>ip_output</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">ip_output</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span> =</span> skb_dst(skb)-&gt;dev, *indev = skb-&gt;dev;</span><br><span class="line"></span><br><span class="line">	skb-&gt;dev = dev;</span><br><span class="line">	skb-&gt;protocol = htons(ETH_P_IP);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> NF_HOOK_COND(NFPROTO_IPV4, NF_INET_POST_ROUTING,</span><br><span class="line">			    net, sk, skb, indev, dev,</span><br><span class="line">			    ip_finish_output,</span><br><span class="line">			    !(IPCB(skb)-&gt;flags &amp; IPSKB_REROUTED));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ip_output</code>主要工作就是设置<code>skb</code>的<code>netdev</code>和对应的<code>protocol</code>，为后续链路层发送数据包做准备，之后调用<code>netfilter</code>的<code>POST_ROUTING</code>钩子点，如果正常放行数据包则会进一步调用<code>ip_finish_output</code>。</p>
+<p><code>ip_finish_output</code>具体代码如下所示:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">ip_finish_output</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> ret;</span><br><span class="line"></span><br><span class="line">	ret = BPF_CGROUP_RUN_PROG_INET_EGRESS(sk, skb);</span><br><span class="line">	<span class="keyword">switch</span> (ret) &#123;</span><br><span class="line">	<span class="keyword">case</span> NET_XMIT_SUCCESS:</span><br><span class="line">		<span class="keyword">return</span> __ip_finish_output(net, sk, skb);</span><br><span class="line">	<span class="keyword">case</span> NET_XMIT_CN:</span><br><span class="line">		<span class="keyword">return</span> __ip_finish_output(net, sk, skb) ? : ret;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		kfree_skb_reason(skb, SKB_DROP_REASON_BPF_CGROUP_EGRESS);</span><br><span class="line">		<span class="keyword">return</span> ret;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ip_finish_output</code>仅仅是进一步调用<code>__ip_finish_output</code>，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> __ip_finish_output(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> mtu;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">if</span> defined(CONFIG_NETFILTER) &amp;&amp; defined(CONFIG_XFRM)</span></span><br><span class="line">	<span class="comment">/* Policy lookup after SNAT yielded a new policy */</span></span><br><span class="line">	<span class="keyword">if</span> (skb_dst(skb)-&gt;xfrm) &#123;</span><br><span class="line">		IPCB(skb)-&gt;flags |= IPSKB_REROUTED;</span><br><span class="line">		<span class="keyword">return</span> dst_output(net, sk, skb);</span><br><span class="line">	&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="comment">//拿到mtu</span></span><br><span class="line">	mtu = ip_skb_dst_mtu(sk, skb);</span><br><span class="line">	<span class="comment">//是否是gso报文</span></span><br><span class="line">	<span class="keyword">if</span> (skb_is_gso(skb))</span><br><span class="line">		<span class="keyword">return</span> ip_finish_output_gso(net, sk, skb, mtu);</span><br><span class="line">	<span class="comment">//数据包长度大于mtu则走分片逻辑</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;len &gt; mtu || IPCB(skb)-&gt;frag_max_size)</span><br><span class="line">		<span class="keyword">return</span> ip_fragment(net, sk, skb, mtu, ip_finish_output2);</span><br><span class="line">	<span class="comment">//不是gso也不超出mtu</span></span><br><span class="line">	<span class="keyword">return</span> ip_finish_output2(net, sk, skb);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>__ip_finish_output</code>首先调用<code>ip_skb_dst_mtu</code>拿到<code>mtu</code>，之后判断是否为GSO报文，如果是GSO报文则直接调用<code>ip_finish_output_gso</code>，如果数据包长度大于MTU则进行IP分片之后调用<code>ip_finish_output2</code>。若既不是 GSO 也不超过 MTU，则直接调用 <code>ip_finish_output2</code>调用邻居子系统的相关接口完成进一步的发送。</p>
+<p>上述<code>ip_skb_dst_mtu</code>本质上还是大概率返回设备的<code>mtu</code>，具体代码如下所示</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">unsigned</span> <span class="type">int</span> <span class="title function_">ip_skb_dst_mtu</span><span class="params">(<span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">					  <span class="type">const</span> <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> mtu;</span><br><span class="line">	<span class="comment">//貌似大概率会进</span></span><br><span class="line">	<span class="keyword">if</span> (!sk || !sk_fullsock(sk) || ip_sk_use_pmtu(sk)) &#123;</span><br><span class="line">		<span class="type">bool</span> forwarding = IPCB(skb)-&gt;flags &amp; IPSKB_FORWARDED;</span><br><span class="line">		<span class="comment">//通常是设备的mtu</span></span><br><span class="line">		<span class="keyword">return</span> ip_dst_mtu_maybe_forward(skb_dst(skb), forwarding);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//设备的mtu</span></span><br><span class="line">	mtu = min(READ_ONCE(skb_dst(skb)-&gt;dev-&gt;mtu), IP_MAX_MTU);</span><br><span class="line">	<span class="keyword">return</span> mtu - lwtunnel_headroom(skb_dst(skb)-&gt;lwtstate, mtu);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>如果是GSO报文（比如TCP 报文）则会调用<code>ip_finish_output_gso</code>完成进一步输出，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">ip_finish_output_gso</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sock *sk,</span></span><br><span class="line"><span class="params">				<span class="keyword">struct</span> sk_buff *skb, <span class="type">unsigned</span> <span class="type">int</span> mtu)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">segs</span>, *<span class="title">nskb</span>;</span></span><br><span class="line">	<span class="type">netdev_features_t</span> features;</span><br><span class="line">	<span class="type">int</span> ret = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* common case: seglen is &lt;= mtu</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//快速路径GSO分段长度小于MTU直接发</span></span><br><span class="line">	<span class="keyword">if</span> (skb_gso_validate_network_len(skb, mtu))</span><br><span class="line">		<span class="keyword">return</span> ip_finish_output2(net, sk, skb);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Slowpath -  GSO segment length exceeds the egress MTU.</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * This can happen in several cases:</span></span><br><span class="line"><span class="comment">	 *  - Forwarding of a TCP GRO skb, when DF flag is not set.</span></span><br><span class="line"><span class="comment">	 *  - Forwarding of an skb that arrived on a virtualization interface</span></span><br><span class="line"><span class="comment">	 *    (virtio-net/vhost/tap) with TSO/GSO size set by other network</span></span><br><span class="line"><span class="comment">	 *    stack.</span></span><br><span class="line"><span class="comment">	 *  - Local GSO skb transmitted on an NETIF_F_TSO tunnel stacked over an</span></span><br><span class="line"><span class="comment">	 *    interface with a smaller MTU.</span></span><br><span class="line"><span class="comment">	 *  - Arriving GRO skb (or GSO skb in a virtualized environment) that is</span></span><br><span class="line"><span class="comment">	 *    bridged to a NETIF_F_TSO tunnel stacked over an interface with an</span></span><br><span class="line"><span class="comment">	 *    insufficient MTU.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//慢速路径：转发一个从 GRO 来的 TCP 大 skb，但 DF 没置位 → 允许分片，于是需要在这里做分片</span></span><br><span class="line">	<span class="comment">//设备注册的feature</span></span><br><span class="line">	features = netif_skb_features(skb);</span><br><span class="line">	BUILD_BUG_ON(<span class="keyword">sizeof</span>(*IPCB(skb)) &gt; SKB_GSO_CB_OFFSET);</span><br><span class="line">	<span class="comment">//相当于在这个提前做了GSO，下面再分片，因为此时的每个skb的gsosize已经和mtu冲突了，合理</span></span><br><span class="line">	segs = skb_gso_segment(skb, features &amp; ~NETIF_F_GSO_MASK);</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR_OR_NULL(segs)) &#123;</span><br><span class="line">		kfree_skb(skb);</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	consume_skb(skb);</span><br><span class="line">	<span class="comment">//这里完成分片</span></span><br><span class="line">	skb_list_walk_safe(segs, segs, nskb) &#123;</span><br><span class="line">		<span class="type">int</span> err;</span><br><span class="line"></span><br><span class="line">		skb_mark_not_on_list(segs);</span><br><span class="line">		err = ip_fragment(net, sk, segs, mtu, ip_finish_output2);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (err &amp;&amp; ret == <span class="number">0</span>)</span><br><span class="line">			ret = err;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ip_finish_output_gso</code>首先调用<code>skb_gso_validate_network_len</code><strong>判断当前数据包的GSO分段长度是否小于当前传入的<code>mtu</code></strong>，如果小于则直接调用<code>ip_finish_output2</code>完成发送（<strong>注意：几乎绝大多数斗都走这个分支吧</strong>），如果条件不满足则表示段的大小都大于了<code>mtu</code>的大小，需要先进行软件分段，之后在进行报文分片（因为此时的每个<code>skb</code>的<code>gsosize</code>已经和<code>mtu</code>冲突了）。</p>
+<p>上述<code>skb_gso_validate_network_len</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">bool</span> <span class="title function_">skb_gso_validate_network_len</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> sk_buff *skb, <span class="type">unsigned</span> <span class="type">int</span> mtu)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span> skb_gso_size_check(skb, skb_gso_network_seglen(skb), mtu);</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">bool</span> <span class="title function_">skb_gso_size_check</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">				      <span class="type">unsigned</span> <span class="type">int</span> seg_len,</span></span><br><span class="line"><span class="params">				      <span class="type">unsigned</span> <span class="type">int</span> max_len)</span> &#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">skb_shared_info</span> *<span class="title">shinfo</span> =</span> skb_shinfo(skb);</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">iter</span>;</span></span><br><span class="line">	<span class="comment">//大概率走这个 只有sctp好像才走下面的</span></span><br><span class="line">	<span class="keyword">if</span> (shinfo-&gt;gso_size != GSO_BY_FRAGS)</span><br><span class="line">		<span class="keyword">return</span> seg_len &lt;= max_len;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Undo this so we can re-use header sizes */</span></span><br><span class="line">	seg_len -= GSO_BY_FRAGS;</span><br><span class="line"></span><br><span class="line">	skb_walk_frags(skb, iter) &#123;</span><br><span class="line">		<span class="keyword">if</span> (seg_len + skb_headlen(iter) &gt; max_len)</span><br><span class="line">			<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">//L3 + L4 头部长度</span></span><br><span class="line"><span class="type">static</span> <span class="type">unsigned</span> <span class="type">int</span> <span class="title function_">skb_gso_network_seglen</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//IP头长度</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> hdr_len = skb_transport_header(skb) -</span><br><span class="line">			       skb_network_header(skb);</span><br><span class="line">	<span class="comment">//  例如： IP头长度 + tcp头长度 + mss</span></span><br><span class="line">	<span class="keyword">return</span> hdr_len + skb_gso_transport_seglen(skb);</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">static</span> <span class="type">unsigned</span> <span class="type">int</span> <span class="title function_">skb_gso_transport_seglen</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">skb_shared_info</span> *<span class="title">shinfo</span> =</span> skb_shinfo(skb);</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> thlen = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//隧道报文</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;encapsulation) &#123;</span><br><span class="line">		thlen = skb_inner_transport_header(skb) -</span><br><span class="line">			skb_transport_header(skb);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (likely(shinfo-&gt;gso_type &amp; (SKB_GSO_TCPV4 | SKB_GSO_TCPV6)))</span><br><span class="line">			thlen += inner_tcp_hdrlen(skb);</span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (likely(shinfo-&gt;gso_type &amp; (SKB_GSO_TCPV4 | SKB_GSO_TCPV6))) &#123;</span><br><span class="line">		thlen = tcp_hdrlen(skb); <span class="comment">//大概率走这个</span></span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (unlikely(skb_is_gso_sctp(skb))) &#123;</span><br><span class="line">		thlen = <span class="keyword">sizeof</span>(<span class="keyword">struct</span> sctphdr);</span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (shinfo-&gt;gso_type &amp; SKB_GSO_UDP_L4) &#123;</span><br><span class="line">		thlen = <span class="keyword">sizeof</span>(<span class="keyword">struct</span> udphdr);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">/* UFO sets gso_size to the size of the fragmentation</span></span><br><span class="line"><span class="comment">	 * payload, i.e. the size of the L4 (UDP) header is already</span></span><br><span class="line"><span class="comment">	 * accounted for.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">return</span> thlen + shinfo-&gt;gso_size;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>skb_gso_validate_network_len</code>核心思想就是<strong>判断这个 GSO 大包分段后的单个包长度，是否会超过当前出口 MTU</strong>。它先通过 <code>skb_gso_network_seglen</code> 计算出L3 头（IP）+ L4 头+ <code>gso_size</code>（也就是 MSS 数据长度）。然后 <code>skb_gso_size_check()</code> 就拿这个分段长度去和 <code>mtu</code> 比较：如果 <code>gso_size</code> 是普通 TCP&#x2F;UDP 的情况（最常见），只要 <code>seg_len &lt;= mtu</code> 就说明每个分段都能直接发。</p>
+<p><strong>回到<code>__ip_finish_output</code>中，无论是GSO报文还是需要分片的报文，或者上述两者之外的情况，最终都会通过调用<code>ip_finish_output2</code>完成数据包的进一步发送，具体代码如下所示：</strong></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">ip_finish_output2</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">dst_entry</span> *<span class="title">dst</span> =</span> skb_dst(skb);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rtable</span> *<span class="title">rt</span> =</span> (<span class="keyword">struct</span> rtable *)dst;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span> =</span> dst-&gt;dev;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> hh_len = LL_RESERVED_SPACE(dev);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">neighbour</span> *<span class="title">neigh</span>;</span></span><br><span class="line">	<span class="type">bool</span> is_v6gw = <span class="literal">false</span>;</span><br><span class="line">	<span class="comment">///统计字段</span></span><br><span class="line">	<span class="keyword">if</span> (rt-&gt;rt_type == RTN_MULTICAST) &#123;</span><br><span class="line">		IP_UPD_PO_STATS(net, IPSTATS_MIB_OUTMCAST, skb-&gt;len);</span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (rt-&gt;rt_type == RTN_BROADCAST)</span><br><span class="line">		IP_UPD_PO_STATS(net, IPSTATS_MIB_OUTBCAST, skb-&gt;len);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* OUTOCTETS should be counted after fragment */</span></span><br><span class="line">	IP_UPD_PO_STATS(net, IPSTATS_MIB_OUT, skb-&gt;len);</span><br><span class="line">	<span class="comment">//检查 skb headroom 是否够放二层头，不够就扩容</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(skb_headroom(skb) &lt; hh_len &amp;&amp; dev-&gt;header_ops)) &#123;</span><br><span class="line">		skb = skb_expand_head(skb, hh_len);</span><br><span class="line">		<span class="keyword">if</span> (!skb)</span><br><span class="line">			<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//隧道报文</span></span><br><span class="line">	<span class="keyword">if</span> (lwtunnel_xmit_redirect(dst-&gt;lwtstate)) &#123;</span><br><span class="line">		<span class="type">int</span> res = lwtunnel_xmit(skb);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (res != LWTUNNEL_XMIT_CONTINUE)</span><br><span class="line">			<span class="keyword">return</span> res;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	<span class="comment">//根据目的ip找到邻居表项</span></span><br><span class="line">	neigh = ip_neigh_for_gw(rt, skb, &amp;is_v6gw);</span><br><span class="line">	<span class="keyword">if</span> (!IS_ERR(neigh)) &#123;</span><br><span class="line">		<span class="type">int</span> res;</span><br><span class="line"></span><br><span class="line">		sock_confirm_neigh(skb, neigh);</span><br><span class="line">		<span class="comment">/* if crossing protocols, can not use the cached header */</span></span><br><span class="line">		<span class="comment">//邻居子系统的发包函数</span></span><br><span class="line">		res = neigh_output(neigh, skb, is_v6gw);</span><br><span class="line">		rcu_read_unlock();</span><br><span class="line">		<span class="keyword">return</span> res;</span><br><span class="line">	&#125;</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line"></span><br><span class="line">	net_dbg_ratelimited(<span class="string">&quot;%s: No header cache and no neighbour!\n&quot;</span>,</span><br><span class="line">			    __func__);</span><br><span class="line">	kfree_skb_reason(skb, SKB_DROP_REASON_NEIGH_CREATEFAIL);</span><br><span class="line">	<span class="keyword">return</span> PTR_ERR(neigh);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>&#x3D; <code>ip_finish_output2()</code> <strong>可以理解为IPv4 发包路径里把三层包真正交给邻居子系统的最后一步</strong>：首先更新输出统计，然后检查 <code>skb</code> 头部预留空间是否足够容纳链路层头（以太网头 等），不够就 扩headroom，最后通过 <code>ip_neigh_for_gw</code>找到下一跳的邻居表项（直连则查目的 IP，走网关则查网关 IP），并调用 <code>neigh_output </code>走邻居子系统输出。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/IP/" rel="tag"># IP</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/02/27/IP%E5%B1%82%E7%9A%84%E8%BE%93%E5%85%A5%E8%BE%93%E5%87%BA/" rel="prev" title="IP报文的输入">
+      <i class="fa fa-chevron-left"></i> IP报文的输入
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#IP%E6%95%B0%E6%8D%AE%E5%8C%85%E7%9A%84%E8%BD%AC%E5%8F%91"><span class="nav-number">1.</span> <span class="nav-text">IP数据包的转发</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#IP%E6%95%B0%E6%8D%AE%E5%8C%85%E7%9A%84%E8%BE%93%E5%87%BA"><span class="nav-number">2.</span> <span class="nav-text">IP数据包的输出</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">99</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">22</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
