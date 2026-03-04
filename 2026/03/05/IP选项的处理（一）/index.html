@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="引言在 IPv4 协议设计之初，协议头部被设计为“固定部分 + 可选扩展”的结构。固定首部长度为 20 字节，而当 IHL（Internet Header Length）字段大于 5 时，表示在固定首部之后还存在可选字段（IP Options）。这些选项最多可以扩展 40 字节，使 IPv4 首部最大达到 60 字节。 IP Options 的设计初衷是增强网络层的可观测性与可控性，例如记录路径、">
+<meta property="og:type" content="article">
+<meta property="og:title" content="IP选项处理（一）">
+<meta property="og:url" content="http://example.com/2026/03/05/IP%E9%80%89%E9%A1%B9%E7%9A%84%E5%A4%84%E7%90%86%EF%BC%88%E4%B8%80%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="引言在 IPv4 协议设计之初，协议头部被设计为“固定部分 + 可选扩展”的结构。固定首部长度为 20 字节，而当 IHL（Internet Header Length）字段大于 5 时，表示在固定首部之后还存在可选字段（IP Options）。这些选项最多可以扩展 40 字节，使 IPv4 首部最大达到 60 字节。 IP Options 的设计初衷是增强网络层的可观测性与可控性，例如记录路径、">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-03-05T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-03-04T15:18:31.857Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="IP">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/03/05/IP%E9%80%89%E9%A1%B9%E7%9A%84%E5%A4%84%E7%90%86%EF%BC%88%E4%B8%80%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>IP选项处理（一） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/03/05/IP%E9%80%89%E9%A1%B9%E7%9A%84%E5%A4%84%E7%90%86%EF%BC%88%E4%B8%80%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          IP选项处理（一）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-03-05 22:00:00" itemprop="dateCreated datePublished" datetime="2026-03-05T22:00:00+08:00">2026-03-05</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-03-04 23:18:31" itemprop="dateModified" datetime="2026-03-04T23:18:31+08:00">2026-03-04</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/03/05/IP%E9%80%89%E9%A1%B9%E7%9A%84%E5%A4%84%E7%90%86%EF%BC%88%E4%B8%80%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/03/05/IP%E9%80%89%E9%A1%B9%E7%9A%84%E5%A4%84%E7%90%86%EF%BC%88%E4%B8%80%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="引言"><a href="#引言" class="headerlink" title="引言"></a>引言</h2><p>在 IPv4 协议设计之初，协议头部被设计为“固定部分 + 可选扩展”的结构。固定首部长度为 20 字节，而当 IHL（Internet Header Length）字段大于 5 时，表示在固定首部之后还存在可选字段（IP Options）。这些选项最多可以扩展 40 字节，使 IPv4 首部最大达到 60 字节。</p>
+<p>IP Options 的设计初衷是增强网络层的可观测性与可控性，例如记录路径、指定路由、测量时延等。但随着互联网规模扩大以及安全问题凸显，这些机制逐渐被认为会带来性能下降与安全风险。<strong>现代网络中，绝大多数 IPv4 报文都不携带任何选项，而带有 Options 的报文通常会触发路由器或操作系统的慢路径处理。</strong></p>
+<h3 id="选项结束（End-of-Option-List）"><a href="#选项结束（End-of-Option-List）" class="headerlink" title="选项结束（End of Option List）"></a>选项结束（End of Option List）</h3><p><strong>核心作用：</strong> 标记 IP 选项列表结束。<br> <strong>使用现状：</strong> 仍可能出现（仅用于填充）。<br> <strong>说明：</strong> 占 1 字节，用于提前终止选项解析或做对齐填充，不承载实际网络语义。</p>
+<hr>
+<h3 id="空操作（No-Operation）"><a href="#空操作（No-Operation）" class="headerlink" title="空操作（No Operation）"></a>空操作（No Operation）</h3><p><strong>核心作用：</strong> 用于选项字段对齐。<br> <strong>使用现状：</strong> 仍可能出现（用于对齐）。<br> <strong>说明：</strong> 占 1 字节，通常用于将后续选项对齐到 4 字节边界，本身不具备功能性含义。</p>
+<hr>
+<h3 id="记录路由（Record-Route）"><a href="#记录路由（Record-Route）" class="headerlink" title="记录路由（Record Route）"></a>记录路由（Record Route）</h3><p><strong>核心作用：</strong> 记录报文经过的路由器接口地址。<br> <strong>使用现状：</strong> 基本禁用。<br> <strong>说明：</strong> 报文在转发过程中，每经过一个路由器就写入其接口 IP。受长度限制，最多记录约 9 个地址。可能泄露网络拓扑信息，因此在现代网络中已基本关闭。</p>
+<hr>
+<h3 id="松散源路由（Loose-Source-Route）"><a href="#松散源路由（Loose-Source-Route）" class="headerlink" title="松散源路由（Loose Source Route）"></a>松散源路由（Loose Source Route）</h3><p><strong>核心作用：</strong> 指定报文必须经过的部分路径节点。<br> <strong>使用现状：</strong> 基本禁用。<br> <strong>说明：</strong> 发送方可以指定若干中间路由节点，但允许中间路径自由选择。属于路径控制机制，存在绕过安全策略的风险。</p>
+<hr>
+<h3 id="严格源路由（Strict-Source-Route）"><a href="#严格源路由（Strict-Source-Route）" class="headerlink" title="严格源路由（Strict Source Route）"></a>严格源路由（Strict Source Route）</h3><p><strong>核心作用：</strong> 严格指定完整转发路径。<br> <strong>使用现状：</strong> 已废弃。<br> <strong>说明：</strong> 报文必须严格按照发送方指定的节点顺序转发，否则丢弃。安全风险极高，现代系统通常直接禁用。</p>
+<hr>
+<h3 id="时间戳（Timestamp）"><a href="#时间戳（Timestamp）" class="headerlink" title="时间戳（Timestamp）"></a>时间戳（Timestamp）</h3><p><strong>核心作用：</strong> 记录转发过程中的时间信息。<br> <strong>使用现状：</strong> 基本不用。<br> <strong>说明：</strong> 支持仅记录时间、记录 IP+时间、仅指定地址记录时间三种模式。最初用于路径时延分析，但实际部署中极少使用。</p>
+<hr>
+<h3 id="安全选项（Security）"><a href="#安全选项（Security）" class="headerlink" title="安全选项（Security）"></a>安全选项（Security）</h3><p><strong>核心作用：</strong> 标记报文安全级别。<br> <strong>使用现状：</strong> 已废弃。<br> <strong>说明：</strong> 主要用于早期特定安全或军用网络环境，在公共互联网中几乎不存在。</p>
+<hr>
+<h3 id="流标识（Stream-ID）"><a href="#流标识（Stream-ID）" class="headerlink" title="流标识（Stream ID）"></a>流标识（Stream ID）</h3><p><strong>核心作用：</strong> 区分不同数据流。<br> <strong>使用现状：</strong> 已废弃。<br> <strong>说明：</strong> 早期实验性选项，未形成广泛应用。</p>
+<hr>
+<h3 id="路由器警告（Router-Alert）"><a href="#路由器警告（Router-Alert）" class="headerlink" title="路由器警告（Router Alert）"></a>路由器警告（Router Alert）</h3><p><strong>核心作用：</strong> 通知路由器必须检查该报文。<br> <strong>使用现状：</strong> 仍可能出现。<br> <strong>说明：</strong> 即使路由器不是最终目的地址，也必须对该报文进行额外处理。常用于 IGMP、RSVP 等控制协议，是现代网络中仍可能看到的少数 IP 选项之一。</p>
+<h2 id="struct-ip-options"><a href="#struct-ip-options" class="headerlink" title="struct ip_options"></a>struct ip_options</h2><p>在linux内核网络协议栈中，通常用<code>ip_option</code>来管理<code>IP</code>选项信息，该结构通常用在<code>skb</code>的私有控制块中，也可以单独使用，具体字段如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">ip_options</span> &#123;</span></span><br><span class="line">	__be32		faddr;          <span class="comment">/* 首地址（First Address），主要用于源路由（SRR）场景，</span></span><br><span class="line"><span class="comment">	                                  表示源路由选项中的第一个跳地址 */</span></span><br><span class="line"></span><br><span class="line">	__be32		nexthop;        <span class="comment">/* 下一跳地址，在源路由处理中使用，</span></span><br><span class="line"><span class="comment">	                                  表示当前应转发到的下一个地址 */</span></span><br><span class="line"></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span>	optlen;        <span class="comment">/* IP 选项总长度（字节数） */</span></span><br><span class="line"></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span>	srr;           <span class="comment">/* 源路由选项在 option 中的偏移位置</span></span><br><span class="line"><span class="comment">	                                  （SRR = Source Route） */</span></span><br><span class="line"></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span>	rr;            <span class="comment">/* 记录路由（Record Route）选项的偏移位置 */</span></span><br><span class="line"></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span>	ts;            <span class="comment">/* 时间戳（Timestamp）选项的偏移位置 */</span></span><br><span class="line"></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span>	is_strictroute:<span class="number">1</span>, <span class="comment">/* 是否为严格源路由（SSRR） */</span></span><br><span class="line">			srr_is_hit:<span class="number">1</span>,      <span class="comment">/* 当前主机是否命中源路由中的一个节点 */</span></span><br><span class="line">			is_changed:<span class="number">1</span>,      <span class="comment">/* 选项内容是否被修改（如写入 RR/TS） */</span></span><br><span class="line">			rr_needaddr:<span class="number">1</span>,     <span class="comment">/* RR 是否还需要写入地址 */</span></span><br><span class="line">			ts_needtime:<span class="number">1</span>,     <span class="comment">/* TS 是否需要写入时间戳 */</span></span><br><span class="line">			ts_needaddr:<span class="number">1</span>;     <span class="comment">/* TS 是否需要写入地址 */</span></span><br><span class="line"></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span>	router_alert;  <span class="comment">/* Router Alert 选项的偏移位置 */</span></span><br><span class="line"></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span>	cipso;         <span class="comment">/* CIPSO（Commercial IP Security Option）</span></span><br><span class="line"><span class="comment">	                                  安全标签选项的偏移位置 */</span></span><br><span class="line"></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span>	__pad2;        <span class="comment">/* 填充字节，用于结构体对齐 */</span></span><br><span class="line"></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span>	__data[];      <span class="comment">/* 实际存储 IP 选项数据的可变长度数组 */</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<h2 id="IP选项的构建"><a href="#IP选项的构建" class="headerlink" title="IP选项的构建"></a>IP选项的构建</h2><p>ip_options_build用于根据IP选项信息构建数据包中的IP选项，把具体的选项信息拷贝到数据包头部中，<strong>在<code>__ip_queue_xmit</code>， <code>ip_build_and_send_pkt</code> ，<code>__ip_make_skb </code>封装ip头时会调用这个函数</strong>，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">ip_options_build</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> ip_options *opt,</span></span><br><span class="line"><span class="params">		      __be32 daddr, <span class="keyword">struct</span> rtable *rt)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span> *iph = skb_network_header(skb);</span><br><span class="line">	<span class="comment">//拷贝选项信息到数据包的控制块中</span></span><br><span class="line">	<span class="built_in">memcpy</span>(&amp;(IPCB(skb)-&gt;opt), opt, <span class="keyword">sizeof</span>(<span class="keyword">struct</span> ip_options));</span><br><span class="line">	<span class="comment">//实际把选项写到ip头</span></span><br><span class="line">	<span class="built_in">memcpy</span>(iph + <span class="keyword">sizeof</span>(<span class="keyword">struct</span> iphdr), opt-&gt;__data, opt-&gt;optlen);</span><br><span class="line">	opt = &amp;(IPCB(skb)-&gt;opt);</span><br><span class="line">	<span class="comment">//源路由</span></span><br><span class="line">	<span class="keyword">if</span> (opt-&gt;srr)</span><br><span class="line">		<span class="built_in">memcpy</span>(iph + opt-&gt;srr + iph[opt-&gt;srr + <span class="number">1</span>] - <span class="number">4</span>, &amp;daddr, <span class="number">4</span>);</span><br><span class="line">	<span class="comment">//记录路由</span></span><br><span class="line">	<span class="keyword">if</span> (opt-&gt;rr_needaddr)</span><br><span class="line">		ip_rt_get_source(iph + opt-&gt;rr + iph[opt-&gt;rr + <span class="number">2</span>] - <span class="number">5</span>, skb, rt);</span><br><span class="line">	<span class="keyword">if</span> (opt-&gt;ts_needaddr)</span><br><span class="line">	<span class="comment">//时间戳</span></span><br><span class="line">		ip_rt_get_source(iph + opt-&gt;ts + iph[opt-&gt;ts + <span class="number">2</span>] - <span class="number">9</span>, skb, rt);</span><br><span class="line">	<span class="keyword">if</span> (opt-&gt;ts_needtime) &#123;</span><br><span class="line">		__be32 midtime;</span><br><span class="line"></span><br><span class="line">		midtime = inet_current_timestamp();</span><br><span class="line">		<span class="built_in">memcpy</span>(iph + opt-&gt;ts + iph[opt-&gt;ts + <span class="number">2</span>] - <span class="number">5</span>, &amp;midtime, <span class="number">4</span>);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ip_options_build()</code> 首先把 <code>struct ip_options</code> 和原始 option 复制到数据包头部，然后根据选项类型把一些只能在发送时才能确定的信息补齐：源路由把最终目的地址写入选项末尾，记录路由&#x2F;时间戳根据路由选择本机源地址写入条目，时间戳选项再写入当前时间。</p>
+<h2 id="IP选项的验证与定位"><a href="#IP选项的验证与定位" class="headerlink" title="IP选项的验证与定位"></a>IP选项的验证与定位</h2><p><strong><code>ip_options_compile</code>可以理解为在发送方向上和接收方向上处理IP选项前的准备工作，核心思想就是校验选项字段合法性，记录IP选项的在IP头部中的偏移，为后续build options的时候提供标志位</strong>。<code>ip_options_compile</code>在接收方向和发送方向都会被调用，注意：传入的参数是不同的，发送方向传入的<code>skb</code>为NULL，接收则相反，具体代码如下所示，这里只分析了处理源路由的情况，其他IP选项的处理逻辑大同小异：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br><span class="line">217</span><br><span class="line">218</span><br><span class="line">219</span><br><span class="line">220</span><br><span class="line">221</span><br><span class="line">222</span><br><span class="line">223</span><br><span class="line">224</span><br><span class="line">225</span><br><span class="line">226</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __ip_options_compile(<span class="keyword">struct</span> net *net,</span><br><span class="line">			 <span class="keyword">struct</span> ip_options *opt, <span class="keyword">struct</span> sk_buff *skb,</span><br><span class="line">			 __be32 *info)</span><br><span class="line">&#123;</span><br><span class="line">	__be32 spec_dst = htonl(INADDR_ANY);</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span> *pp_ptr = <span class="literal">NULL</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rtable</span> *<span class="title">rt</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span> *optptr;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span> *iph;</span><br><span class="line">	<span class="type">int</span> optlen, l;</span><br><span class="line">	<span class="comment">//接收路径调用，skb不为空，主要目的是解析位置，判断是否需要后续修改</span></span><br><span class="line">	<span class="keyword">if</span> (skb) &#123;</span><br><span class="line">		rt = skb_rtable(skb);</span><br><span class="line">		optptr = (<span class="type">unsigned</span> <span class="type">char</span> *)&amp;(ip_hdr(skb)[<span class="number">1</span>]);</span><br><span class="line">	&#125; <span class="keyword">else</span></span><br><span class="line">		optptr = opt-&gt;__data;</span><br><span class="line">	iph = optptr - <span class="keyword">sizeof</span>(<span class="keyword">struct</span> iphdr);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> (l = opt-&gt;optlen; l &gt; <span class="number">0</span>; ) &#123;</span><br><span class="line">		<span class="keyword">switch</span> (*optptr) &#123;</span><br><span class="line">		<span class="keyword">case</span> IPOPT_END:</span><br><span class="line">			<span class="keyword">for</span> (optptr++, l--; l &gt; <span class="number">0</span>; optptr++, l--) &#123;</span><br><span class="line">				<span class="keyword">if</span> (*optptr != IPOPT_END) &#123;</span><br><span class="line">					*optptr = IPOPT_END;</span><br><span class="line">					opt-&gt;is_changed = <span class="number">1</span>;</span><br><span class="line">				&#125;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">goto</span> eol;</span><br><span class="line">		<span class="keyword">case</span> IPOPT_NOOP:</span><br><span class="line">			l--;</span><br><span class="line">			optptr++;</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//检查长度</span></span><br><span class="line">		<span class="keyword">if</span> (unlikely(l &lt; <span class="number">2</span>)) &#123;</span><br><span class="line">			pp_ptr = optptr;</span><br><span class="line">			<span class="keyword">goto</span> error;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//长度非法</span></span><br><span class="line">		optlen = optptr[<span class="number">1</span>];</span><br><span class="line">		<span class="keyword">if</span> (optlen &lt; <span class="number">2</span> || optlen &gt; l) &#123;</span><br><span class="line">			pp_ptr = optptr;</span><br><span class="line">			<span class="keyword">goto</span> error;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">switch</span> (*optptr) &#123;</span><br><span class="line">		<span class="keyword">case</span> IPOPT_SSRR:</span><br><span class="line">		<span class="keyword">case</span> IPOPT_LSRR:</span><br><span class="line">			<span class="keyword">if</span> (optlen &lt; <span class="number">3</span>) &#123;<span class="comment">//长度不够</span></span><br><span class="line">				pp_ptr = optptr + <span class="number">1</span>;</span><br><span class="line">				<span class="keyword">goto</span> error;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">if</span> (optptr[<span class="number">2</span>] &lt; <span class="number">4</span>) &#123;<span class="comment">//Pointer 不能小于 4 因为type len pointer已经是3了</span></span><br><span class="line">				pp_ptr = optptr + <span class="number">2</span>;</span><br><span class="line">				<span class="keyword">goto</span> error;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="comment">/* NB: cf RFC-1812 5.2.4.1 */</span></span><br><span class="line">			<span class="keyword">if</span> (opt-&gt;srr) &#123;<span class="comment">//只能由一个源路由选项</span></span><br><span class="line">				pp_ptr = optptr;</span><br><span class="line">				<span class="keyword">goto</span> error;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">if</span> (!skb) &#123;<span class="comment">//发送路径，pointer必须是4 optlen至少是7地址列表必须4字节对齐否则报错</span></span><br><span class="line">				<span class="keyword">if</span> (optptr[<span class="number">2</span>] != <span class="number">4</span> || optlen &lt; <span class="number">7</span> || ((optlen<span class="number">-3</span>) &amp; <span class="number">3</span>)) &#123;</span><br><span class="line">					pp_ptr = optptr + <span class="number">1</span>;</span><br><span class="line">					<span class="keyword">goto</span> error;</span><br><span class="line">				&#125;</span><br><span class="line">				<span class="comment">//放到opt中</span></span><br><span class="line">				<span class="built_in">memcpy</span>(&amp;opt-&gt;faddr, &amp;optptr[<span class="number">3</span>], <span class="number">4</span>);</span><br><span class="line">				<span class="keyword">if</span> (optlen &gt; <span class="number">7</span>)</span><br><span class="line">					memmove(&amp;optptr[<span class="number">3</span>], &amp;optptr[<span class="number">7</span>], optlen<span class="number">-7</span>);</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="comment">//标识是否为严格源路由</span></span><br><span class="line">			opt-&gt;is_strictroute = (optptr[<span class="number">0</span>] == IPOPT_SSRR);</span><br><span class="line">			opt-&gt;srr = optptr - iph; <span class="comment">//源路由 option 在 IP 头中的偏移位置。后续buid_options会用到</span></span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> IPOPT_RR:</span><br><span class="line">			<span class="keyword">if</span> (opt-&gt;rr) &#123;</span><br><span class="line">				pp_ptr = optptr;</span><br><span class="line">				<span class="keyword">goto</span> error;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">if</span> (optlen &lt; <span class="number">3</span>) &#123;</span><br><span class="line">				pp_ptr = optptr + <span class="number">1</span>;</span><br><span class="line">				<span class="keyword">goto</span> error;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">if</span> (optptr[<span class="number">2</span>] &lt; <span class="number">4</span>) &#123;</span><br><span class="line">				pp_ptr = optptr + <span class="number">2</span>;</span><br><span class="line">				<span class="keyword">goto</span> error;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">if</span> (optptr[<span class="number">2</span>] &lt;= optlen) &#123;</span><br><span class="line">				<span class="keyword">if</span> (optptr[<span class="number">2</span>]+<span class="number">3</span> &gt; optlen) &#123;</span><br><span class="line">					pp_ptr = optptr + <span class="number">2</span>;</span><br><span class="line">					<span class="keyword">goto</span> error;</span><br><span class="line">				&#125;</span><br><span class="line">				<span class="keyword">if</span> (rt) &#123;</span><br><span class="line">					spec_dst_fill(&amp;spec_dst, skb);</span><br><span class="line">					<span class="built_in">memcpy</span>(&amp;optptr[optptr[<span class="number">2</span>]<span class="number">-1</span>], &amp;spec_dst, <span class="number">4</span>);</span><br><span class="line">					opt-&gt;is_changed = <span class="number">1</span>;</span><br><span class="line">				&#125;</span><br><span class="line">				optptr[<span class="number">2</span>] += <span class="number">4</span>;</span><br><span class="line">				opt-&gt;rr_needaddr = <span class="number">1</span>;</span><br><span class="line">			&#125;</span><br><span class="line">			opt-&gt;rr = optptr - iph;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> IPOPT_TIMESTAMP:</span><br><span class="line">			<span class="keyword">if</span> (opt-&gt;ts) &#123;</span><br><span class="line">				pp_ptr = optptr;</span><br><span class="line">				<span class="keyword">goto</span> error;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">if</span> (optlen &lt; <span class="number">4</span>) &#123;</span><br><span class="line">				pp_ptr = optptr + <span class="number">1</span>;</span><br><span class="line">				<span class="keyword">goto</span> error;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">if</span> (optptr[<span class="number">2</span>] &lt; <span class="number">5</span>) &#123;</span><br><span class="line">				pp_ptr = optptr + <span class="number">2</span>;</span><br><span class="line">				<span class="keyword">goto</span> error;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">if</span> (optptr[<span class="number">2</span>] &lt;= optlen) &#123;</span><br><span class="line">				<span class="type">unsigned</span> <span class="type">char</span> *timeptr = <span class="literal">NULL</span>;</span><br><span class="line">				<span class="keyword">if</span> (optptr[<span class="number">2</span>]+<span class="number">3</span> &gt; optlen) &#123;</span><br><span class="line">					pp_ptr = optptr + <span class="number">2</span>;</span><br><span class="line">					<span class="keyword">goto</span> error;</span><br><span class="line">				&#125;</span><br><span class="line">				<span class="keyword">switch</span> (optptr[<span class="number">3</span>]&amp;<span class="number">0xF</span>) &#123;</span><br><span class="line">				<span class="keyword">case</span> IPOPT_TS_TSONLY:</span><br><span class="line">					<span class="keyword">if</span> (skb)</span><br><span class="line">						timeptr = &amp;optptr[optptr[<span class="number">2</span>]<span class="number">-1</span>];</span><br><span class="line">					opt-&gt;ts_needtime = <span class="number">1</span>;</span><br><span class="line">					optptr[<span class="number">2</span>] += <span class="number">4</span>;</span><br><span class="line">					<span class="keyword">break</span>;</span><br><span class="line">				<span class="keyword">case</span> IPOPT_TS_TSANDADDR:</span><br><span class="line">					<span class="keyword">if</span> (optptr[<span class="number">2</span>]+<span class="number">7</span> &gt; optlen) &#123;</span><br><span class="line">						pp_ptr = optptr + <span class="number">2</span>;</span><br><span class="line">						<span class="keyword">goto</span> error;</span><br><span class="line">					&#125;</span><br><span class="line">					<span class="keyword">if</span> (rt)  &#123;</span><br><span class="line">						spec_dst_fill(&amp;spec_dst, skb);</span><br><span class="line">						<span class="built_in">memcpy</span>(&amp;optptr[optptr[<span class="number">2</span>]<span class="number">-1</span>], &amp;spec_dst, <span class="number">4</span>);</span><br><span class="line">						timeptr = &amp;optptr[optptr[<span class="number">2</span>]+<span class="number">3</span>];</span><br><span class="line">					&#125;</span><br><span class="line">					opt-&gt;ts_needaddr = <span class="number">1</span>;</span><br><span class="line">					opt-&gt;ts_needtime = <span class="number">1</span>;</span><br><span class="line">					optptr[<span class="number">2</span>] += <span class="number">8</span>;</span><br><span class="line">					<span class="keyword">break</span>;</span><br><span class="line">				<span class="keyword">case</span> IPOPT_TS_PRESPEC:</span><br><span class="line">					<span class="keyword">if</span> (optptr[<span class="number">2</span>]+<span class="number">7</span> &gt; optlen) &#123;</span><br><span class="line">						pp_ptr = optptr + <span class="number">2</span>;</span><br><span class="line">						<span class="keyword">goto</span> error;</span><br><span class="line">					&#125;</span><br><span class="line">					&#123;</span><br><span class="line">						__be32 addr;</span><br><span class="line">						<span class="built_in">memcpy</span>(&amp;addr, &amp;optptr[optptr[<span class="number">2</span>]<span class="number">-1</span>], <span class="number">4</span>);</span><br><span class="line">						<span class="keyword">if</span> (inet_addr_type(net, addr) == RTN_UNICAST)</span><br><span class="line">							<span class="keyword">break</span>;</span><br><span class="line">						<span class="keyword">if</span> (skb)</span><br><span class="line">							timeptr = &amp;optptr[optptr[<span class="number">2</span>]+<span class="number">3</span>];</span><br><span class="line">					&#125;</span><br><span class="line">					opt-&gt;ts_needtime = <span class="number">1</span>;</span><br><span class="line">					optptr[<span class="number">2</span>] += <span class="number">8</span>;</span><br><span class="line">					<span class="keyword">break</span>;</span><br><span class="line">				<span class="keyword">default</span>:</span><br><span class="line">					<span class="keyword">if</span> (!skb &amp;&amp; !ns_capable(net-&gt;user_ns, CAP_NET_RAW)) &#123;</span><br><span class="line">						pp_ptr = optptr + <span class="number">3</span>;</span><br><span class="line">						<span class="keyword">goto</span> error;</span><br><span class="line">					&#125;</span><br><span class="line">					<span class="keyword">break</span>;</span><br><span class="line">				&#125;</span><br><span class="line">				<span class="keyword">if</span> (timeptr) &#123;</span><br><span class="line">					__be32 midtime;</span><br><span class="line"></span><br><span class="line">					midtime = inet_current_timestamp();</span><br><span class="line">					<span class="built_in">memcpy</span>(timeptr, &amp;midtime, <span class="number">4</span>);</span><br><span class="line">					opt-&gt;is_changed = <span class="number">1</span>;</span><br><span class="line">				&#125;</span><br><span class="line">			&#125; <span class="keyword">else</span> <span class="keyword">if</span> ((optptr[<span class="number">3</span>]&amp;<span class="number">0xF</span>) != IPOPT_TS_PRESPEC) &#123;</span><br><span class="line">				<span class="type">unsigned</span> <span class="type">int</span> overflow = optptr[<span class="number">3</span>]&gt;&gt;<span class="number">4</span>;</span><br><span class="line">				<span class="keyword">if</span> (overflow == <span class="number">15</span>) &#123;</span><br><span class="line">					pp_ptr = optptr + <span class="number">3</span>;</span><br><span class="line">					<span class="keyword">goto</span> error;</span><br><span class="line">				&#125;</span><br><span class="line">				<span class="keyword">if</span> (skb) &#123;</span><br><span class="line">					optptr[<span class="number">3</span>] = (optptr[<span class="number">3</span>]&amp;<span class="number">0xF</span>)|((overflow+<span class="number">1</span>)&lt;&lt;<span class="number">4</span>);</span><br><span class="line">					opt-&gt;is_changed = <span class="number">1</span>;</span><br><span class="line">				&#125;</span><br><span class="line">			&#125;</span><br><span class="line">			opt-&gt;ts = optptr - iph;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> IPOPT_RA:</span><br><span class="line">			<span class="keyword">if</span> (optlen &lt; <span class="number">4</span>) &#123;</span><br><span class="line">				pp_ptr = optptr + <span class="number">1</span>;</span><br><span class="line">				<span class="keyword">goto</span> error;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">if</span> (optptr[<span class="number">2</span>] == <span class="number">0</span> &amp;&amp; optptr[<span class="number">3</span>] == <span class="number">0</span>)</span><br><span class="line">				opt-&gt;router_alert = optptr - iph;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> IPOPT_CIPSO:</span><br><span class="line">			<span class="keyword">if</span> ((!skb &amp;&amp; !ns_capable(net-&gt;user_ns, CAP_NET_RAW)) || opt-&gt;cipso) &#123;</span><br><span class="line">				pp_ptr = optptr;</span><br><span class="line">				<span class="keyword">goto</span> error;</span><br><span class="line">			&#125;</span><br><span class="line">			opt-&gt;cipso = optptr - iph;</span><br><span class="line">			<span class="keyword">if</span> (cipso_v4_validate(skb, &amp;optptr)) &#123;</span><br><span class="line">				pp_ptr = optptr;</span><br><span class="line">				<span class="keyword">goto</span> error;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> IPOPT_SEC:</span><br><span class="line">		<span class="keyword">case</span> IPOPT_SID:</span><br><span class="line">		<span class="keyword">default</span>:</span><br><span class="line">			<span class="keyword">if</span> (!skb &amp;&amp; !ns_capable(net-&gt;user_ns, CAP_NET_RAW)) &#123;</span><br><span class="line">				pp_ptr = optptr;</span><br><span class="line">				<span class="keyword">goto</span> error;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		l -= optlen;</span><br><span class="line">		optptr += optlen;<span class="comment">//下一个选项</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">eol:</span><br><span class="line">	<span class="keyword">if</span> (!pp_ptr)</span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">error:</span><br><span class="line">	<span class="keyword">if</span> (info)</span><br><span class="line">		*info = htonl((pp_ptr-iph)&lt;&lt;<span class="number">24</span>);</span><br><span class="line">	<span class="keyword">return</span> -EINVAL;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>以上述处理源路由选项为例</strong>，在遍历 IP Options 时，首先对选项的基本合法性进行检查，包括：</p>
+<ul>
+<li>选项长度 <code>optlen</code> 必须合法（至少包含 <code>type + length + pointer</code>）。</li>
+<li><code>pointer</code> 字段必须 ≥ 4，因为前 3 字节已经被 <code>type/len/pointer</code> 占用。</li>
+<li>一个 IP 头中 <strong>只能存在一个源路由选项</strong>，否则判为非法。</li>
+</ul>
+<p>在 <strong>发送路径（<code>skb == NULL</code>）</strong> 下，还会进一步校验：</p>
+<ul>
+<li><code>pointer</code> 必须等于 4（表示从第一个地址开始）。</li>
+<li><code>optlen</code> 至少为 7（包含一个 IPv4 地址）。</li>
+<li>地址列表必须 <strong>4 字节对齐</strong>。</li>
+</ul>
+<p>如果校验通过：</p>
+<ol>
+<li>将第一个路由地址复制到 <code>opt-&gt;faddr</code>，作为下一跳地址。</li>
+<li>如果存在多个地址，会通过 <code>memmove()</code> 将剩余地址前移，便于后续处理。</li>
+<li>设置 <code>opt-&gt;is_strictroute</code> 标识当前是否为 <strong>严格源路由（SSRR）</strong>。</li>
+<li>记录源路由选项在 IP 头中的偏移 <code>opt-&gt;srr</code>，后续在 <code>ip_options_build()</code> 构造报文时会使用。</li>
+</ol>
+<p>整体来说，这段代码完成了 <strong>源路由 IP Option 的合法性检查、下一跳地址提取以及内核状态标记</strong>。为后续构造数据包等场景做好准备工作。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/IP/" rel="tag"># IP</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/03/03/IP%E5%B1%82%E7%9A%84%E8%BE%93%E5%85%A5%E8%BE%93%E5%87%BA%EF%BC%88%E4%B8%89%EF%BC%89/" rel="prev" title="传输层到 IP 层的输出接口">
+      <i class="fa fa-chevron-left"></i> 传输层到 IP 层的输出接口
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2026/03/07/IP%E9%80%89%E9%A1%B9%E7%9A%84%E5%A4%84%E7%90%86%EF%BC%88%E4%BA%8C%EF%BC%89/" rel="next" title="IP选项处理（二）">
+      IP选项处理（二） <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BC%95%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">引言</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%80%89%E9%A1%B9%E7%BB%93%E6%9D%9F%EF%BC%88End-of-Option-List%EF%BC%89"><span class="nav-number">1.1.</span> <span class="nav-text">选项结束（End of Option List）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%A9%BA%E6%93%8D%E4%BD%9C%EF%BC%88No-Operation%EF%BC%89"><span class="nav-number">1.2.</span> <span class="nav-text">空操作（No Operation）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%AE%B0%E5%BD%95%E8%B7%AF%E7%94%B1%EF%BC%88Record-Route%EF%BC%89"><span class="nav-number">1.3.</span> <span class="nav-text">记录路由（Record Route）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9D%BE%E6%95%A3%E6%BA%90%E8%B7%AF%E7%94%B1%EF%BC%88Loose-Source-Route%EF%BC%89"><span class="nav-number">1.4.</span> <span class="nav-text">松散源路由（Loose Source Route）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%A5%E6%A0%BC%E6%BA%90%E8%B7%AF%E7%94%B1%EF%BC%88Strict-Source-Route%EF%BC%89"><span class="nav-number">1.5.</span> <span class="nav-text">严格源路由（Strict Source Route）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%97%B6%E9%97%B4%E6%88%B3%EF%BC%88Timestamp%EF%BC%89"><span class="nav-number">1.6.</span> <span class="nav-text">时间戳（Timestamp）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AE%89%E5%85%A8%E9%80%89%E9%A1%B9%EF%BC%88Security%EF%BC%89"><span class="nav-number">1.7.</span> <span class="nav-text">安全选项（Security）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%B5%81%E6%A0%87%E8%AF%86%EF%BC%88Stream-ID%EF%BC%89"><span class="nav-number">1.8.</span> <span class="nav-text">流标识（Stream ID）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%B7%AF%E7%94%B1%E5%99%A8%E8%AD%A6%E5%91%8A%EF%BC%88Router-Alert%EF%BC%89"><span class="nav-number">1.9.</span> <span class="nav-text">路由器警告（Router Alert）</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#struct-ip-options"><span class="nav-number">2.</span> <span class="nav-text">struct ip_options</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#IP%E9%80%89%E9%A1%B9%E7%9A%84%E6%9E%84%E5%BB%BA"><span class="nav-number">3.</span> <span class="nav-text">IP选项的构建</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#IP%E9%80%89%E9%A1%B9%E7%9A%84%E9%AA%8C%E8%AF%81%E4%B8%8E%E5%AE%9A%E4%BD%8D"><span class="nav-number">4.</span> <span class="nav-text">IP选项的验证与定位</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">102</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">22</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
