@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="引言IP 分片重组可以理解为：当一个 IP 数据包太大，超过链路的 MTU 时，发送端会把它拆成多个小的分片（fragment） 发出去；这些分片在网络中是独立传输、可乱序到达的。接收端的 IP 协议栈需要根据 源 IP、目的 IP、协议号和 IP ID 等信息，把属于同一个原始数据包的分片暂时缓存起来，并按照偏移量重新拼接成完整的报文，这个过程就叫 IP 分片重组（IP reassembly）。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="IP分片与重组模块初始化">
+<meta property="og:url" content="http://example.com/2026/03/10/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%B8%80%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="引言IP 分片重组可以理解为：当一个 IP 数据包太大，超过链路的 MTU 时，发送端会把它拆成多个小的分片（fragment） 发出去；这些分片在网络中是独立传输、可乱序到达的。接收端的 IP 协议栈需要根据 源 IP、目的 IP、协议号和 IP ID 等信息，把属于同一个原始数据包的分片暂时缓存起来，并按照偏移量重新拼接成完整的报文，这个过程就叫 IP 分片重组（IP reassembly）。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-03-10T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-03-10T13:28:11.267Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="IP">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/03/10/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%B8%80%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>IP分片与重组模块初始化 | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/03/10/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%B8%80%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          IP分片与重组模块初始化
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-03-10 22:00:00 / 修改时间：21:28:11" itemprop="dateCreated datePublished" datetime="2026-03-10T22:00:00+08:00">2026-03-10</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/03/10/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%B8%80%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/03/10/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%B8%80%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="引言"><a href="#引言" class="headerlink" title="引言"></a>引言</h2><p>IP 分片重组可以理解为：当一个 IP 数据包太大，超过链路的 MTU 时，发送端会把它拆成多个小的分片（fragment） 发出去；这些分片在网络中是独立传输、可乱序到达的。接收端的 IP 协议栈需要根据 源 IP、目的 IP、协议号和 IP ID 等信息，把属于同一个原始数据包的分片暂时缓存起来，并按照偏移量重新拼接成完整的报文，这个过程就叫 IP 分片重组（IP reassembly）。</p>
+<p><code>ipfrag_init()</code> 是 <strong>Linux 内核 IPv4 分片重组模块的初始化函数</strong>（在<code>inet_init</code>中被调用）。主要作用是 **设置 IP 分片重组所使用的必要参数和结构 <strong>，并注册每个网络命名空间的初始化函数</strong>。完成这些初始化之后，当内核在收包路径中遇到 IP 分片时，就可以通过这些已经建立好的结构去 <strong>创建分片队列、缓存 frag，并在收齐后完成重组</strong>。</p>
+<p><code>ipfrag_init</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> __init <span class="title function_">ipfrag_init</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	ip4_frags.constructor = ip4_frag_init;	<span class="comment">//初始化构造函数，主要就是关联也给peer</span></span><br><span class="line">	ip4_frags.destructor = ip4_frag_free; 	<span class="comment">//和上面相反， put peer</span></span><br><span class="line">	ip4_frags.qsize = <span class="keyword">sizeof</span>(<span class="keyword">struct</span> ipq);	<span class="comment">//ipq时管理分片的一个结构</span></span><br><span class="line">	ip4_frags.frag_expire = ip_expire; 		<span class="comment">//定时器到期的回调</span></span><br><span class="line">	ip4_frags.frags_cache_name = ip_frag_cache_name;<span class="comment">//s</span></span><br><span class="line">	ip4_frags.rhash_params = ip4_rhash_params;</span><br><span class="line">	<span class="keyword">if</span> (inet_frags_init(&amp;ip4_frags)) 		<span class="comment">//ipq slab的名字</span></span><br><span class="line">		panic(<span class="string">&quot;IP: failed to allocate ip4_frags cache\n&quot;</span>);</span><br><span class="line">	ip4_frags_ctl_register();				<span class="comment">//注册sysctl系统参数</span></span><br><span class="line">	register_pernet_subsys(&amp;ip4_frags_ops); <span class="comment">//给每个网络命名空间注册一个分片子系统</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ipfrag_init</code>主要作用是设置<code>ip4_frags</code>结构体的一些字段，构造函数和析构函数等，完成后，通过 <code>ip4_frags_ctl_register</code> 注册 IPv4 分片相关的 <code>sysctl</code> 参数，最后调用 <code>register_pernet_subsys()</code> 为每个网络命名空间注册分片子系统，这样每个 namespace 都会拥有独立的 IPv4 分片重组环境。</p>
+<p><code>ip4_frag_init</code>为创建<code>ip</code>分片管理时候调用的的构造函数，主要逻辑就是将新创建的管理结构关联一个<code>inet_peer</code>（如果配置 了安全距离，<code>max_dist</code>）具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">ip4_frag_init</span><span class="params">(<span class="keyword">struct</span> inet_frag_queue *q, <span class="type">const</span> <span class="type">void</span> *a)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ipq</span> *<span class="title">qp</span> =</span> container_of(q, <span class="keyword">struct</span> ipq, q);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> q-&gt;fqdir-&gt;net;</span><br><span class="line">	<span class="comment">//表示一个IP分片流</span></span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">frag_v4_compare_key</span> *<span class="title">key</span> =</span> a;</span><br><span class="line"></span><br><span class="line">	q-&gt;key.v4 = *key;</span><br><span class="line">	qp-&gt;ecn = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//是否配置了安全距离，如果配置了，就查找或者创建一个peer</span></span><br><span class="line">	qp-&gt;peer = q-&gt;fqdir-&gt;max_dist ?</span><br><span class="line">		inet_getpeer_v4(net-&gt;ipv4.peers, key-&gt;saddr, key-&gt;vif, <span class="number">1</span>) :</span><br><span class="line">		<span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ip4_frag_free</code>为释放<code>ip</code>分片管理结构的析构函数，具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">ip4_frag_free</span><span class="params">(<span class="keyword">struct</span> inet_frag_queue *q)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ipq</span> *<span class="title">qp</span>;</span></span><br><span class="line">	<span class="comment">//释放peer</span></span><br><span class="line">	qp = container_of(q, <span class="keyword">struct</span> ipq, q);</span><br><span class="line">	<span class="keyword">if</span> (qp-&gt;peer)</span><br><span class="line">		inet_putpeer(qp-&gt;peer);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ip_expire</code>为定时器到期，分片还没有重组完成的回调函数（默认是30s）具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">ip_expire</span><span class="params">(<span class="keyword">struct</span> timer_list *t)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_frag_queue</span> *<span class="title">frag</span> =</span> from_timer(frag, t, timer);</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">iphdr</span> *<span class="title">iph</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">head</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ipq</span> *<span class="title">qp</span>;</span></span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	</span><br><span class="line">	qp = container_of(frag, <span class="keyword">struct</span> ipq, q);</span><br><span class="line">	net = qp-&gt;q.fqdir-&gt;net;</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Paired with WRITE_ONCE() in fqdir_pre_exit(). */</span></span><br><span class="line">	<span class="comment">//表示分片重组正在被销毁</span></span><br><span class="line">	<span class="keyword">if</span> (READ_ONCE(qp-&gt;q.fqdir-&gt;dead))</span><br><span class="line">		<span class="keyword">goto</span> out_rcu_unlock;</span><br><span class="line"></span><br><span class="line">	spin_lock(&amp;qp-&gt;q.lock);</span><br><span class="line">	<span class="comment">//表示重组已经完成，直接退出</span></span><br><span class="line">	<span class="keyword">if</span> (qp-&gt;q.flags &amp; INET_FRAG_COMPLETE)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	<span class="comment">//标记队列要被kill</span></span><br><span class="line">	qp-&gt;q.flags |= INET_FRAG_DROP;</span><br><span class="line">	<span class="comment">//从hash表中移除 </span></span><br><span class="line">	ipq_kill(qp);</span><br><span class="line">	__IP_INC_STATS(net, IPSTATS_MIB_REASMFAILS);</span><br><span class="line">	__IP_INC_STATS(net, IPSTATS_MIB_REASMTIMEOUT);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!(qp-&gt;q.flags &amp; INET_FRAG_FIRST_IN))</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* sk_buff::dev and sk_buff::rbnode are unionized. So we</span></span><br><span class="line"><span class="comment">	 * pull the head out of the tree in order to be able to</span></span><br><span class="line"><span class="comment">	 * deal with head-&gt;dev.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//从分片重组队列中取出最前面的skb</span></span><br><span class="line">	head = inet_frag_pull_head(&amp;qp-&gt;q);</span><br><span class="line">	<span class="keyword">if</span> (!head)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	<span class="comment">//找到收包的设备</span></span><br><span class="line">	head-&gt;dev = dev_get_by_index_rcu(net, qp-&gt;iif);</span><br><span class="line">	<span class="keyword">if</span> (!head-&gt;dev)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* skb has no dst, perform route lookup again */</span></span><br><span class="line">	<span class="comment">//拿到IP头</span></span><br><span class="line">	iph = ip_hdr(head);</span><br><span class="line">	<span class="comment">//查路由</span></span><br><span class="line">	err = ip_route_input_noref(head, iph-&gt;daddr, iph-&gt;saddr,</span><br><span class="line">					   iph-&gt;tos, head-&gt;dev);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Only an end host needs to send an ICMP</span></span><br><span class="line"><span class="comment">	 * &quot;Fragment Reassembly Timeout&quot; message, per RFC792.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (frag_expire_skip_icmp(qp-&gt;q.key.v4.user) &amp;&amp;</span><br><span class="line">	    (skb_rtable(head)-&gt;rt_type != RTN_LOCAL))<span class="comment">//只有发给本机的才会回icmp</span></span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	spin_unlock(&amp;qp-&gt;q.lock);</span><br><span class="line">	<span class="comment">//发送icmp报文</span></span><br><span class="line">	icmp_send(head, ICMP_TIME_EXCEEDED, ICMP_EXC_FRAGTIME, <span class="number">0</span>);</span><br><span class="line">	<span class="keyword">goto</span> out_rcu_unlock;</span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">	spin_unlock(&amp;qp-&gt;q.lock);</span><br><span class="line">out_rcu_unlock:</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">	kfree_skb_reason(head, SKB_DROP_REASON_FRAG_REASM_TIMEOUT);</span><br><span class="line">	<span class="comment">//真正释放资源，释放数据包，更新内存记账</span></span><br><span class="line">	ipq_put(qp);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">ipq_kill</span><span class="params">(<span class="keyword">struct</span> ipq *ipq)</span></span><br><span class="line">&#123;</span><br><span class="line">	inet_frag_kill(&amp;ipq-&gt;q);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> <span class="title function_">inet_frag_kill</span><span class="params">(<span class="keyword">struct</span> inet_frag_queue *fq)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//删除定时器</span></span><br><span class="line">	<span class="keyword">if</span> (del_timer(&amp;fq-&gt;timer))</span><br><span class="line">		refcount_dec(&amp;fq-&gt;refcnt);</span><br><span class="line">	<span class="comment">//没有重组完成</span></span><br><span class="line">	<span class="keyword">if</span> (!(fq-&gt;flags &amp; INET_FRAG_COMPLETE)) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">fqdir</span> *<span class="title">fqdir</span> =</span> fq-&gt;fqdir;</span><br><span class="line"></span><br><span class="line">		fq-&gt;flags |= INET_FRAG_COMPLETE;</span><br><span class="line">		rcu_read_lock();</span><br><span class="line">		<span class="comment">/* The RCU read lock provides a memory barrier</span></span><br><span class="line"><span class="comment">		 * guaranteeing that if fqdir-&gt;dead is false then</span></span><br><span class="line"><span class="comment">		 * the hash table destruction will not start until</span></span><br><span class="line"><span class="comment">		 * after we unlock.  Paired with fqdir_pre_exit().</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//从hash表中移除这个entry</span></span><br><span class="line">		<span class="keyword">if</span> (!READ_ONCE(fqdir-&gt;dead)) &#123;</span><br><span class="line">			rhashtable_remove_fast(&amp;fqdir-&gt;rhashtable, &amp;fq-&gt;node,</span><br><span class="line">					       fqdir-&gt;f-&gt;rhash_params);</span><br><span class="line">			refcount_dec(&amp;fq-&gt;refcnt);</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			fq-&gt;flags |= INET_FRAG_HASH_DEAD;</span><br><span class="line">		&#125;</span><br><span class="line">		rcu_read_unlock();</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这段 <code>ip_expire()</code> 是 <strong>IPv4 分片重组队列的超时处理函数</strong>，当某个 IP 报文的分片在规定时间内没有收齐时，就会调用这个函数。函数首先找到对应的分片队列 <code>ipq</code> ，如果队列已经完成重组则直接退出，<strong>否则将该队列标记为丢弃并从分片哈希表中删除</strong>，同时更新分片重组失败和超时的统计计数。如果该报文已经收到了 <strong>第一个分片</strong>，函数会取出队列中的第一个 <code>skb</code>，重新查路由并检查该报文是否原本是发往本机的，如果是，则发送一个 <strong>ICMP 报文通知发送端。最后释放相关的 <code>skb</code> 和分片队列资源。总的来说，这个函数的作用就是</strong>当 IP 分片长时间收不齐时，清理分片队列并在需要时向发送端返回 ICMP 超时通知。</p>
+<p><code>inet_frags_init</code>创建了<code>ipq</code>管理结构的<code>slab</code>，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">inet_frags_init</span><span class="params">(<span class="keyword">struct</span> inet_frags *f)</span></span><br><span class="line">&#123;</span><br><span class="line">	f-&gt;frags_cachep = kmem_cache_create(f-&gt;frags_cache_name, f-&gt;qsize, <span class="number">0</span>, <span class="number">0</span>,</span><br><span class="line">					    <span class="literal">NULL</span>);</span><br><span class="line">	<span class="keyword">if</span> (!f-&gt;frags_cachep)</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line"></span><br><span class="line">	refcount_set(&amp;f-&gt;refcnt, <span class="number">1</span>);</span><br><span class="line">	init_completion(&amp;f-&gt;completion);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述<code>register_pernet_subsys</code>(&amp;ip4_frags_ops)的作用是为每个网络命名空间注册一个属于自己的分片重组的<code>hash</code>表以及管理自己分片重组的系统参数，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> __net_init <span class="title function_">ipv4_frags_init_net</span><span class="params">(<span class="keyword">struct</span> net *net)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> res;</span><br><span class="line">	<span class="comment">//初始化fqdir 这个fqdir 里面管理重组的hash表</span></span><br><span class="line">	res = fqdir_init(&amp;net-&gt;ipv4.fqdir, &amp;ip4_frags, net);</span><br><span class="line">	<span class="keyword">if</span> (res &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">return</span> res;</span><br><span class="line">	<span class="comment">/* Fragment cache limits.</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * The fragment memory accounting code, (tries to) account for</span></span><br><span class="line"><span class="comment">	 * the real memory usage, by measuring both the size of frag</span></span><br><span class="line"><span class="comment">	 * queue struct (inet_frag_queue (ipv4:ipq/ipv6:frag_queue))</span></span><br><span class="line"><span class="comment">	 * and the SKB&#x27;s truesize.</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * A 64K fragment consumes 129736 bytes (44*2944)+200</span></span><br><span class="line"><span class="comment">	 * (1500 truesize == 2944, sizeof(struct ipq) == 200)</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * We will commit 4MB at one time. Should we cross that limit</span></span><br><span class="line"><span class="comment">	 * we will prune down to 3MB, making room for approx 8 big 64K</span></span><br><span class="line"><span class="comment">	 * fragments 8x128k.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//这个3M好像用不到</span></span><br><span class="line">	net-&gt;ipv4.fqdir-&gt;high_thresh = <span class="number">4</span> * <span class="number">1024</span> * <span class="number">1024</span>;</span><br><span class="line">	net-&gt;ipv4.fqdir-&gt;low_thresh  = <span class="number">3</span> * <span class="number">1024</span> * <span class="number">1024</span>;</span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * Important NOTE! Fragment queue must be destroyed before MSL expires.</span></span><br><span class="line"><span class="comment">	 * RFC791 is wrong proposing to prolongate timer each fragment arrival</span></span><br><span class="line"><span class="comment">	 * by TTL.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//默认超时时间</span></span><br><span class="line">	net-&gt;ipv4.fqdir-&gt;timeout = IP_FRAG_TIME;</span><br><span class="line">	<span class="comment">//安全距离</span></span><br><span class="line">	net-&gt;ipv4.fqdir-&gt;max_dist = <span class="number">64</span>;</span><br><span class="line">	<span class="comment">//注册sysctl 接口</span></span><br><span class="line">	res = ip4_frags_ns_ctl_register(net);</span><br><span class="line">	<span class="keyword">if</span> (res &lt; <span class="number">0</span>)</span><br><span class="line">		fqdir_exit(net-&gt;ipv4.fqdir);</span><br><span class="line">	<span class="keyword">return</span> res;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p> <code>ipv4_frags_init_net()</code> 是 <strong>每个网络命名空间初始化 IPv4 分片重组环境的函数</strong>。函数首先调用 <code>fqdir_init()</code> 创建当前 namespace 的 <strong>分片队列管理结构 <code>fqdir</code></strong>，里面维护着所有正在重组的分片队列及其哈希表。随后设置分片缓存的内存控制参数，以及用于安全控制的 <strong>最大乱序距离 <code>max_dist</code></strong>。最后调用 <code>ip4_frags_ns_ctl_register()</code> 把这些参数注册为 <code>sysctl</code> 接口，使用户可以通过 <code>/proc/sys/net/ipv4/</code> 动态查看和修改。上述<code>fqdir_init</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">fqdir_init</span><span class="params">(<span class="keyword">struct</span> fqdir **fqdirp, <span class="keyword">struct</span> inet_frags *f, <span class="keyword">struct</span> net *net)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//申请结构，这fqdir包括超时，内存阈值，等管理信息</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fqdir</span> *<span class="title">fqdir</span> =</span> kzalloc(<span class="keyword">sizeof</span>(*fqdir), GFP_KERNEL);</span><br><span class="line">	<span class="type">int</span> res;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!fqdir)</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">	<span class="comment">//ip_frag_init中设置的参数</span></span><br><span class="line">	fqdir-&gt;f = f;</span><br><span class="line">	fqdir-&gt;net = net;</span><br><span class="line">	<span class="comment">//初始化hash表</span></span><br><span class="line">	res = rhashtable_init(&amp;fqdir-&gt;rhashtable, &amp;fqdir-&gt;f-&gt;rhash_params);</span><br><span class="line">	<span class="keyword">if</span> (res &lt; <span class="number">0</span>) &#123;</span><br><span class="line">		kfree(fqdir);</span><br><span class="line">		<span class="keyword">return</span> res;</span><br><span class="line">	&#125;</span><br><span class="line">	refcount_inc(&amp;f-&gt;refcnt);</span><br><span class="line">	*fqdirp = fqdir;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述初始化hash表代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">rhashtable_init</span><span class="params">(<span class="keyword">struct</span> rhashtable *ht,</span></span><br><span class="line"><span class="params">		    <span class="type">const</span> <span class="keyword">struct</span> rhashtable_params *params)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bucket_table</span> *<span class="title">tbl</span>;</span></span><br><span class="line">	<span class="type">size_t</span> size;</span><br><span class="line">	<span class="comment">//固定长度的key 或者自定义了hash</span></span><br><span class="line">	<span class="keyword">if</span> ((!params-&gt;key_len &amp;&amp; !params-&gt;obj_hashfn) ||</span><br><span class="line">	    (params-&gt;obj_hashfn &amp;&amp; !params-&gt;obj_cmpfn))</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line">	<span class="comment">//清空hash表</span></span><br><span class="line">	<span class="built_in">memset</span>(ht, <span class="number">0</span>, <span class="keyword">sizeof</span>(*ht));</span><br><span class="line">	<span class="comment">//初始化锁</span></span><br><span class="line">	mutex_init(&amp;ht-&gt;mutex);</span><br><span class="line">	spin_lock_init(&amp;ht-&gt;lock);</span><br><span class="line">	<span class="comment">//保存传进来的参数</span></span><br><span class="line">	<span class="built_in">memcpy</span>(&amp;ht-&gt;p, params, <span class="keyword">sizeof</span>(*params));</span><br><span class="line">	<span class="comment">//如果设置了最小桶的大小，修正一下</span></span><br><span class="line">	<span class="keyword">if</span> (params-&gt;min_size)</span><br><span class="line">		ht-&gt;p.min_size = roundup_pow_of_two(params-&gt;min_size);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Cap total entries at 2^31 to avoid nelems overflow. */</span></span><br><span class="line">	<span class="comment">//最多有多少个条目</span></span><br><span class="line">	ht-&gt;max_elems = <span class="number">1u</span> &lt;&lt; <span class="number">31</span>;</span><br><span class="line">	<span class="comment">//如果设置了桶的上限</span></span><br><span class="line">	<span class="keyword">if</span> (params-&gt;max_size) &#123;</span><br><span class="line">		ht-&gt;p.max_size = rounddown_pow_of_two(params-&gt;max_size);</span><br><span class="line">		<span class="keyword">if</span> (ht-&gt;p.max_size &lt; ht-&gt;max_elems / <span class="number">2</span>)</span><br><span class="line">			ht-&gt;max_elems = ht-&gt;p.max_size * <span class="number">2</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//最小桶的大小，不能小于4</span></span><br><span class="line">	ht-&gt;p.min_size = <span class="type">max_t</span>(u16, ht-&gt;p.min_size, HASH_MIN_SIZE);</span><br><span class="line">	<span class="comment">//初始桶的大小最大是64</span></span><br><span class="line">	size = rounded_hashtable_size(&amp;ht-&gt;p);</span><br><span class="line">	<span class="comment">//key的长度</span></span><br><span class="line">	ht-&gt;key_len = ht-&gt;p.key_len;</span><br><span class="line">	<span class="comment">//如果用户没提供 hash 函数，则选默认 hash 函数</span></span><br><span class="line">	<span class="keyword">if</span> (!params-&gt;hashfn) &#123;</span><br><span class="line">		ht-&gt;p.hashfn = jhash;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (!(ht-&gt;key_len &amp; (<span class="keyword">sizeof</span>(u32) - <span class="number">1</span>))) &#123;</span><br><span class="line">			ht-&gt;key_len /= <span class="keyword">sizeof</span>(u32);</span><br><span class="line">			ht-&gt;p.hashfn = rhashtable_jhash2;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * This is api initialization and thus we need to guarantee the</span></span><br><span class="line"><span class="comment">	 * initial rhashtable allocation. Upon failure, retry with the</span></span><br><span class="line"><span class="comment">	 * smallest possible size with __GFP_NOFAIL semantics.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//分配桶的数组</span></span><br><span class="line">	tbl = bucket_table_alloc(ht, size, GFP_KERNEL);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(tbl == <span class="literal">NULL</span>)) &#123;</span><br><span class="line">		size = <span class="type">max_t</span>(u16, ht-&gt;p.min_size, HASH_MIN_SIZE);</span><br><span class="line">		tbl = bucket_table_alloc(ht, size, GFP_KERNEL | __GFP_NOFAIL);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="type">atomic_set</span>(&amp;ht-&gt;nelems, <span class="number">0</span>);</span><br><span class="line">	<span class="comment">//关联起来</span></span><br><span class="line">	RCU_INIT_POINTER(ht-&gt;tbl, tbl);</span><br><span class="line"></span><br><span class="line">	INIT_WORK(&amp;ht-&gt;run_work, rht_deferred_worker);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p> <code>rhashtable_init()</code> 的作用是<strong>完成<code>rhashtable</code> 的初始化</strong>。函数首先检查参数是否合法（必须提供固定长度 key 或自定义对象 hash，同时若提供对象 hash 还必须提供比较函数），然后清空 <code>rhashtable</code> 结构并初始化锁，接着保存用户传入的配置参数。随后对哈希表进行规范处理，<strong>再计算初始桶数量 <code>size</code></strong>。之后调用 <code>bucket_table_alloc()</code> 分配底层的 <strong>bucket table（桶数组）</strong> 作为哈希表的实际存储结构，如果分配失败则退化为最小规模并强制重新分配。最后将元素计数初始化为 0。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/IP/" rel="tag"># IP</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/03/07/IP%E9%80%89%E9%A1%B9%E7%9A%84%E5%A4%84%E7%90%86%EF%BC%88%E4%BA%8C%EF%BC%89/" rel="prev" title="IP选项处理（二）">
+      <i class="fa fa-chevron-left"></i> IP选项处理（二）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BC%95%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">引言</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">103</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">22</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
