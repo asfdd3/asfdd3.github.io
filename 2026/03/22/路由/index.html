@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="引言Linux 网络协议栈中，路由表是路由子系统的核心。与传统认知中查路由表的简单模型不同，Linux 内核中的路由实现由多个子系统协同完成，包括 FIB路由表、策略路由以及基于前缀树结构。本文旨在从源码出发，分析路由子系统的初始化流程。 ip_rt_init为初始化路由子系统的函数之一，在网络子系统初始化函数inet_init中被调用，主要逻辑初始化路由子系统，其中也涉及到一些非路由子系统的初始">
+<meta property="og:type" content="article">
+<meta property="og:title" content="路由子系统的初始化">
+<meta property="og:url" content="http://example.com/2026/03/22/%E8%B7%AF%E7%94%B1/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="引言Linux 网络协议栈中，路由表是路由子系统的核心。与传统认知中查路由表的简单模型不同，Linux 内核中的路由实现由多个子系统协同完成，包括 FIB路由表、策略路由以及基于前缀树结构。本文旨在从源码出发，分析路由子系统的初始化流程。 ip_rt_init为初始化路由子系统的函数之一，在网络子系统初始化函数inet_init中被调用，主要逻辑初始化路由子系统，其中也涉及到一些非路由子系统的初始">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-03-22T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-03-22T12:16:40.336Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="IP">
+<meta property="article:tag" content="路由子系统">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/03/22/%E8%B7%AF%E7%94%B1/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>路由子系统的初始化 | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/03/22/%E8%B7%AF%E7%94%B1/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          路由子系统的初始化
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-03-22 22:00:00 / 修改时间：20:16:40" itemprop="dateCreated datePublished" datetime="2026-03-22T22:00:00+08:00">2026-03-22</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/03/22/%E8%B7%AF%E7%94%B1/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/03/22/%E8%B7%AF%E7%94%B1/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="引言"><a href="#引言" class="headerlink" title="引言"></a>引言</h2><p>Linux 网络协议栈中，路由表是路由子系统的核心。与传统认知中查路由表的简单模型不同，Linux 内核中的路由实现由多个子系统协同完成，包括 FIB路由表、策略路由以及基于前缀树结构。本文旨在从源码出发，分析路由子系统的初始化流程。</p>
+<p><code>ip_rt_init</code>为初始化路由子系统的函数之一，在网络子系统初始化函数<code>inet_init</code>中被调用，主要逻辑初始化路由子系统，其中也涉及到一些非路由子系统的初始化，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __init <span class="title function_">ip_rt_init</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">void</span> *idents_hash;</span><br><span class="line">	<span class="type">int</span> cpu;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* For modern hosts, this will use 2 MB of memory */</span></span><br><span class="line">	<span class="comment">//初始化ip idhash表 ，分成两个部分，前半部分是id 后半部分是时间戳</span></span><br><span class="line">	<span class="comment">//注意这里的hash表tcp应该用不上，udp可能会用到，取决于是否connect？</span></span><br><span class="line">	idents_hash = alloc_large_system_hash(<span class="string">&quot;IP idents&quot;</span>,</span><br><span class="line">					      <span class="keyword">sizeof</span>(*ip_idents) + <span class="keyword">sizeof</span>(*ip_tstamps),</span><br><span class="line">					      <span class="number">0</span>,</span><br><span class="line">					      <span class="number">16</span>, <span class="comment">/* one bucket per 64 KB */</span></span><br><span class="line">					      HASH_ZERO,</span><br><span class="line">					      <span class="literal">NULL</span>,</span><br><span class="line">					      &amp;ip_idents_mask,</span><br><span class="line">					      <span class="number">2048</span>,</span><br><span class="line">					      <span class="number">256</span>*<span class="number">1024</span>);</span><br><span class="line"></span><br><span class="line">	ip_idents = idents_hash;</span><br><span class="line"></span><br><span class="line">	get_random_bytes(ip_idents, (ip_idents_mask + <span class="number">1</span>) * <span class="keyword">sizeof</span>(*ip_idents));</span><br><span class="line"></span><br><span class="line">	ip_tstamps = idents_hash + (ip_idents_mask + <span class="number">1</span>) * <span class="keyword">sizeof</span>(*ip_idents);</span><br><span class="line">	<span class="comment">//初始化每 CPU 的 rt_uncached_list，如果不缓存路由会加到这个列表中</span></span><br><span class="line">	<span class="comment">//什么叫不被缓存 貌似就是不被sk管理就要放到这里，应该是为了解决并发的问题？</span></span><br><span class="line">	for_each_possible_cpu(cpu) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">uncached_list</span> *<span class="title">ul</span> =</span> &amp;per_cpu(rt_uncached_list, cpu);</span><br><span class="line"></span><br><span class="line">		INIT_LIST_HEAD(&amp;ul-&gt;head);</span><br><span class="line">		INIT_LIST_HEAD(&amp;ul-&gt;quarantine);</span><br><span class="line">		spin_lock_init(&amp;ul-&gt;lock);</span><br><span class="line">	&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_IP_ROUTE_CLASSID</span></span><br><span class="line">	ip_rt_acct = __alloc_percpu(<span class="number">256</span> * <span class="keyword">sizeof</span>(<span class="keyword">struct</span> ip_rt_acct), __alignof__(<span class="keyword">struct</span> ip_rt_acct));</span><br><span class="line">	<span class="keyword">if</span> (!ip_rt_acct)</span><br><span class="line">		panic(<span class="string">&quot;IP: failed to allocate ip_rt_acct\n&quot;</span>);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="comment">//为 struct rtable 创建 slab cache</span></span><br><span class="line">	ipv4_dst_ops.kmem_cachep =</span><br><span class="line">		kmem_cache_create(<span class="string">&quot;ip_dst_cache&quot;</span>, <span class="keyword">sizeof</span>(<span class="keyword">struct</span> rtable), <span class="number">0</span>,</span><br><span class="line">				  SLAB_HWCACHE_ALIGN|SLAB_PANIC, <span class="literal">NULL</span>);</span><br><span class="line">	<span class="comment">//黑洞路由的复用</span></span><br><span class="line">	ipv4_dst_blackhole_ops.kmem_cachep = ipv4_dst_ops.kmem_cachep;</span><br><span class="line">	<span class="comment">//初始化 per cpu的计数器，用于记录当前系统有多少个dst_entry</span></span><br><span class="line">	<span class="keyword">if</span> (dst_entries_init(&amp;ipv4_dst_ops) &lt; <span class="number">0</span>)</span><br><span class="line">		panic(<span class="string">&quot;IP: failed to allocate ipv4_dst_ops counter\n&quot;</span>);</span><br><span class="line">	<span class="comment">//同上</span></span><br><span class="line">	<span class="keyword">if</span> (dst_entries_init(&amp;ipv4_dst_blackhole_ops) &lt; <span class="number">0</span>)</span><br><span class="line">		panic(<span class="string">&quot;IP: failed to allocate ipv4_dst_blackhole_ops counter\n&quot;</span>);</span><br><span class="line">	<span class="comment">//不限制路由上限</span></span><br><span class="line">	ipv4_dst_ops.gc_thresh = ~<span class="number">0</span>;</span><br><span class="line">	<span class="comment">//路由表也不设置上限</span></span><br><span class="line">	ip_rt_max_size = INT_MAX;</span><br><span class="line">	<span class="comment">//初始化 IPv4 地址管理模块</span></span><br><span class="line">	devinet_init();</span><br><span class="line">	ip_fib_init();</span><br><span class="line">	<span class="comment">//注册路由统计信息的文件！/proc/net/stat/rt_cache </span></span><br><span class="line">	<span class="comment">//一共三个文件第一个好像都没有了3.6内核以后就没有这个cache了</span></span><br><span class="line">	<span class="keyword">if</span> (ip_rt_proc_init())</span><br><span class="line">		pr_err(<span class="string">&quot;Unable to create route proc files\n&quot;</span>);</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_XFRM</span></span><br><span class="line">	xfrm_init();</span><br><span class="line">	xfrm4_init();</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span>	</span></span><br><span class="line">	<span class="comment">//ip route get </span></span><br><span class="line">	rtnl_register(PF_INET, RTM_GETROUTE, inet_rtm_getroute, <span class="literal">NULL</span>,</span><br><span class="line">		      RTNL_FLAG_DOIT_UNLOCKED);</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_SYSCTL</span></span><br><span class="line">	<span class="comment">//创建sysctl接口</span></span><br><span class="line">	register_pernet_subsys(&amp;sysctl_route_ops);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="comment">//初始化默认的mtu mss等</span></span><br><span class="line">	register_pernet_subsys(&amp;ip_rt_ops);</span><br><span class="line">	<span class="comment">//初始化路由相关的计数</span></span><br><span class="line">	register_pernet_subsys(&amp;rt_genid_ops);</span><br><span class="line">	<span class="comment">//inet_peer的初始化</span></span><br><span class="line">	register_pernet_subsys(&amp;ipv4_inetpeer_ops);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ip_rt_init</code> 首先构建 <strong>IP ID hash表</strong>，用于 <code>IP id</code> 的生成（<strong>主要给 UDP使用</strong>）；然后初始化 每 CPU 的 <code>rt_uncached_list</code>，接着创建 <code>rtable</code> 的 <code>slab</code> 缓存），并初始化 <code>dst_entry</code> 计数器，之后进入功能模块初始化：调用 <code>devinet_init()</code> 初始化 IPv4 地址管理，<code>ip_fib_init()</code> 初始化 FIB 路由表和策略路由框架；再创建 <code>/proc/net/stat/rt_cache</code> 等接口用于统计，最后通过多个 <code>register_pernet_subsys</code> 把 <strong>路由 <code>sysctl</code>、默认路由参数等按 net namespace 维度注册</strong>，确保每个 <code>netns</code> 都有独立的路由环境。</p>
+<p><code>ipv4_dst_ops</code>是路由操作函数集，<strong>在创建<code>rtable</code>结构时候会挂上这个<code>ops</code></strong>，这个<code>ops</code>多处会调用，具体回调的功能如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="class"><span class="keyword">struct</span> <span class="title">dst_ops</span> <span class="title">ipv4_dst_ops</span> =</span> &#123;</span><br><span class="line">	.family =		AF_INET,</span><br><span class="line">	.check =		ipv4_dst_check,			<span class="comment">//检查路由是否可以用经常被调用</span></span><br><span class="line">	.default_advmss =	ipv4_default_advmss, <span class="comment">//比如tcp计算mss会调用</span></span><br><span class="line">	.mtu =			ipv4_mtu,				 <span class="comment">//获取mtu会用到</span></span><br><span class="line">	.cow_metrics =		ipv4_cow_metrics,	 <span class="comment">//不会被调用</span></span><br><span class="line">	.destroy =		ipv4_dst_destroy,		 <span class="comment">//释放dst的时候</span></span><br><span class="line">	.negative_advice =	ipv4_negative_advice, <span class="comment">//tcp黑洞路由的时候会调用，是否需要丢弃这个路由</span></span><br><span class="line">	.link_failure =		ipv4_link_failure,		<span class="comment">//arp层出错调用</span></span><br><span class="line">	.update_pmtu =		ip_rt_update_pmtu,		<span class="comment">//收到icmp调用减小mtu</span></span><br><span class="line">	.redirect =		ip_do_redirect,			 <span class="comment">//收到icmp重定向会调用</span></span><br><span class="line">	.local_out =		__ip_local_out,		 <span class="comment">//发包的接口，查找路由后会设置</span></span><br><span class="line">	.neigh_lookup =		ipv4_neigh_lookup,	 <span class="comment">//查找arp表项</span></span><br><span class="line">	.confirm_neigh =	ipv4_confirm_neigh,		<span class="comment">//刷新 ARP 邻居状态</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>上述<code>devinet_init</code>更多的是涉及到非路由子系统的初始化，例如<code>ip</code>命令的注册，通知链的注册，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> __init <span class="title function_">devinet_init</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> i;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; IN4_ADDR_HSIZE; i++)</span><br><span class="line">		INIT_HLIST_HEAD(&amp;inet_addr_lst[i]);</span><br><span class="line"></span><br><span class="line">	register_pernet_subsys(&amp;devinet_ops);</span><br><span class="line">	<span class="comment">//把 IPv4 子系统注册到 netdevice 通知链，当网卡设备状态变化（UP/DOWN/注册/注销等）时通知 IPv4 模块</span></span><br><span class="line">	register_netdevice_notifier(&amp;ip_netdev_notifier);</span><br><span class="line"></span><br><span class="line">	queue_delayed_work(system_power_efficient_wq, &amp;check_lifetime_work, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">	rtnl_af_register(&amp;inet_af_ops);</span><br><span class="line">	<span class="comment">//通过注册netlink 用户态 通过netlink 来配置ip地址</span></span><br><span class="line">	rtnl_register(PF_INET, RTM_NEWADDR, inet_rtm_newaddr, <span class="literal">NULL</span>, <span class="number">0</span>);</span><br><span class="line">	<span class="comment">//删除IP地址的命令</span></span><br><span class="line">	rtnl_register(PF_INET, RTM_DELADDR, inet_rtm_deladdr, <span class="literal">NULL</span>, <span class="number">0</span>);</span><br><span class="line">	<span class="comment">//ip addr show</span></span><br><span class="line">	rtnl_register(PF_INET, RTM_GETADDR, <span class="literal">NULL</span>, inet_dump_ifaddr, <span class="number">0</span>);</span><br><span class="line">	<span class="comment">//ip netconf show</span></span><br><span class="line">	rtnl_register(PF_INET, RTM_GETNETCONF, inet_netconf_get_devconf,</span><br><span class="line">		      inet_netconf_dump_devconf, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>devinet_init</code> 主要是 <strong>初始化 IPv4 地址管理子系统</strong>，把 IPv4 挂到 <code>netdevice</code> 通知链能够正确响应网卡状态变化，通过 <code>rtnetlink</code> 注册 <code>NEW/DEL/GETADDR</code> 等接口，使用户态（如 <code>ip addr</code>）能够增删查 IPv4 地址和配置网络参数。</p>
+<p><code>ip_fib_init</code>是 <strong>IPv4 路由表（FIB）子系统的初始化入口</strong>，首先创建基于前缀树的路由存储结构（<strong>相当于管理一个具体的路由条目</strong>）；然后为每个网络命名空间建立独立的查表顺序&#x3D;并注册 <code>netdevice</code> 和 <code>inetaddr</code> 两类通知链，最后为用户态提供 <code>ip route add/del/show</code> 等路由配置与查询接口。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> __init <span class="title function_">ip_fib_init</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line"></span><br><span class="line">	<span class="comment">//创建slab</span></span><br><span class="line">	fib_trie_init();</span><br><span class="line">	<span class="comment">//为每个命名空间初始化一个路由表</span></span><br><span class="line">	register_pernet_subsys(&amp;fib_net_ops);</span><br><span class="line">	<span class="comment">//网卡up/down 变化的通知链子</span></span><br><span class="line">	register_netdevice_notifier(&amp;fib_netdev_notifier);</span><br><span class="line">	<span class="comment">//向 IPv4 地址变化的通知链（inetaddr notifier chain）注册一个回调函数，当系统中的 IPv4 地址发生变化时通知路由子系统。</span></span><br><span class="line">	register_inetaddr_notifier(&amp;fib_inetaddr_notifier);</span><br><span class="line">	<span class="comment">//注册ip route add</span></span><br><span class="line">	rtnl_register(PF_INET, RTM_NEWROUTE, inet_rtm_newroute, <span class="literal">NULL</span>, <span class="number">0</span>);</span><br><span class="line">	<span class="comment">//删除路由</span></span><br><span class="line">	rtnl_register(PF_INET, RTM_DELROUTE, inet_rtm_delroute, <span class="literal">NULL</span>, <span class="number">0</span>);</span><br><span class="line">	<span class="comment">//查询路由</span></span><br><span class="line">	rtnl_register(PF_INET, RTM_GETROUTE, <span class="literal">NULL</span>, inet_dump_fib, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br><span class="line">...</span><br><span class="line"><span class="type">static</span> <span class="class"><span class="keyword">struct</span> <span class="title">pernet_operations</span> <span class="title">fib_net_ops</span> =</span> &#123;</span><br><span class="line">	.init = fib_net_init,</span><br><span class="line">	.<span class="built_in">exit</span> = fib_net_exit,</span><br><span class="line">	.exit_batch = fib_net_exit_batch,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p><code>fib_net_init</code>是注册到每个网络命名空间时候的初始化函数，**为当前网络命名空间初始化路由表环境，包括查表规则、<code>netlink</code> 查询接口以及 proc 接口。**具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> __net_init <span class="title function_">fib_net_init</span><span class="params">(<span class="keyword">struct</span> net *net)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> error;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_IP_ROUTE_CLASSID</span></span><br><span class="line">	<span class="type">atomic_set</span>(&amp;net-&gt;ipv4.fib_num_tclassid_users, <span class="number">0</span>);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="comment">//初始化查表的顺序</span></span><br><span class="line">	error = ip_fib_net_init(net);</span><br><span class="line">	<span class="keyword">if</span> (error &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	error = nl_fib_lookup_init(net);</span><br><span class="line">	<span class="keyword">if</span> (error &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> out_nlfl;</span><br><span class="line">	<span class="comment">//创建proc</span></span><br><span class="line">	error = fib_proc_init(net);</span><br><span class="line">	<span class="keyword">if</span> (error &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> out_proc;</span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">return</span> error;</span><br><span class="line"></span><br><span class="line">out_proc:</span><br><span class="line">	nl_fib_lookup_exit(net);</span><br><span class="line">out_nlfl:</span><br><span class="line">	rtnl_lock();</span><br><span class="line">	ip_fib_net_exit(net);</span><br><span class="line">	rtnl_unlock();</span><br><span class="line">	<span class="keyword">goto</span> out;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述<code>ip_fib_net_init</code>首先初始化 <code>fib notifier</code>（类似通知链机制）；然后 分配 <code>fib_table_hash</code> 哈希桶内存（<strong>用于存放各个路由表，例如<code>main</code>，<code>local</code>，最后是<code>default</code></strong>），并通过 cache line 对齐避免伪共享；最后调用 <code>fib4_rules_init()</code> 初始化策略路由规则链（决定查路由的匹配顺序）。</p>
+<p><code>fib4_rules_init</code>设置了查找路由时候优先从哪个表中查找，同时注册了策略路由相关的一系列<code>ops</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">int</span> __net_init <span class="title function_">fib4_rules_init</span><span class="params">(<span class="keyword">struct</span> net *net)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_rules_ops</span> *<span class="title">ops</span>;</span></span><br><span class="line">	<span class="comment">//这里就是要创建一个操作函数集，然后下面把ops会传进去</span></span><br><span class="line">	ops = fib_rules_register(&amp;fib4_rules_ops_template, net);</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR(ops))</span><br><span class="line">		<span class="keyword">return</span> PTR_ERR(ops);</span><br><span class="line">	<span class="comment">//初始化查路由的顺序 local main default ，把规则挂到上面创建ops上</span></span><br><span class="line">	err = fib_default_rules_init(ops);</span><br><span class="line">	<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> fail;</span><br><span class="line">	<span class="comment">//注意这里是注册了ops</span></span><br><span class="line">	net-&gt;ipv4.rules_ops = ops;</span><br><span class="line">	net-&gt;ipv4.fib_has_custom_rules = <span class="literal">false</span>;</span><br><span class="line">	net-&gt;ipv4.fib_rules_require_fldissect = <span class="number">0</span>;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">fail:</span><br><span class="line">	<span class="comment">/* also cleans all rules already added */</span></span><br><span class="line">	fib_rules_unregister(ops);</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>fib4_rules_init</code>首先通过 <code>fib_rules_register</code> 注册一套ops**（注意这里的ops好像只给策略路由使用）**，然后调用 <code>fib_default_rules_init()</code> 按顺序添加默认查表规则（先是<code>local</code>，<code>main</code>，最后是<code>default</code>），并将这套规则挂到 <code>net-&gt;ipv4.rules_ops</code> 上供后续路由查找使用。</p>
+<p>上述<code>fib_rules_register</code>和<code>fib_default_rules_init</code>以及<code>ops</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> fib_rules_ops *</span><br><span class="line"><span class="title function_">fib_rules_register</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> fib_rules_ops *tmpl, <span class="keyword">struct</span> net *net)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_rules_ops</span> *<span class="title">ops</span>;</span></span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="comment">//拷贝模板，原因是每个网络命名空间有自己的</span></span><br><span class="line">	ops = kmemdup(tmpl, <span class="keyword">sizeof</span>(*ops), GFP_KERNEL);</span><br><span class="line">	<span class="keyword">if</span> (ops == <span class="literal">NULL</span>)</span><br><span class="line">		<span class="keyword">return</span> ERR_PTR(-ENOMEM);</span><br><span class="line"></span><br><span class="line">	INIT_LIST_HEAD(&amp;ops-&gt;rules_list);</span><br><span class="line">	ops-&gt;fro_net = net;</span><br><span class="line">	<span class="comment">//把 ops 加入 net的fib_rules </span></span><br><span class="line">	err = __fib_rules_register(ops);</span><br><span class="line">	<span class="keyword">if</span> (err) &#123;</span><br><span class="line">		kfree(ops);</span><br><span class="line">		ops = ERR_PTR(err);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> ops;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>fib_rules_register</code>先复制一份<code>ops</code>（<strong>因为原来是全局的，所以需要复制</strong>）为当前网络命名空间创建独立的 <code>fib_rules_ops</code> 实例，然后调用 <code>__fib_rules_register()</code> 将其注册到系统的策略路由框架中。</p>
+<p>上述<code>__fib_rules_register</code>的实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> __fib_rules_register(<span class="keyword">struct</span> fib_rules_ops *ops)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> err = -EEXIST;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_rules_ops</span> *<span class="title">o</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span>;</span></span><br><span class="line"></span><br><span class="line">	net = ops-&gt;fro_net;</span><br><span class="line">	</span><br><span class="line">	<span class="keyword">if</span> (ops-&gt;rule_size &lt; <span class="keyword">sizeof</span>(<span class="keyword">struct</span> fib_rule))</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line">	</span><br><span class="line">	<span class="keyword">if</span> (ops-&gt;match == <span class="literal">NULL</span> || ops-&gt;configure == <span class="literal">NULL</span> ||</span><br><span class="line">	    ops-&gt;compare == <span class="literal">NULL</span> || ops-&gt;fill == <span class="literal">NULL</span> ||</span><br><span class="line">	    ops-&gt;action == <span class="literal">NULL</span>)</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line">	</span><br><span class="line">	spin_lock(&amp;net-&gt;rules_mod_lock);</span><br><span class="line">	list_for_each_entry(o, &amp;net-&gt;rules_ops, <span class="built_in">list</span>)</span><br><span class="line">		<span class="keyword">if</span> (ops-&gt;family == o-&gt;family)</span><br><span class="line">			<span class="keyword">goto</span> errout;</span><br><span class="line">	<span class="comment">//把ops加入rules_ops</span></span><br><span class="line">	list_add_tail_rcu(&amp;ops-&gt;<span class="built_in">list</span>, &amp;net-&gt;rules_ops);</span><br><span class="line">	err = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">errout:</span><br><span class="line">	spin_unlock(&amp;net-&gt;rules_mod_lock);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line"></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述<code>fib_default_rules_init</code>的实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">fib_default_rules_init</span><span class="params">(<span class="keyword">struct</span> fib_rules_ops *ops)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="comment">//local main default 创建规则（查表顺序），然后挂到ops中</span></span><br><span class="line">	err = fib_default_rule_add(ops, <span class="number">0</span>, RT_TABLE_LOCAL, <span class="number">0</span>);</span><br><span class="line">	<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line">	err = fib_default_rule_add(ops, <span class="number">0x7FFE</span>, RT_TABLE_MAIN, <span class="number">0</span>);</span><br><span class="line">	<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line">	err = fib_default_rule_add(ops, <span class="number">0x7FFF</span>, RT_TABLE_DEFAULT, <span class="number">0</span>);</span><br><span class="line">	<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">int</span> <span class="title function_">fib_default_rule_add</span><span class="params">(<span class="keyword">struct</span> fib_rules_ops *ops,</span></span><br><span class="line"><span class="params">			 u32 pref, u32 table, u32 flags)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_rule</span> *<span class="title">r</span>;</span></span><br><span class="line"></span><br><span class="line">	r = kzalloc(ops-&gt;rule_size, GFP_KERNEL_ACCOUNT);</span><br><span class="line">	<span class="keyword">if</span> (r == <span class="literal">NULL</span>)</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line"></span><br><span class="line">	refcount_set(&amp;r-&gt;refcnt, <span class="number">1</span>);</span><br><span class="line">	r-&gt;action = FR_ACT_TO_TBL;</span><br><span class="line">	r-&gt;pref = pref;</span><br><span class="line">	r-&gt;table = table;</span><br><span class="line">	r-&gt;flags = flags;</span><br><span class="line">	r-&gt;proto = RTPROT_KERNEL;</span><br><span class="line">	r-&gt;fr_net = ops-&gt;fro_net;</span><br><span class="line">	r-&gt;uid_range = fib_kuid_range_unset;</span><br><span class="line"></span><br><span class="line">	r-&gt;suppress_prefixlen = <span class="number">-1</span>;</span><br><span class="line">	r-&gt;suppress_ifgroup = <span class="number">-1</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* The lock is not required here, the list in unreacheable</span></span><br><span class="line"><span class="comment">	 * at the moment this function is called */</span></span><br><span class="line">	list_add_tail(&amp;r-&gt;<span class="built_in">list</span>, &amp;ops-&gt;rules_list);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>fib_default_rules_init</code>创建三条按优先级排序的规则（local → main → default），并挂到 <code>rules_list</code> 上（其实就是<code>ops</code>上），用于决定内核查路由时依次查哪个路由表。</p>
+<p>上述注册ops 的集合如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//貌似都是策略路由用到 </span></span><br><span class="line"><span class="type">static</span> <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">fib_rules_ops</span> __<span class="title">net_initconst</span> <span class="title">fib4_rules_ops_template</span> =</span> &#123;</span><br><span class="line">	.family		= AF_INET,</span><br><span class="line">	.rule_size	= <span class="keyword">sizeof</span>(<span class="keyword">struct</span> fib4_rule),</span><br><span class="line">	.addr_size	= <span class="keyword">sizeof</span>(u32),</span><br><span class="line">	.action		= fib4_rule_action,		<span class="comment">//策略路由</span></span><br><span class="line">	.suppress	= fib4_rule_suppress,	<span class="comment">//策略路由</span></span><br><span class="line">	.match		= fib4_rule_match,    <span class="comment">//数据包和规则是否配，只有策略路由才调用！</span></span><br><span class="line">	.configure	= fib4_rule_configure,	<span class="comment">//把 netlink 传进来的 rule 参数解析 ip rule add</span></span><br><span class="line">	.delete		= fib4_rule_delete,		<span class="comment">//ip rule del</span></span><br><span class="line">	.compare	= fib4_rule_compare,</span><br><span class="line">	.fill		= fib4_rule_fill, 		 <span class="comment">//ip rule show</span></span><br><span class="line">	.nlmsg_payload	= fib4_rule_nlmsg_payload, <span class="comment">// 构造 netlink 消息时</span></span><br><span class="line">	.flush_cache	= fib4_rule_flush_cache,</span><br><span class="line">	.nlgroup	= RTNLGRP_IPV4_RULE,</span><br><span class="line">	.owner		= THIS_MODULE,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/IP/" rel="tag"># IP</a>
+              <a href="/tags/%E8%B7%AF%E7%94%B1%E5%AD%90%E7%B3%BB%E7%BB%9F/" rel="tag"># 路由子系统</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/03/22/%E8%B7%AF%E7%94%B1(%E4%BA%8C)/" rel="prev" title="路由相关数据结构">
+      <i class="fa fa-chevron-left"></i> 路由相关数据结构
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BC%95%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">引言</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">108</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">24</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
