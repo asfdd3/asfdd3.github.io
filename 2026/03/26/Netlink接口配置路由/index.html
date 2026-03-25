@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="Netlink 是内核提供的一种用户态与内核态之间的通信机制，专门用于网络相关配置。在路由管理场景中，用户空间工具（如 iproute2）会构造一条 Netlink 消息发送给内核，内核在接收到消息后，根据消息类型调用对应的处理函数，从而完成路由的添加、删除或查询。 路由表项的插入例如用户执行的 ip命令（例如ip route add 192.168.1.0&#x2F;24 via 2.2.2.2）会被 i">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Netlink接口配置路由">
+<meta property="og:url" content="http://example.com/2026/03/26/Netlink%E6%8E%A5%E5%8F%A3%E9%85%8D%E7%BD%AE%E8%B7%AF%E7%94%B1/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="Netlink 是内核提供的一种用户态与内核态之间的通信机制，专门用于网络相关配置。在路由管理场景中，用户空间工具（如 iproute2）会构造一条 Netlink 消息发送给内核，内核在接收到消息后，根据消息类型调用对应的处理函数，从而完成路由的添加、删除或查询。 路由表项的插入例如用户执行的 ip命令（例如ip route add 192.168.1.0&#x2F;24 via 2.2.2.2）会被 i">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-03-26T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-03-25T14:50:32.012Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="IP">
+<meta property="article:tag" content="路由子系统">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/03/26/Netlink%E6%8E%A5%E5%8F%A3%E9%85%8D%E7%BD%AE%E8%B7%AF%E7%94%B1/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>Netlink接口配置路由 | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/03/26/Netlink%E6%8E%A5%E5%8F%A3%E9%85%8D%E7%BD%AE%E8%B7%AF%E7%94%B1/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Netlink接口配置路由
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-03-26 22:00:00" itemprop="dateCreated datePublished" datetime="2026-03-26T22:00:00+08:00">2026-03-26</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-03-25 22:50:32" itemprop="dateModified" datetime="2026-03-25T22:50:32+08:00">2026-03-25</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/03/26/Netlink%E6%8E%A5%E5%8F%A3%E9%85%8D%E7%BD%AE%E8%B7%AF%E7%94%B1/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/03/26/Netlink%E6%8E%A5%E5%8F%A3%E9%85%8D%E7%BD%AE%E8%B7%AF%E7%94%B1/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p><code>Netlink</code> 是内核提供的一种用户态与内核态之间的通信机制，专门用于网络相关配置。在路由管理场景中，用户空间工具（如 iproute2）会构造一条 <code>Netlink</code> 消息发送给内核，内核在接收到消息后，根据消息类型调用对应的处理函数，从而完成路由的添加、删除或查询。</p>
+<h2 id="路由表项的插入"><a href="#路由表项的插入" class="headerlink" title="路由表项的插入"></a>路由表项的插入</h2><p><strong>例如用户执行的 <code>ip</code>命令（例如<code>ip route add 192.168.1.0/24 via 2.2.2.2</code>）会被 <code>iproute2</code> 转换为一条类型为 <code>RTM_NEWROUTE</code> 的 <code>Netlink</code> 消息</strong>，并通过 <code>Netlink</code> <code>socket</code> 发送给内核。内核在接收到该消息后，会进入路由子系统的处理流程，对应的入口函数为<code>inet_rtm_newroute</code>，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">inet_rtm_newroute</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> nlmsghdr *nlh,</span></span><br><span class="line"><span class="params">			     <span class="keyword">struct</span> netlink_ext_ack *extack)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> sock_net(skb-&gt;sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_config</span> <span class="title">cfg</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_table</span> *<span class="title">tb</span>;</span></span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="comment">//把netlink消息封装到 cfg中</span></span><br><span class="line">	err = rtm_to_fib_config(net, skb, nlh, &amp;cfg, extack);</span><br><span class="line">	<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> errout;</span><br><span class="line">	<span class="comment">//拿到路由表，没有就创建一个</span></span><br><span class="line">	tb = fib_new_table(net, cfg.fc_table);</span><br><span class="line">	<span class="keyword">if</span> (!tb) &#123;</span><br><span class="line">		err = -ENOBUFS;</span><br><span class="line">		<span class="keyword">goto</span> errout;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//插入这条路由</span></span><br><span class="line">	err = fib_table_insert(net, tb, &amp;cfg, extack);</span><br><span class="line">	<span class="keyword">if</span> (!err &amp;&amp; cfg.fc_type == RTN_LOCAL)</span><br><span class="line">		net-&gt;ipv4.fib_has_custom_local_routes = <span class="literal">true</span>;</span><br><span class="line">errout:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>inet_rtm_newroute</code> 是添加路由表项的入口函数，它首先调用<code>rtm_to_fib_config</code>将用户空间通过 <code>Netlink</code> 传入的消息解析为统一的 <code>fib_config</code> 结构，然后调用<code>fib_new_table</code>获取或创建对应的路由表，最后调用 <code>fib_table_insert</code> 将该路由插入到 FIB 中。</p>
+<p><code>rtm_to_fib_config</code>用于提取用户信息到<code>fib_config</code>中，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">rtm_to_fib_config</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">			     <span class="keyword">struct</span> nlmsghdr *nlh, <span class="keyword">struct</span> fib_config *cfg,</span></span><br><span class="line"><span class="params">			     <span class="keyword">struct</span> netlink_ext_ack *extack)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">bool</span> has_gw = <span class="literal">false</span>, has_via = <span class="literal">false</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">nlattr</span> *<span class="title">attr</span>;</span></span><br><span class="line">	<span class="type">int</span> err, remaining;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rtmsg</span> *<span class="title">rtm</span>;</span></span><br><span class="line">	<span class="comment">//校验消息格式</span></span><br><span class="line">	err = nlmsg_validate_deprecated(nlh, <span class="keyword">sizeof</span>(*rtm), RTA_MAX,</span><br><span class="line">					rtm_ipv4_policy, extack);</span><br><span class="line">	<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> errout;</span><br><span class="line">	<span class="comment">//清空 cfg</span></span><br><span class="line">	<span class="built_in">memset</span>(cfg, <span class="number">0</span>, <span class="keyword">sizeof</span>(*cfg));</span><br><span class="line">	<span class="comment">//取出 rtmsg 头</span></span><br><span class="line">	rtm = nlmsg_data(nlh);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!inet_validate_dscp(rtm-&gt;rtm_tos)) &#123;</span><br><span class="line">		NL_SET_ERR_MSG(extack,</span><br><span class="line">			       <span class="string">&quot;Invalid dsfield (tos): ECN bits must be 0&quot;</span>);</span><br><span class="line">		err = -EINVAL;</span><br><span class="line">		<span class="keyword">goto</span> errout;</span><br><span class="line">	&#125;</span><br><span class="line">	cfg-&gt;fc_dscp = inet_dsfield_to_dscp(rtm-&gt;rtm_tos);</span><br><span class="line">	<span class="comment">//从 rtmsg 头里拷贝基础字段</span></span><br><span class="line">	cfg-&gt;fc_dst_len = rtm-&gt;rtm_dst_len; <span class="comment">//目的前缀长度</span></span><br><span class="line">	cfg-&gt;fc_table = rtm-&gt;rtm_table;		<span class="comment">//插入哪张表</span></span><br><span class="line">	cfg-&gt;fc_protocol = rtm-&gt;rtm_protocol; <span class="comment">//这条路由是谁加的，比如 boot</span></span><br><span class="line">	cfg-&gt;fc_scope = rtm-&gt;rtm_scope;		<span class="comment">//路由作用范围</span></span><br><span class="line">	cfg-&gt;fc_type = rtm-&gt;rtm_type;		<span class="comment">//路由类型，比如 unicast/local</span></span><br><span class="line">	cfg-&gt;fc_flags = rtm-&gt;rtm_flags;</span><br><span class="line">	cfg-&gt;fc_nlflags = nlh-&gt;nlmsg_flags;	<span class="comment">//fc_nlflags：netlink 层面的标志</span></span><br><span class="line">	<span class="comment">//保存 netlink 来源信息</span></span><br><span class="line">	cfg-&gt;fc_nlinfo.portid = NETLINK_CB(skb).portid;</span><br><span class="line">	cfg-&gt;fc_nlinfo.nlh = nlh;</span><br><span class="line">	cfg-&gt;fc_nlinfo.nl_net = net;</span><br><span class="line">	<span class="comment">//检查 route type 合法性</span></span><br><span class="line">	<span class="keyword">if</span> (cfg-&gt;fc_type &gt; RTN_MAX) &#123;</span><br><span class="line">		NL_SET_ERR_MSG(extack, <span class="string">&quot;Invalid route type&quot;</span>);</span><br><span class="line">		err = -EINVAL;</span><br><span class="line">		<span class="keyword">goto</span> errout;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//解析netlink消息 ，这里相当于是可选的</span></span><br><span class="line">	nlmsg_for_each_attr(attr, nlh, <span class="keyword">sizeof</span>(<span class="keyword">struct</span> rtmsg), remaining) &#123;</span><br><span class="line">		<span class="keyword">switch</span> (nla_type(attr)) &#123;</span><br><span class="line">		<span class="keyword">case</span> RTA_DST: <span class="comment">//目标网络地址</span></span><br><span class="line">			cfg-&gt;fc_dst = nla_get_be32(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_OIF: <span class="comment">//输出接口 index。</span></span><br><span class="line">			cfg-&gt;fc_oif = nla_get_u32(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_GATEWAY: <span class="comment">//via 1.1.1.1</span></span><br><span class="line">			has_gw = <span class="literal">true</span>;</span><br><span class="line">			cfg-&gt;fc_gw4 = nla_get_be32(attr);</span><br><span class="line">			<span class="keyword">if</span> (cfg-&gt;fc_gw4)</span><br><span class="line">				cfg-&gt;fc_gw_family = AF_INET;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_VIA:</span><br><span class="line">			has_via = <span class="literal">true</span>;</span><br><span class="line">			err = fib_gw_from_via(cfg, attr, extack);</span><br><span class="line">			<span class="keyword">if</span> (err)</span><br><span class="line">				<span class="keyword">goto</span> errout;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_PRIORITY: <span class="comment">//metri</span></span><br><span class="line">			cfg-&gt;fc_priority = nla_get_u32(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_PREFSRC: <span class="comment">//建议源地址</span></span><br><span class="line">			cfg-&gt;fc_prefsrc = nla_get_be32(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_METRICS: <span class="comment">//mtu rtt等</span></span><br><span class="line">			cfg-&gt;fc_mx = nla_data(attr);</span><br><span class="line">			cfg-&gt;fc_mx_len = nla_len(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_MULTIPATH: <span class="comment">//路径路由</span></span><br><span class="line">			err = lwtunnel_valid_encap_type_attr(nla_data(attr),</span><br><span class="line">							     nla_len(attr),</span><br><span class="line">							     extack);</span><br><span class="line">			<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">				<span class="keyword">goto</span> errout;</span><br><span class="line">			cfg-&gt;fc_mp = nla_data(attr);</span><br><span class="line">			cfg-&gt;fc_mp_len = nla_len(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_FLOW: <span class="comment">//策略路由</span></span><br><span class="line">			cfg-&gt;fc_flow = nla_get_u32(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_TABLE: <span class="comment">//哪张表</span></span><br><span class="line">			cfg-&gt;fc_table = nla_get_u32(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_ENCAP: <span class="comment">//隧道相关</span></span><br><span class="line">			cfg-&gt;fc_encap = attr;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_ENCAP_TYPE:<span class="comment">//隧道类型</span></span><br><span class="line">			cfg-&gt;fc_encap_type = nla_get_u16(attr);</span><br><span class="line">			err = lwtunnel_valid_encap_type(cfg-&gt;fc_encap_type,</span><br><span class="line">							extack);</span><br><span class="line">			<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">				<span class="keyword">goto</span> errout;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_NH_ID:</span><br><span class="line">			cfg-&gt;fc_nh_id = nla_get_u32(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//合法性检查</span></span><br><span class="line">	<span class="keyword">if</span> (cfg-&gt;fc_nh_id) &#123;</span><br><span class="line">		<span class="keyword">if</span> (cfg-&gt;fc_oif || cfg-&gt;fc_gw_family ||</span><br><span class="line">		    cfg-&gt;fc_encap || cfg-&gt;fc_mp) &#123;</span><br><span class="line">			NL_SET_ERR_MSG(extack,</span><br><span class="line">				       <span class="string">&quot;Nexthop specification and nexthop id are mutually exclusive&quot;</span>);</span><br><span class="line">			<span class="keyword">return</span> -EINVAL;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (has_gw &amp;&amp; has_via) &#123;</span><br><span class="line">		NL_SET_ERR_MSG(extack,</span><br><span class="line">			       <span class="string">&quot;Nexthop configuration can not contain both GATEWAY and VIA&quot;</span>);</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//默认是main表</span></span><br><span class="line">	<span class="keyword">if</span> (!cfg-&gt;fc_table)</span><br><span class="line">		cfg-&gt;fc_table = RT_TABLE_MAIN;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">errout:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>rtm_to_fib_config</code> 的作用是把用户通过 <code>Netlink</code> 发的消息，解析成 <code>fib_config</code> 结构：首先校验 <code>Netlink</code> 消息格式是否合法，再从 <code>rtmsg</code> 头和各个<strong>路由属性中提取前缀、下一跳、出接口、metric、表号、封装信息等配置项，填充到 <code>cfg</code> 中</strong>，并在未指定表号时默认使用 <code>main</code> 表。</p>
+<p>回到<code>inet_rtm_newroute</code>中解提取用户配置的消息后，接下来调用<code>fib_new_table</code>拿到路由表，这里注意，通常在设备配置ip地址后，会通过通知链机制配置默认的路由，因此这里拿到的路由表应该是通过通知链事件创建的。</p>
+<p><code>fib_new_table</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> fib_table *<span class="title function_">fib_new_table</span><span class="params">(<span class="keyword">struct</span> net *net, u32 id)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_table</span> *<span class="title">tb</span>, *<span class="title">alias</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> h;</span><br><span class="line">	<span class="comment">//默认是main表</span></span><br><span class="line">	<span class="keyword">if</span> (id == <span class="number">0</span>)</span><br><span class="line">		id = RT_TABLE_MAIN;</span><br><span class="line">	tb = fib_get_table(net, id);</span><br><span class="line">	<span class="keyword">if</span> (tb)</span><br><span class="line">		<span class="keyword">return</span> tb;</span><br><span class="line">	<span class="comment">//这里需要注意这里是递归调用，只有传入 参数是local才有可能进入</span></span><br><span class="line">	<span class="comment">//其实这个是给设备配置id 通知链调用的时候这里就是local了 这里会创建一个main表</span></span><br><span class="line">	<span class="keyword">if</span> (id == RT_TABLE_LOCAL &amp;&amp; !net-&gt;ipv4.fib_has_custom_rules)</span><br><span class="line">		alias = fib_new_table(net, RT_TABLE_MAIN);</span><br><span class="line">	<span class="comment">//这里是真正的malloc一个路由表</span></span><br><span class="line">	tb = fib_trie_table(id, alias);</span><br><span class="line">	<span class="keyword">if</span> (!tb)</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">switch</span> (id) &#123;</span><br><span class="line">	<span class="keyword">case</span> RT_TABLE_MAIN:</span><br><span class="line">		<span class="comment">//关联上面申请的路由表</span></span><br><span class="line">		rcu_assign_pointer(net-&gt;ipv4.fib_main, tb);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> RT_TABLE_DEFAULT:</span><br><span class="line">		rcu_assign_pointer(net-&gt;ipv4.fib_default, tb);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//fib_table_hash 哈希表</span></span><br><span class="line">	h = id &amp; (FIB_TABLE_HASHSZ - <span class="number">1</span>);</span><br><span class="line">	hlist_add_head_rcu(&amp;tb-&gt;tb_hlist, &amp;net-&gt;ipv4.fib_table_hash[h]);</span><br><span class="line">	<span class="keyword">return</span> tb;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>fib_new_table</code> 首先根据 <code>table id</code> 查找是否已有对应表，若存在则直接返回；否则在需要时（如创建 local 表且未启用策略路由）会先递归确保 main 表存在，然后分配并初始化一张新的路由表，并将其挂到当前网络命名空间，最后再插入到全局的 <code>fib_table_hash</code> 哈希表中，方便后续快速查找。</p>
+<p>回到<code>inet_rtm_newroute</code>，拿到路由表后会调用<code>fib_table_insert</code>完成最终的入，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Caller must hold RTNL. */</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">fib_table_insert</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> fib_table *tb,</span></span><br><span class="line"><span class="params">		     <span class="keyword">struct</span> fib_config *cfg, <span class="keyword">struct</span> netlink_ext_ack *extack)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">trie</span> *<span class="title">t</span> =</span> (<span class="keyword">struct</span> trie *)tb-&gt;tb_data;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_alias</span> *<span class="title">fa</span>, *<span class="title">new_fa</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">key_vector</span> *<span class="title">l</span>, *<span class="title">tp</span>;</span></span><br><span class="line">	u16 nlflags = NLM_F_EXCL;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_info</span> *<span class="title">fi</span>;</span></span><br><span class="line">	u8 plen = cfg-&gt;fc_dst_len;</span><br><span class="line">	u8 slen = KEYLENGTH - plen;</span><br><span class="line">	<span class="type">dscp_t</span> dscp;</span><br><span class="line">	u32 key;</span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="comment">//检查前缀长度是否合法</span></span><br><span class="line">	key = ntohl(cfg-&gt;fc_dst);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!fib_valid_key_len(key, plen, extack))</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line"></span><br><span class="line">	pr_debug(<span class="string">&quot;Insert table=%u %08x/%d\n&quot;</span>, tb-&gt;tb_id, key, plen);</span><br><span class="line">	<span class="comment">//创建或者复用一个fib_info</span></span><br><span class="line">	fi = fib_create_info(cfg, extack);</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR(fi)) &#123;</span><br><span class="line">		err = PTR_ERR(fi);</span><br><span class="line">		<span class="keyword">goto</span> err;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//用户可以配置dscp</span></span><br><span class="line">	dscp = cfg-&gt;fc_dscp;</span><br><span class="line">	<span class="comment">//找叶子节点</span></span><br><span class="line">	l = fib_find_node(t, &amp;tp, key);</span><br><span class="line">	<span class="comment">//看看找没找到alisa(前缀长度等必须相同)</span></span><br><span class="line">	fa = l ? fib_find_alias(&amp;l-&gt;leaf, slen, dscp, fi-&gt;fib_priority,</span><br><span class="line">				tb-&gt;tb_id, <span class="literal">false</span>) : <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Now fa, if non-NULL, points to the first fib alias</span></span><br><span class="line"><span class="comment">	 * with the same keys [prefix,dscp,priority], if such key already</span></span><br><span class="line"><span class="comment">	 * exists or to the node before which we will insert new one.</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * If fa is NULL, we will need to allocate a new one and</span></span><br><span class="line"><span class="comment">	 * insert to the tail of the section matching the suffix length</span></span><br><span class="line"><span class="comment">	 * of the new alias.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//上面找到了路由条目如果dscp也是相同的话 同时metric也相同的话进入这个条件</span></span><br><span class="line">	<span class="keyword">if</span> (fa &amp;&amp; fa-&gt;fa_dscp == dscp &amp;&amp;</span><br><span class="line">	    fa-&gt;fa_info-&gt;fib_priority == fi-&gt;fib_priority) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">fib_alias</span> *<span class="title">fa_first</span>, *<span class="title">fa_match</span>;</span></span><br><span class="line"></span><br><span class="line">		err = -EEXIST;</span><br><span class="line">		<span class="keyword">if</span> (cfg-&gt;fc_nlflags &amp; NLM_F_EXCL)</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">		nlflags &amp;= ~NLM_F_EXCL;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* We have 2 goals:</span></span><br><span class="line"><span class="comment">		 * 1. Find exact match for type, scope, fib_info to avoid</span></span><br><span class="line"><span class="comment">		 * duplicate routes</span></span><br><span class="line"><span class="comment">		 * 2. Find next &#x27;fa&#x27; (or head), NLM_F_APPEND inserts before it</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		fa_match = <span class="literal">NULL</span>;</span><br><span class="line">		fa_first = fa;</span><br><span class="line">		<span class="comment">//继续向后遍历？看看有没有完全相同的路由， 或者确定插入位置</span></span><br><span class="line">		hlist_for_each_entry_from(fa, fa_list) &#123;</span><br><span class="line">			<span class="keyword">if</span> ((fa-&gt;fa_slen != slen) ||</span><br><span class="line">			    (fa-&gt;tb_id != tb-&gt;tb_id) ||</span><br><span class="line">			    (fa-&gt;fa_dscp != dscp))</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			<span class="keyword">if</span> (fa-&gt;fa_info-&gt;fib_priority != fi-&gt;fib_priority)</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			<span class="keyword">if</span> (fa-&gt;fa_type == cfg-&gt;fc_type &amp;&amp;</span><br><span class="line">			    fa-&gt;fa_info == fi) &#123;</span><br><span class="line">				fa_match = fa;</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//ip route replace ...</span></span><br><span class="line">		<span class="keyword">if</span> (cfg-&gt;fc_nlflags &amp; NLM_F_REPLACE) &#123;</span><br><span class="line">			<span class="class"><span class="keyword">struct</span> <span class="title">fib_info</span> *<span class="title">fi_drop</span>;</span></span><br><span class="line">			u8 state;</span><br><span class="line"></span><br><span class="line">			nlflags |= NLM_F_REPLACE;</span><br><span class="line">			fa = fa_first;<span class="comment">//进入外面分支的时候的fib_alis 就要替换这个</span></span><br><span class="line">			<span class="keyword">if</span> (fa_match) &#123;</span><br><span class="line">				<span class="comment">//如果已经找到“完全相同”的路由 就不用替换了</span></span><br><span class="line">				<span class="keyword">if</span> (fa == fa_match)</span><br><span class="line">					err = <span class="number">0</span>;</span><br><span class="line">				<span class="keyword">goto</span> out;</span><br><span class="line">			&#125;</span><br><span class="line">			err = -ENOBUFS;</span><br><span class="line">			<span class="comment">//分配一个新的 fib_alias</span></span><br><span class="line">			new_fa = kmem_cache_alloc(fn_alias_kmem, GFP_KERNEL);</span><br><span class="line">			<span class="keyword">if</span> (!new_fa)</span><br><span class="line">				<span class="keyword">goto</span> out;</span><br><span class="line">			<span class="comment">//记录旧 alias 挂的 fib_info</span></span><br><span class="line">			<span class="comment">//初始化新的 alias</span></span><br><span class="line">			fi_drop = fa-&gt;fa_info;</span><br><span class="line">			new_fa-&gt;fa_dscp = fa-&gt;fa_dscp;</span><br><span class="line">			new_fa-&gt;fa_info = fi;</span><br><span class="line">			new_fa-&gt;fa_type = cfg-&gt;fc_type;</span><br><span class="line">			state = fa-&gt;fa_state;</span><br><span class="line">			new_fa-&gt;fa_state = state &amp; ~FA_S_ACCESSED;</span><br><span class="line">			new_fa-&gt;fa_slen = fa-&gt;fa_slen;</span><br><span class="line">			new_fa-&gt;tb_id = tb-&gt;tb_id;</span><br><span class="line">			new_fa-&gt;fa_default = <span class="number">-1</span>;</span><br><span class="line">			new_fa-&gt;offload = <span class="number">0</span>;</span><br><span class="line">			new_fa-&gt;trap = <span class="number">0</span>;</span><br><span class="line">			new_fa-&gt;offload_failed = <span class="number">0</span>;</span><br><span class="line">			<span class="comment">//把旧 alias 原地替换成新 alias</span></span><br><span class="line">			hlist_replace_rcu(&amp;fa-&gt;fa_list, &amp;new_fa-&gt;fa_list);</span><br><span class="line">			<span class="comment">//插入的是否是第一个</span></span><br><span class="line">			<span class="keyword">if</span> (fib_find_alias(&amp;l-&gt;leaf, fa-&gt;fa_slen, <span class="number">0</span>, <span class="number">0</span>,</span><br><span class="line">					   tb-&gt;tb_id, <span class="literal">true</span>) == new_fa) &#123;</span><br><span class="line">				<span class="class"><span class="keyword">enum</span> <span class="title">fib_event_type</span> <span class="title">fib_event</span>;</span></span><br><span class="line"></span><br><span class="line">				fib_event = FIB_EVENT_ENTRY_REPLACE;</span><br><span class="line">				<span class="comment">//比如说给硬件offload用？，为啥是第一个呢</span></span><br><span class="line">				err = call_fib_entry_notifiers(net, fib_event,</span><br><span class="line">							       key, plen,</span><br><span class="line">							       new_fa, extack);</span><br><span class="line">				<span class="keyword">if</span> (err) &#123;</span><br><span class="line">					hlist_replace_rcu(&amp;new_fa-&gt;fa_list,</span><br><span class="line">							  &amp;fa-&gt;fa_list);</span><br><span class="line">					<span class="keyword">goto</span> out_free_new_fa;</span><br><span class="line">				&#125;</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			rtmsg_fib(RTM_NEWROUTE, htonl(key), new_fa, plen,</span><br><span class="line">				  tb-&gt;tb_id, &amp;cfg-&gt;fc_nlinfo, nlflags);</span><br><span class="line">			<span class="comment">//释放旧的资源</span></span><br><span class="line">			alias_free_mem_rcu(fa);</span><br><span class="line"></span><br><span class="line">			fib_release_info(fi_drop);</span><br><span class="line">			<span class="keyword">if</span> (state &amp; FA_S_ACCESSED)</span><br><span class="line">				rt_cache_flush(cfg-&gt;fc_nlinfo.nl_net);</span><br><span class="line"></span><br><span class="line">			<span class="keyword">goto</span> succeeded;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">/* Error if we find a perfect match which</span></span><br><span class="line"><span class="comment">		 * uses the same scope, type, and nexthop</span></span><br><span class="line"><span class="comment">		 * information.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//不是替换的情况是否是重复添加</span></span><br><span class="line">		<span class="keyword">if</span> (fa_match)</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line">		<span class="comment">//决定插入位置</span></span><br><span class="line">		<span class="keyword">if</span> (cfg-&gt;fc_nlflags &amp; NLM_F_APPEND)</span><br><span class="line">			nlflags |= NLM_F_APPEND;</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			fa = fa_first;</span><br><span class="line">	&#125;</span><br><span class="line">	err = -ENOENT;</span><br><span class="line">	<span class="keyword">if</span> (!(cfg-&gt;fc_nlflags &amp; NLM_F_CREATE))</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	<span class="comment">//准备创建一个新的alis</span></span><br><span class="line">	nlflags |= NLM_F_CREATE;</span><br><span class="line">	err = -ENOBUFS;</span><br><span class="line">	new_fa = kmem_cache_alloc(fn_alias_kmem, GFP_KERNEL);</span><br><span class="line">	<span class="keyword">if</span> (!new_fa)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	<span class="comment">//初始化新的alias</span></span><br><span class="line">	new_fa-&gt;fa_info = fi;</span><br><span class="line">	new_fa-&gt;fa_dscp = dscp;</span><br><span class="line">	new_fa-&gt;fa_type = cfg-&gt;fc_type;</span><br><span class="line">	new_fa-&gt;fa_state = <span class="number">0</span>;</span><br><span class="line">	new_fa-&gt;fa_slen = slen;</span><br><span class="line">	new_fa-&gt;tb_id = tb-&gt;tb_id;</span><br><span class="line">	new_fa-&gt;fa_default = <span class="number">-1</span>;</span><br><span class="line">	new_fa-&gt;offload = <span class="number">0</span>;</span><br><span class="line">	new_fa-&gt;trap = <span class="number">0</span>;</span><br><span class="line">	new_fa-&gt;offload_failed = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Insert new entry to the list. */</span></span><br><span class="line">	<span class="comment">//把新 alias 插入到 leaf 链表</span></span><br><span class="line">	err = fib_insert_alias(t, tp, l, new_fa, fa, key);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> out_free_new_fa;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* The alias was already inserted, so the node must exist. */</span></span><br><span class="line">	<span class="comment">//确认一下是否插入成功？</span></span><br><span class="line">	l = l ? l : fib_find_node(t, &amp;tp, key);</span><br><span class="line">	<span class="keyword">if</span> (WARN_ON_ONCE(!l)) &#123;</span><br><span class="line">		err = -ENOENT;</span><br><span class="line">		<span class="keyword">goto</span> out_free_new_fa;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//如果新项成了第一个，发 notifier</span></span><br><span class="line">	<span class="keyword">if</span> (fib_find_alias(&amp;l-&gt;leaf, new_fa-&gt;fa_slen, <span class="number">0</span>, <span class="number">0</span>, tb-&gt;tb_id, <span class="literal">true</span>) ==  <span class="comment">//注意这里的first参数</span></span><br><span class="line">	    new_fa) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">enum</span> <span class="title">fib_event_type</span> <span class="title">fib_event</span>;</span></span><br><span class="line"></span><br><span class="line">		fib_event = FIB_EVENT_ENTRY_REPLACE;</span><br><span class="line">		err = call_fib_entry_notifiers(net, fib_event, key, plen,</span><br><span class="line">					       new_fa, extack);</span><br><span class="line">		<span class="keyword">if</span> (err)</span><br><span class="line">			<span class="keyword">goto</span> out_remove_new_fa;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!plen)</span><br><span class="line">		tb-&gt;tb_num_default++;</span><br><span class="line">	<span class="comment">//默认路由计数、刷新缓存、发用户态消息</span></span><br><span class="line">	rt_cache_flush(cfg-&gt;fc_nlinfo.nl_net);</span><br><span class="line">	rtmsg_fib(RTM_NEWROUTE, htonl(key), new_fa, plen, new_fa-&gt;tb_id,</span><br><span class="line">		  &amp;cfg-&gt;fc_nlinfo, nlflags);</span><br><span class="line">succeeded:</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">out_remove_new_fa:</span><br><span class="line">	fib_remove_alias(t, tp, l, new_fa);</span><br><span class="line">out_free_new_fa:</span><br><span class="line">	kmem_cache_free(fn_alias_kmem, new_fa);</span><br><span class="line">out:</span><br><span class="line">	fib_release_info(fi);</span><br><span class="line">err:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>fib_table_insert()</code> 首先检查用户给的前缀是否合法，然后<strong>根据这条路由的下一跳、出接口、metric 等信息创建或复用一个 <code>fib_info</code>；<strong>接着到 <code>trie</code> 里找到这个前缀对应的位置，再在该 <code>leaf</code> 挂着的 <code>fib_alias</code> 链表中查找有没有相同的路由条目。如果发现已经有完全相同的路由</strong>，就按 netlink 标志决定是报重复、直接返回，还是做 replace</strong>，如果没有，就新建一个 <code>fib_alias</code> 挂到合适位置。插入成功后通知给用户空间。</p>
+<h2 id="路由表项的删除"><a href="#路由表项的删除" class="headerlink" title="路由表项的删除"></a>路由表项的删除</h2><p>与上述添加路由表项类似，当用户通过命令删除一条路由的时候同样也是封装成<code>Netlink</code>消息发送到内核，对应的处理函数为</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">inet_rtm_delroute</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> nlmsghdr *nlh,</span></span><br><span class="line"><span class="params">			     <span class="keyword">struct</span> netlink_ext_ack *extack)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> sock_net(skb-&gt;sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_config</span> <span class="title">cfg</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_table</span> *<span class="title">tb</span>;</span></span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="comment">//把用户命令构造成 fib_config</span></span><br><span class="line">	err = rtm_to_fib_config(net, skb, nlh, &amp;cfg, extack);</span><br><span class="line">	<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> errout;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (cfg.fc_nh_id &amp;&amp; !nexthop_find_by_id(net, cfg.fc_nh_id)) &#123;</span><br><span class="line">		NL_SET_ERR_MSG(extack, <span class="string">&quot;Nexthop id does not exist&quot;</span>);</span><br><span class="line">		err = -EINVAL;</span><br><span class="line">		<span class="keyword">goto</span> errout;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//找到对应的路由表</span></span><br><span class="line">	tb = fib_get_table(net, cfg.fc_table);</span><br><span class="line">	<span class="keyword">if</span> (!tb) &#123;</span><br><span class="line">		NL_SET_ERR_MSG(extack, <span class="string">&quot;FIB table does not exist&quot;</span>);</span><br><span class="line">		err = -ESRCH;</span><br><span class="line">		<span class="keyword">goto</span> errout;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	err = fib_table_delete(net, tb, &amp;cfg, extack);</span><br><span class="line">errout:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>inet_rtm_delroute</code> 先把用户通过 <code>ip route del</code> 发送的 <code>Netlink</code> 消息解析成统一的 <code>fib_config</code> 结构，接着找到对应的路由表，如果表存在就调用 <code>fib_table_delete()</code> 在 FIB 中删除匹配的路由项，其中<code>rtm_to_fib_config</code>与插入路由表提取信息相同，这里不在重复介绍，<code>fib_table_delete</code>为删除路由表项的核心函数，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Caller must hold RTNL. */</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">fib_table_delete</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> fib_table *tb,</span></span><br><span class="line"><span class="params">		     <span class="keyword">struct</span> fib_config *cfg, <span class="keyword">struct</span> netlink_ext_ack *extack)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">trie</span> *<span class="title">t</span> =</span> (<span class="keyword">struct</span> trie *) tb-&gt;tb_data;<span class="comment">//存的路由表项</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_alias</span> *<span class="title">fa</span>, *<span class="title">fa_to_delete</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">key_vector</span> *<span class="title">l</span>, *<span class="title">tp</span>;</span></span><br><span class="line">	u8 plen = cfg-&gt;fc_dst_len;</span><br><span class="line">	u8 slen = KEYLENGTH - plen;</span><br><span class="line">	<span class="type">dscp_t</span> dscp;</span><br><span class="line">	u32 key;</span><br><span class="line">	<span class="comment">//获取目的地址</span></span><br><span class="line">	key = ntohl(cfg-&gt;fc_dst);</span><br><span class="line">	<span class="comment">//检查前缀是否合法</span></span><br><span class="line">	<span class="keyword">if</span> (!fib_valid_key_len(key, plen, extack))</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line">	<span class="comment">//在 trie 里找叶子节点</span></span><br><span class="line">	l = fib_find_node(t, &amp;tp, key);</span><br><span class="line">	<span class="keyword">if</span> (!l)</span><br><span class="line">		<span class="keyword">return</span> -ESRCH;</span><br><span class="line"></span><br><span class="line">	dscp = cfg-&gt;fc_dscp;</span><br><span class="line">	<span class="comment">//先按前缀长度 DSCP 表 ID 找到 alias 起点</span></span><br><span class="line">	fa = fib_find_alias(&amp;l-&gt;leaf, slen, dscp, <span class="number">0</span>, tb-&gt;tb_id, <span class="literal">false</span>);</span><br><span class="line">	<span class="keyword">if</span> (!fa)</span><br><span class="line">		<span class="keyword">return</span> -ESRCH;</span><br><span class="line"></span><br><span class="line">	pr_debug(<span class="string">&quot;Deleting %08x/%d dsfield=0x%02x t=%p\n&quot;</span>, key, plen,</span><br><span class="line">		 inet_dscp_to_dsfield(dscp), t);</span><br><span class="line"></span><br><span class="line">	fa_to_delete = <span class="literal">NULL</span>;</span><br><span class="line">	<span class="comment">//开始在 alias 链表里精确查找</span></span><br><span class="line">	hlist_for_each_entry_from(fa, fa_list) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">fib_info</span> *<span class="title">fi</span> =</span> fa-&gt;fa_info;</span><br><span class="line">		<span class="comment">//只在同一组 alias里面遍历，一旦走出这组就停</span></span><br><span class="line">		<span class="keyword">if</span> ((fa-&gt;fa_slen != slen) ||</span><br><span class="line">		    (fa-&gt;tb_id != tb-&gt;tb_id) ||</span><br><span class="line">		    (fa-&gt;fa_dscp != dscp))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="comment">//检查这条 alias 是不是用户要删的那条</span></span><br><span class="line">		<span class="keyword">if</span> ((!cfg-&gt;fc_type || fa-&gt;fa_type == cfg-&gt;fc_type) &amp;&amp;</span><br><span class="line">		    (cfg-&gt;fc_scope == RT_SCOPE_NOWHERE ||</span><br><span class="line">		     fa-&gt;fa_info-&gt;fib_scope == cfg-&gt;fc_scope) &amp;&amp;</span><br><span class="line">		    (!cfg-&gt;fc_prefsrc ||</span><br><span class="line">		     fi-&gt;fib_prefsrc == cfg-&gt;fc_prefsrc) &amp;&amp;</span><br><span class="line">		    (!cfg-&gt;fc_protocol ||</span><br><span class="line">		     fi-&gt;fib_protocol == cfg-&gt;fc_protocol) &amp;&amp;</span><br><span class="line">		    fib_nh_match(net, cfg, fi, extack) == <span class="number">0</span> &amp;&amp;</span><br><span class="line">		    fib_metrics_match(cfg, fi)) &#123;</span><br><span class="line">			fa_to_delete = fa;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!fa_to_delete)</span><br><span class="line">		<span class="keyword">return</span> -ESRCH;</span><br><span class="line">	<span class="comment">//发内部通知和 netlink 通知</span></span><br><span class="line">	fib_notify_alias_delete(net, key, &amp;l-&gt;leaf, fa_to_delete, extack);</span><br><span class="line">	rtmsg_fib(RTM_DELROUTE, htonl(key), fa_to_delete, plen, tb-&gt;tb_id,</span><br><span class="line">		  &amp;cfg-&gt;fc_nlinfo, <span class="number">0</span>);</span><br><span class="line">	<span class="comment">//如果删除的是默认路由更新计数</span></span><br><span class="line">	<span class="keyword">if</span> (!plen)</span><br><span class="line">		tb-&gt;tb_num_default--;</span><br><span class="line">	<span class="comment">///把 alias 从 trie 中移除</span></span><br><span class="line">	fib_remove_alias(t, tp, l, fa_to_delete);</span><br><span class="line">	<span class="comment">//如果这条路由曾经被访问过，就刷新缓存</span></span><br><span class="line">	<span class="keyword">if</span> (fa_to_delete-&gt;fa_state &amp; FA_S_ACCESSED)</span><br><span class="line">		rt_cache_flush(cfg-&gt;fc_nlinfo.nl_net);</span><br><span class="line">	<span class="comment">//释放 fib_info 引用</span></span><br><span class="line">	fib_release_info(fa_to_delete-&gt;fa_info);</span><br><span class="line">	alias_free_mem_rcu(fa_to_delete);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>fib_table_delete</code>先根据用户给的前缀在 <code>trie</code> 中定位到对应的 <code>leaf</code><strong>，再找到相同前缀长度、DSCP 和表 ID 的候选 alias 分组</strong>，并在该分组内逐条比对 type、scope、协议、源地址、下一跳和 metric 等条件，精确找到要删除的那一条路由；找到后先发送内核通知和 <code>netlink</code> 通知，然后将该 <code>alias</code> 从 <code>trie</code>&#x2F;链表中移除，必要时更新默认路由计数和刷新缓存，最后释放其关联的 <code>fib_info</code>。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/IP/" rel="tag"># IP</a>
+              <a href="/tags/%E8%B7%AF%E7%94%B1%E5%AD%90%E7%B3%BB%E7%BB%9F/" rel="tag"># 路由子系统</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/03/24/%E8%B7%AF%E7%94%B1(%E4%BA%8C)/" rel="prev" title="路由相关数据结构">
+      <i class="fa fa-chevron-left"></i> 路由相关数据结构
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%B7%AF%E7%94%B1%E8%A1%A8%E9%A1%B9%E7%9A%84%E6%8F%92%E5%85%A5"><span class="nav-number">1.</span> <span class="nav-text">路由表项的插入</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%B7%AF%E7%94%B1%E8%A1%A8%E9%A1%B9%E7%9A%84%E5%88%A0%E9%99%A4"><span class="nav-number">2.</span> <span class="nav-text">路由表项的删除</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">109</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">24</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

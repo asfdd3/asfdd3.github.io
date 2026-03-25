@@ -193,6 +193,111 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/03/26/Netlink%E6%8E%A5%E5%8F%A3%E9%85%8D%E7%BD%AE%E8%B7%AF%E7%94%B1/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2026/03/26/Netlink%E6%8E%A5%E5%8F%A3%E9%85%8D%E7%BD%AE%E8%B7%AF%E7%94%B1/" class="post-title-link" itemprop="url">Netlink接口配置路由</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-03-26 22:00:00" itemprop="dateCreated datePublished" datetime="2026-03-26T22:00:00+08:00">2026-03-26</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-03-25 22:50:32" itemprop="dateModified" datetime="2026-03-25T22:50:32+08:00">2026-03-25</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/03/26/Netlink%E6%8E%A5%E5%8F%A3%E9%85%8D%E7%BD%AE%E8%B7%AF%E7%94%B1/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/03/26/Netlink%E6%8E%A5%E5%8F%A3%E9%85%8D%E7%BD%AE%E8%B7%AF%E7%94%B1/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p><code>Netlink</code> 是内核提供的一种用户态与内核态之间的通信机制，专门用于网络相关配置。在路由管理场景中，用户空间工具（如 iproute2）会构造一条 <code>Netlink</code> 消息发送给内核，内核在接收到消息后，根据消息类型调用对应的处理函数，从而完成路由的添加、删除或查询。</p>
+<h2 id="路由表项的插入"><a href="#路由表项的插入" class="headerlink" title="路由表项的插入"></a>路由表项的插入</h2><p><strong>例如用户执行的 <code>ip</code>命令（例如<code>ip route add 192.168.1.0/24 via 2.2.2.2</code>）会被 <code>iproute2</code> 转换为一条类型为 <code>RTM_NEWROUTE</code> 的 <code>Netlink</code> 消息</strong>，并通过 <code>Netlink</code> <code>socket</code> 发送给内核。内核在接收到该消息后，会进入路由子系统的处理流程，对应的入口函数为<code>inet_rtm_newroute</code>，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">inet_rtm_newroute</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> nlmsghdr *nlh,</span></span><br><span class="line"><span class="params">			     <span class="keyword">struct</span> netlink_ext_ack *extack)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> sock_net(skb-&gt;sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_config</span> <span class="title">cfg</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_table</span> *<span class="title">tb</span>;</span></span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="comment">//把netlink消息封装到 cfg中</span></span><br><span class="line">	err = rtm_to_fib_config(net, skb, nlh, &amp;cfg, extack);</span><br><span class="line">	<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> errout;</span><br><span class="line">	<span class="comment">//拿到路由表，没有就创建一个</span></span><br><span class="line">	tb = fib_new_table(net, cfg.fc_table);</span><br><span class="line">	<span class="keyword">if</span> (!tb) &#123;</span><br><span class="line">		err = -ENOBUFS;</span><br><span class="line">		<span class="keyword">goto</span> errout;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//插入这条路由</span></span><br><span class="line">	err = fib_table_insert(net, tb, &amp;cfg, extack);</span><br><span class="line">	<span class="keyword">if</span> (!err &amp;&amp; cfg.fc_type == RTN_LOCAL)</span><br><span class="line">		net-&gt;ipv4.fib_has_custom_local_routes = <span class="literal">true</span>;</span><br><span class="line">errout:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>inet_rtm_newroute</code> 是添加路由表项的入口函数，它首先调用<code>rtm_to_fib_config</code>将用户空间通过 <code>Netlink</code> 传入的消息解析为统一的 <code>fib_config</code> 结构，然后调用<code>fib_new_table</code>获取或创建对应的路由表，最后调用 <code>fib_table_insert</code> 将该路由插入到 FIB 中。</p>
+<p><code>rtm_to_fib_config</code>用于提取用户信息到<code>fib_config</code>中，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">rtm_to_fib_config</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">			     <span class="keyword">struct</span> nlmsghdr *nlh, <span class="keyword">struct</span> fib_config *cfg,</span></span><br><span class="line"><span class="params">			     <span class="keyword">struct</span> netlink_ext_ack *extack)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">bool</span> has_gw = <span class="literal">false</span>, has_via = <span class="literal">false</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">nlattr</span> *<span class="title">attr</span>;</span></span><br><span class="line">	<span class="type">int</span> err, remaining;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rtmsg</span> *<span class="title">rtm</span>;</span></span><br><span class="line">	<span class="comment">//校验消息格式</span></span><br><span class="line">	err = nlmsg_validate_deprecated(nlh, <span class="keyword">sizeof</span>(*rtm), RTA_MAX,</span><br><span class="line">					rtm_ipv4_policy, extack);</span><br><span class="line">	<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> errout;</span><br><span class="line">	<span class="comment">//清空 cfg</span></span><br><span class="line">	<span class="built_in">memset</span>(cfg, <span class="number">0</span>, <span class="keyword">sizeof</span>(*cfg));</span><br><span class="line">	<span class="comment">//取出 rtmsg 头</span></span><br><span class="line">	rtm = nlmsg_data(nlh);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!inet_validate_dscp(rtm-&gt;rtm_tos)) &#123;</span><br><span class="line">		NL_SET_ERR_MSG(extack,</span><br><span class="line">			       <span class="string">&quot;Invalid dsfield (tos): ECN bits must be 0&quot;</span>);</span><br><span class="line">		err = -EINVAL;</span><br><span class="line">		<span class="keyword">goto</span> errout;</span><br><span class="line">	&#125;</span><br><span class="line">	cfg-&gt;fc_dscp = inet_dsfield_to_dscp(rtm-&gt;rtm_tos);</span><br><span class="line">	<span class="comment">//从 rtmsg 头里拷贝基础字段</span></span><br><span class="line">	cfg-&gt;fc_dst_len = rtm-&gt;rtm_dst_len; <span class="comment">//目的前缀长度</span></span><br><span class="line">	cfg-&gt;fc_table = rtm-&gt;rtm_table;		<span class="comment">//插入哪张表</span></span><br><span class="line">	cfg-&gt;fc_protocol = rtm-&gt;rtm_protocol; <span class="comment">//这条路由是谁加的，比如 boot</span></span><br><span class="line">	cfg-&gt;fc_scope = rtm-&gt;rtm_scope;		<span class="comment">//路由作用范围</span></span><br><span class="line">	cfg-&gt;fc_type = rtm-&gt;rtm_type;		<span class="comment">//路由类型，比如 unicast/local</span></span><br><span class="line">	cfg-&gt;fc_flags = rtm-&gt;rtm_flags;</span><br><span class="line">	cfg-&gt;fc_nlflags = nlh-&gt;nlmsg_flags;	<span class="comment">//fc_nlflags：netlink 层面的标志</span></span><br><span class="line">	<span class="comment">//保存 netlink 来源信息</span></span><br><span class="line">	cfg-&gt;fc_nlinfo.portid = NETLINK_CB(skb).portid;</span><br><span class="line">	cfg-&gt;fc_nlinfo.nlh = nlh;</span><br><span class="line">	cfg-&gt;fc_nlinfo.nl_net = net;</span><br><span class="line">	<span class="comment">//检查 route type 合法性</span></span><br><span class="line">	<span class="keyword">if</span> (cfg-&gt;fc_type &gt; RTN_MAX) &#123;</span><br><span class="line">		NL_SET_ERR_MSG(extack, <span class="string">&quot;Invalid route type&quot;</span>);</span><br><span class="line">		err = -EINVAL;</span><br><span class="line">		<span class="keyword">goto</span> errout;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//解析netlink消息 ，这里相当于是可选的</span></span><br><span class="line">	nlmsg_for_each_attr(attr, nlh, <span class="keyword">sizeof</span>(<span class="keyword">struct</span> rtmsg), remaining) &#123;</span><br><span class="line">		<span class="keyword">switch</span> (nla_type(attr)) &#123;</span><br><span class="line">		<span class="keyword">case</span> RTA_DST: <span class="comment">//目标网络地址</span></span><br><span class="line">			cfg-&gt;fc_dst = nla_get_be32(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_OIF: <span class="comment">//输出接口 index。</span></span><br><span class="line">			cfg-&gt;fc_oif = nla_get_u32(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_GATEWAY: <span class="comment">//via 1.1.1.1</span></span><br><span class="line">			has_gw = <span class="literal">true</span>;</span><br><span class="line">			cfg-&gt;fc_gw4 = nla_get_be32(attr);</span><br><span class="line">			<span class="keyword">if</span> (cfg-&gt;fc_gw4)</span><br><span class="line">				cfg-&gt;fc_gw_family = AF_INET;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_VIA:</span><br><span class="line">			has_via = <span class="literal">true</span>;</span><br><span class="line">			err = fib_gw_from_via(cfg, attr, extack);</span><br><span class="line">			<span class="keyword">if</span> (err)</span><br><span class="line">				<span class="keyword">goto</span> errout;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_PRIORITY: <span class="comment">//metri</span></span><br><span class="line">			cfg-&gt;fc_priority = nla_get_u32(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_PREFSRC: <span class="comment">//建议源地址</span></span><br><span class="line">			cfg-&gt;fc_prefsrc = nla_get_be32(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_METRICS: <span class="comment">//mtu rtt等</span></span><br><span class="line">			cfg-&gt;fc_mx = nla_data(attr);</span><br><span class="line">			cfg-&gt;fc_mx_len = nla_len(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_MULTIPATH: <span class="comment">//路径路由</span></span><br><span class="line">			err = lwtunnel_valid_encap_type_attr(nla_data(attr),</span><br><span class="line">							     nla_len(attr),</span><br><span class="line">							     extack);</span><br><span class="line">			<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">				<span class="keyword">goto</span> errout;</span><br><span class="line">			cfg-&gt;fc_mp = nla_data(attr);</span><br><span class="line">			cfg-&gt;fc_mp_len = nla_len(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_FLOW: <span class="comment">//策略路由</span></span><br><span class="line">			cfg-&gt;fc_flow = nla_get_u32(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_TABLE: <span class="comment">//哪张表</span></span><br><span class="line">			cfg-&gt;fc_table = nla_get_u32(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_ENCAP: <span class="comment">//隧道相关</span></span><br><span class="line">			cfg-&gt;fc_encap = attr;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_ENCAP_TYPE:<span class="comment">//隧道类型</span></span><br><span class="line">			cfg-&gt;fc_encap_type = nla_get_u16(attr);</span><br><span class="line">			err = lwtunnel_valid_encap_type(cfg-&gt;fc_encap_type,</span><br><span class="line">							extack);</span><br><span class="line">			<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">				<span class="keyword">goto</span> errout;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RTA_NH_ID:</span><br><span class="line">			cfg-&gt;fc_nh_id = nla_get_u32(attr);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//合法性检查</span></span><br><span class="line">	<span class="keyword">if</span> (cfg-&gt;fc_nh_id) &#123;</span><br><span class="line">		<span class="keyword">if</span> (cfg-&gt;fc_oif || cfg-&gt;fc_gw_family ||</span><br><span class="line">		    cfg-&gt;fc_encap || cfg-&gt;fc_mp) &#123;</span><br><span class="line">			NL_SET_ERR_MSG(extack,</span><br><span class="line">				       <span class="string">&quot;Nexthop specification and nexthop id are mutually exclusive&quot;</span>);</span><br><span class="line">			<span class="keyword">return</span> -EINVAL;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (has_gw &amp;&amp; has_via) &#123;</span><br><span class="line">		NL_SET_ERR_MSG(extack,</span><br><span class="line">			       <span class="string">&quot;Nexthop configuration can not contain both GATEWAY and VIA&quot;</span>);</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//默认是main表</span></span><br><span class="line">	<span class="keyword">if</span> (!cfg-&gt;fc_table)</span><br><span class="line">		cfg-&gt;fc_table = RT_TABLE_MAIN;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">errout:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>rtm_to_fib_config</code> 的作用是把用户通过 <code>Netlink</code> 发的消息，解析成 <code>fib_config</code> 结构：首先校验 <code>Netlink</code> 消息格式是否合法，再从 <code>rtmsg</code> 头和各个<strong>路由属性中提取前缀、下一跳、出接口、metric、表号、封装信息等配置项，填充到 <code>cfg</code> 中</strong>，并在未指定表号时默认使用 <code>main</code> 表。</p>
+<p>回到<code>inet_rtm_newroute</code>中解提取用户配置的消息后，接下来调用<code>fib_new_table</code>拿到路由表，这里注意，通常在设备配置ip地址后，会通过通知链机制配置默认的路由，因此这里拿到的路由表应该是通过通知链事件创建的。</p>
+<p><code>fib_new_table</code>具体实现如下所示：</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2026/03/26/Netlink%E6%8E%A5%E5%8F%A3%E9%85%8D%E7%BD%AE%E8%B7%AF%E7%94%B1/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2026/03/24/%E8%B7%AF%E7%94%B1(%E4%BA%8C)/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1112,105 +1217,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2026/03/01/IP%E5%B1%82%E7%9A%84%E8%BE%93%E5%85%A5%E8%BE%93%E5%87%BA%EF%BC%88%E4%BA%8C%EF%BC%89/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2026/03/01/IP%E5%B1%82%E7%9A%84%E8%BE%93%E5%85%A5%E8%BE%93%E5%87%BA%EF%BC%88%E4%BA%8C%EF%BC%89/" class="post-title-link" itemprop="url">IP报文的转发与输出</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2026-03-01 22:00:00 / 修改时间：23:31:14" itemprop="dateCreated datePublished" datetime="2026-03-01T22:00:00+08:00">2026-03-01</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2026/03/01/IP%E5%B1%82%E7%9A%84%E8%BE%93%E5%85%A5%E8%BE%93%E5%87%BA%EF%BC%88%E4%BA%8C%EF%BC%89/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2026/03/01/IP%E5%B1%82%E7%9A%84%E8%BE%93%E5%85%A5%E8%BE%93%E5%87%BA%EF%BC%88%E4%BA%8C%EF%BC%89/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="IP数据包的转发"><a href="#IP数据包的转发" class="headerlink" title="IP数据包的转发"></a><code>IP</code>数据包的转发</h2><p><code>IP</code>数据包的转发由<code>ip_forward</code>完成，该函数是在<code>ip_rcv_finish</code>查找路由后确定的，是<strong>当报文不是本机而是需要转发时</strong> 的核心函数，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">ip_forward</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	u32 mtu;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">iphdr</span> *<span class="title">iph</span>;</span>	<span class="comment">/* Our header */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rtable</span> *<span class="title">rt</span>;</span>	<span class="comment">/* Route we use */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_options</span> *<span class="title">opt</span>	=</span> &amp;(IPCB(skb)-&gt;opt);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span>;</span></span><br><span class="line">	SKB_DR(reason);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* that should never happen */</span></span><br><span class="line">	<span class="comment">//只处理是发给本机的帧</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;pkt_type != PACKET_HOST)</span><br><span class="line">		<span class="keyword">goto</span> drop;</span><br><span class="line">	<span class="comment">//不应该找到本机的sk</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(skb-&gt;sk))</span><br><span class="line">		<span class="keyword">goto</span> drop;</span><br><span class="line">	<span class="comment">//不应该有lro</span></span><br><span class="line">	<span class="keyword">if</span> (skb_warn_if_lro(skb))</span><br><span class="line">		<span class="keyword">goto</span> drop;</span><br><span class="line">	<span class="comment">//ipsec</span></span><br><span class="line">	<span class="keyword">if</span> (!xfrm4_policy_check(<span class="literal">NULL</span>, XFRM_POLICY_FWD, skb)) &#123;</span><br><span class="line">		SKB_DR_SET(reason, XFRM_POLICY);</span><br><span class="line">		<span class="keyword">goto</span> drop;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//Router Alert 选项 用户可以通过setsockopt设置</span></span><br><span class="line">	<span class="keyword">if</span> (IPCB(skb)-&gt;opt.router_alert &amp;&amp; ip_call_ra_chain(skb))</span><br><span class="line">		<span class="keyword">return</span> NET_RX_SUCCESS;</span><br><span class="line">	<span class="comment">//准备修改ttl，设置校验和为未计算</span></span><br><span class="line">	skb_forward_csum(skb);</span><br><span class="line">	net = dev_net(skb-&gt;dev);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	According to the RFC, we must first decrease the TTL field. If</span></span><br><span class="line"><span class="comment">	 *	that reaches zero, we must reply an ICMP control message telling</span></span><br><span class="line"><span class="comment">	 *	that the packet&#x27;s lifetime expired.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (ip_hdr(skb)-&gt;ttl &lt;= <span class="number">1</span>)</span><br><span class="line">		<span class="keyword">goto</span> too_many_hops;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!xfrm4_route_forward(skb)) &#123;</span><br><span class="line">		SKB_DR_SET(reason, XFRM_POLICY);</span><br><span class="line">		<span class="keyword">goto</span> drop;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	rt = skb_rtable(skb);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (opt-&gt;is_strictroute &amp;&amp; rt-&gt;rt_uses_gateway)</span><br><span class="line">		<span class="keyword">goto</span> sr_failed;</span><br><span class="line">	<span class="comment">//标记转发</span></span><br><span class="line">	IPCB(skb)-&gt;flags |= IPSKB_FORWARDED;</span><br><span class="line">	<span class="comment">//获取mtu，注意这里获取了mtu</span></span><br><span class="line">	mtu = ip_dst_mtu_maybe_forward(&amp;rt-&gt;dst, <span class="literal">true</span>);</span><br><span class="line">	<span class="comment">//超过了mtu，还不让分片</span></span><br><span class="line">	<span class="keyword">if</span> (ip_exceeds_mtu(skb, mtu)) &#123;</span><br><span class="line">		IP_INC_STATS(net, IPSTATS_MIB_FRAGFAILS);</span><br><span class="line">		icmp_send(skb, ICMP_DEST_UNREACH, ICMP_FRAG_NEEDED,</span><br><span class="line">			  htonl(mtu));</span><br><span class="line">		SKB_DR_SET(reason, PKT_TOO_BIG);</span><br><span class="line">		<span class="keyword">goto</span> drop;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* We are about to mangle packet. Copy it! */</span></span><br><span class="line">	<span class="comment">//可以修改数据包的接口</span></span><br><span class="line">	<span class="keyword">if</span> (skb_cow(skb, LL_RESERVED_SPACE(rt-&gt;dst.dev)+rt-&gt;dst.header_len))</span><br><span class="line">		<span class="keyword">goto</span> drop;</span><br><span class="line">	iph = ip_hdr(skb);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Decrease ttl after skb cow done */</span></span><br><span class="line">	<span class="comment">//减去ttl</span></span><br><span class="line">	ip_decrease_ttl(iph);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	We now generate an ICMP HOST REDIRECT giving the route</span></span><br><span class="line"><span class="comment">	 *	we calculated.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//如果没有源路由选项也不是ipsec相关，就回一个icmp重定向</span></span><br><span class="line">	<span class="keyword">if</span> (IPCB(skb)-&gt;flags &amp; IPSKB_DOREDIRECT &amp;&amp; !opt-&gt;srr &amp;&amp;</span><br><span class="line">	    !skb_sec_path(skb))</span><br><span class="line">		ip_rt_send_redirect(skb);</span><br><span class="line">	<span class="comment">//根据tos映射skb 的优先级</span></span><br><span class="line">	<span class="keyword">if</span> (READ_ONCE(net-&gt;ipv4.sysctl_ip_fwd_update_priority))</span><br><span class="line">		skb-&gt;priority = rt_tos2priority(iph-&gt;tos);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> NF_HOOK(NFPROTO_IPV4, NF_INET_FORWARD,</span><br><span class="line">		       net, <span class="literal">NULL</span>, skb, skb-&gt;dev, rt-&gt;dst.dev,</span><br><span class="line">		       ip_forward_finish);</span><br><span class="line"></span><br><span class="line">sr_failed:</span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	Strict routing permits no gatewaying</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	 icmp_send(skb, ICMP_DEST_UNREACH, ICMP_SR_FAILED, <span class="number">0</span>);</span><br><span class="line">	 <span class="keyword">goto</span> drop;</span><br><span class="line"></span><br><span class="line">too_many_hops:</span><br><span class="line">	<span class="comment">/* Tell the sender its packet died... */</span></span><br><span class="line">	__IP_INC_STATS(net, IPSTATS_MIB_INHDRERRORS);</span><br><span class="line">	icmp_send(skb, ICMP_TIME_EXCEEDED, ICMP_EXC_TTL, <span class="number">0</span>);</span><br><span class="line">	SKB_DR_SET(reason, IP_INHDR);</span><br><span class="line">drop:</span><br><span class="line">	kfree_skb_reason(skb, reason);</span><br><span class="line">	<span class="keyword">return</span> NET_RX_DROP;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<p><code>ip_forward</code>首先判断数据包是否需要由本机转发，之后判断<code>TTL</code>是否合法，不合法会回复 ICMP 报文。如果超过路径的 MTU 且不能分片，则也会回复ICMP报文。如果没有源路由选项则还可能回 ICMP 重定向，或者根据 TOS 设置包的优先级（<code>tc</code>会用到），接着交给 <code>netfilter</code> 的 FORWARD 挂载点。如果没有被丢弃，则会继续向下调用<code>ip_forward_finish</code>，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">ip_forward_finish</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_options</span> *<span class="title">opt</span>	=</span> &amp;(IPCB(skb)-&gt;opt);</span><br><span class="line">	<span class="comment">//统计转发的包数</span></span><br><span class="line">	__IP_INC_STATS(net, IPSTATS_MIB_OUTFORWDATAGRAMS);</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_NET_SWITCHDEV</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;offload_l3_fwd_mark) &#123;</span><br><span class="line">		consume_skb(skb);</span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="comment">//处理ip选项</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(opt-&gt;optlen))</span><br><span class="line">		ip_forward_options(skb);</span><br><span class="line"></span><br><span class="line">	skb_clear_tstamp(skb);</span><br><span class="line">	<span class="comment">//调用路由dst的output，把包发出去</span></span><br><span class="line">	<span class="keyword">return</span> dst_output(net, sk, skb);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<h2 id="IP数据包的输出"><a href="#IP数据包的输出" class="headerlink" title="IP数据包的输出"></a><code>IP</code>数据包的输出</h2><p>无论是转发的数据包还是从本地输出的数据包，经过路由之后都要进一步输出，而输出的接口就是<code>ip_output</code>，该函数和上述转发类似，也是通过路由查找的结果关联的。<code>ip_output</code>具体实现如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">ip_output</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span> =</span> skb_dst(skb)-&gt;dev, *indev = skb-&gt;dev;</span><br><span class="line"></span><br><span class="line">	skb-&gt;dev = dev;</span><br><span class="line">	skb-&gt;protocol = htons(ETH_P_IP);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> NF_HOOK_COND(NFPROTO_IPV4, NF_INET_POST_ROUTING,</span><br><span class="line">			    net, sk, skb, indev, dev,</span><br><span class="line">			    ip_finish_output,</span><br><span class="line">			    !(IPCB(skb)-&gt;flags &amp; IPSKB_REROUTED));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p><code>ip_output</code>主要工作就是设置<code>skb</code>的<code>netdev</code>和对应的<code>protocol</code>，为后续链路层发送数据包做准备，之后调用<code>netfilter</code>的<code>POST_ROUTING</code>钩子点，如果正常放行数据包则会进一步调用<code>ip_finish_output</code>。</p>
-<p><code>ip_finish_output</code>具体代码如下所示:</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2026/03/01/IP%E5%B1%82%E7%9A%84%E8%BE%93%E5%85%A5%E8%BE%93%E5%87%BA%EF%BC%88%E4%BA%8C%EF%BC%89/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1280,7 +1286,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">108</span>
+          <span class="site-state-item-count">109</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
