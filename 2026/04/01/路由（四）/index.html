@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="引言在 内核网络协议栈中，接收方向的路由查找是数据包处理流程中的关键步骤之一。每一个进入协议栈的 IP 数据包，都需要通过通过路由查找来决定数据是上送本地还是转发。在这个过程中，内核会基于目的 IP，在内部的路由结构中进行匹配，选出最合适的一条路径，并将结果绑定到数据包上。后续无论是本地处理还是转发，都会依赖这个查找结果。 ip_route_input_rcu内核查路由的过程发生在PRE_ROUT">
+<meta property="og:type" content="article">
+<meta property="og:title" content="接收方向路由查找">
+<meta property="og:url" content="http://example.com/2026/04/01/%E8%B7%AF%E7%94%B1%EF%BC%88%E5%9B%9B%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="引言在 内核网络协议栈中，接收方向的路由查找是数据包处理流程中的关键步骤之一。每一个进入协议栈的 IP 数据包，都需要通过通过路由查找来决定数据是上送本地还是转发。在这个过程中，内核会基于目的 IP，在内部的路由结构中进行匹配，选出最合适的一条路径，并将结果绑定到数据包上。后续无论是本地处理还是转发，都会依赖这个查找结果。 ip_route_input_rcu内核查路由的过程发生在PRE_ROUT">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-04-01T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-04-01T15:02:50.684Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="IP">
+<meta property="article:tag" content="路由子系统">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/04/01/%E8%B7%AF%E7%94%B1%EF%BC%88%E5%9B%9B%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>接收方向路由查找 | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/01/%E8%B7%AF%E7%94%B1%EF%BC%88%E5%9B%9B%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          接收方向路由查找
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-04-01 22:00:00 / 修改时间：23:02:50" itemprop="dateCreated datePublished" datetime="2026-04-01T22:00:00+08:00">2026-04-01</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/04/01/%E8%B7%AF%E7%94%B1%EF%BC%88%E5%9B%9B%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/04/01/%E8%B7%AF%E7%94%B1%EF%BC%88%E5%9B%9B%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="引言"><a href="#引言" class="headerlink" title="引言"></a>引言</h2><p>在 内核网络协议栈中，接收方向的路由查找是数据包处理流程中的关键步骤之一。每一个进入协议栈的 IP 数据包，都需要通过通过路由查找来决定数据是上送本地还是转发。在这个过程中，内核会基于目的 IP，在内部的路由结构中进行匹配，选出最合适的一条路径，并将结果绑定到数据包上。后续无论是本地处理还是转发，都会依赖这个查找结果。</p>
+<h2 id="ip-route-input-rcu"><a href="#ip-route-input-rcu" class="headerlink" title="ip_route_input_rcu"></a><code>ip_route_input_rcu</code></h2><p>内核查路由的过程发生在<code>PRE_ROUTING</code>之后，在<code>ip_rcv_finish_core</code>（前文有分析过）中，如果没有通过早期分流机制拿到路由，则会调用<code>ip_route_input_rcu</code>进行路由查找，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* called with rcu_read_lock held */</span></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">ip_route_input_rcu</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, __be32 daddr, __be32 saddr,</span></span><br><span class="line"><span class="params">			      u8 tos, <span class="keyword">struct</span> net_device *dev, <span class="keyword">struct</span> fib_result *res)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/* Multicast recognition logic is moved from route cache to here.</span></span><br><span class="line"><span class="comment">	 * The problem was that too many Ethernet cards have broken/missing</span></span><br><span class="line"><span class="comment">	 * hardware multicast filters :-( As result the host on multicasting</span></span><br><span class="line"><span class="comment">	 * network acquires a lot of useless route cache entries, sort of</span></span><br><span class="line"><span class="comment">	 * SDR messages from all the world. Now we try to get rid of them.</span></span><br><span class="line"><span class="comment">	 * Really, provided software IP multicast filter is organized</span></span><br><span class="line"><span class="comment">	 * reasonably (at least, hashed), it does not result in a slowdown</span></span><br><span class="line"><span class="comment">	 * comparing with route cache reject entries.</span></span><br><span class="line"><span class="comment">	 * Note, that multicast routers are not affected, because</span></span><br><span class="line"><span class="comment">	 * route cache entry is created eventually.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//目的地址是组播</span></span><br><span class="line">	<span class="keyword">if</span> (ipv4_is_multicast(daddr)) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">in_device</span> *<span class="title">in_dev</span> =</span> __in_dev_get_rcu(dev);</span><br><span class="line">		<span class="type">int</span> our = <span class="number">0</span>;</span><br><span class="line">		<span class="type">int</span> err = -EINVAL;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (!in_dev)</span><br><span class="line">			<span class="keyword">return</span> err;</span><br><span class="line">		<span class="comment">//判断这个多播地址是否在netdec 的mclist中!</span></span><br><span class="line">		our = ip_check_mc_rcu(in_dev, daddr, saddr,</span><br><span class="line">				      ip_hdr(skb)-&gt;protocol);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* check l3 master if no match yet */</span></span><br><span class="line">		<span class="keyword">if</span> (!our &amp;&amp; netif_is_l3_slave(dev)) &#123;</span><br><span class="line">			<span class="class"><span class="keyword">struct</span> <span class="title">in_device</span> *<span class="title">l3_in_dev</span>;</span></span><br><span class="line"></span><br><span class="line">			l3_in_dev = __in_dev_get_rcu(skb-&gt;dev);</span><br><span class="line">			<span class="keyword">if</span> (l3_in_dev)</span><br><span class="line">				our = ip_check_mc_rcu(l3_in_dev, daddr, saddr,</span><br><span class="line">						      ip_hdr(skb)-&gt;protocol);</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (our</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_IP_MROUTE</span></span><br><span class="line">			||</span><br><span class="line">		    (!ipv4_is_local_multicast(daddr) &amp;&amp;<span class="comment">//不是224开头的特殊地址</span></span><br><span class="line">		     IN_DEV_MFORWARD(in_dev))<span class="comment">//开启了多播转发</span></span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">		   ) &#123;</span><br><span class="line">			<span class="comment">//多播查路由的接口</span></span><br><span class="line">			err = ip_route_input_mc(skb, daddr, saddr,</span><br><span class="line">						tos, dev, our);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//非多播的处理</span></span><br><span class="line">	<span class="keyword">return</span> ip_route_input_slow(skb, daddr, saddr, tos, dev, res);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ip_route_input_rcu</code>先根据目的地址判断数据包类型，如果是组播包，则调用<code>ip_check_mc_rcu</code>判断该网卡是否加入了这个组播组，或者系统是否开启了组播转发，在确定是本地加入的组播地址或需要转发的情况下，则调用 <code>ip_route_input_mc()</code> 进行组播路由处理(这里先不分析)，否则直接丢弃。</p>
+<p>上述<code>ip_check_mc_rcu</code>判断当前设备是否加入组播的代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* called with rcu_read_lock() */</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">ip_check_mc_rcu</span><span class="params">(<span class="keyword">struct</span> in_device *in_dev, __be32 mc_addr, __be32 src_addr, u8 proto)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_mc_list</span> *<span class="title">im</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_mc_list</span> __<span class="title">rcu</span> **<span class="title">mc_hash</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_sf_list</span> *<span class="title">psf</span>;</span></span><br><span class="line">	<span class="type">int</span> rv = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//这个接口有没有加入 mc_addr 这个组，也就是netdev上的mclist有没有这个ip地址</span></span><br><span class="line">	mc_hash = rcu_dereference(in_dev-&gt;mc_hash);</span><br><span class="line">	<span class="keyword">if</span> (mc_hash) &#123;</span><br><span class="line">		u32 hash = hash_32((__force u32)mc_addr, MC_HASH_SZ_LOG);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">for</span> (im = rcu_dereference(mc_hash[hash]);</span><br><span class="line">		     im != <span class="literal">NULL</span>;</span><br><span class="line">		     im = rcu_dereference(im-&gt;next_hash)) &#123;</span><br><span class="line">			<span class="keyword">if</span> (im-&gt;multiaddr == mc_addr)</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;<span class="comment">//如果没哈希表 就遍历 in_dev 上的组播列表</span></span><br><span class="line">		for_each_pmc_rcu(in_dev, im) &#123;</span><br><span class="line">			<span class="keyword">if</span> (im-&gt;multiaddr == mc_addr)</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> (im &amp;&amp; proto == IPPROTO_IGMP) &#123; <span class="comment">//igmp</span></span><br><span class="line">		rv = <span class="number">1</span>;</span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (im) &#123; <span class="comment">//普通非 IGMP 组播包 检查源过滤</span></span><br><span class="line">		<span class="keyword">if</span> (src_addr) &#123;</span><br><span class="line">			spin_lock_bh(&amp;im-&gt;lock);</span><br><span class="line">			<span class="keyword">for</span> (psf = im-&gt;sources; psf; psf = psf-&gt;sf_next) &#123;</span><br><span class="line">				<span class="keyword">if</span> (psf-&gt;sf_inaddr == src_addr)</span><br><span class="line">					<span class="keyword">break</span>;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">if</span> (psf)</span><br><span class="line">				rv = psf-&gt;sf_count[MCAST_INCLUDE] ||</span><br><span class="line">					psf-&gt;sf_count[MCAST_EXCLUDE] !=</span><br><span class="line">					im-&gt;sfcount[MCAST_EXCLUDE];</span><br><span class="line">			<span class="keyword">else</span></span><br><span class="line">				rv = im-&gt;sfcount[MCAST_EXCLUDE] != <span class="number">0</span>;</span><br><span class="line">			spin_unlock_bh(&amp;im-&gt;lock);</span><br><span class="line">		&#125; <span class="keyword">else</span></span><br><span class="line">			rv = <span class="number">1</span>; <span class="comment">/* unspecified source; tentatively allow */</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> rv;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p> <code>ip_check_mc_rcu()</code> 首先在<code>netdev</code>对应的 <code>in_device</code> 组播成员列表里查找有没有加入 <code>mc_addr</code> 这个组播组，如果没加入，直接不处理。如果加入了并且是 IGMP 报文，则直接接收，如果是普通组播数据，则需要进一步检查用户是否配置了组播源过滤，如果配置了则也有可能丢弃这个报文。</p>
+<h2 id="ip-route-input-slow"><a href="#ip-route-input-slow" class="headerlink" title="ip_route_input_slow"></a><code>ip_route_input_slow</code></h2><p>回到<code>ip_route_input_rcu</code>中，<strong>对于普通单播包，则调用 <code>ip_route_input_slow()</code>，走常规的查找流程</strong>，完成最长前缀匹配后续决定是上送本机还是转发。<code>ip_route_input_slow</code>具实现如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br><span class="line">217</span><br><span class="line">218</span><br><span class="line">219</span><br><span class="line">220</span><br><span class="line">221</span><br><span class="line">222</span><br><span class="line">223</span><br><span class="line">224</span><br><span class="line">225</span><br><span class="line">226</span><br><span class="line">227</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">ip_route_input_slow</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, __be32 daddr, __be32 saddr,</span></span><br><span class="line"><span class="params">			       u8 tos, <span class="keyword">struct</span> net_device *dev,</span></span><br><span class="line"><span class="params">			       <span class="keyword">struct</span> fib_result *res)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_device</span> *<span class="title">in_dev</span> =</span> __in_dev_get_rcu(dev);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">flow_keys</span> *<span class="title">flkeys</span> =</span> <span class="literal">NULL</span>, _flkeys;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span>    *<span class="title">net</span> =</span> dev_net(dev);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_tunnel_info</span> *<span class="title">tun_info</span>;</span></span><br><span class="line">	<span class="type">int</span>		err = -EINVAL;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span>	flags = <span class="number">0</span>;</span><br><span class="line">	u32		itag = <span class="number">0</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rtable</span>	*<span class="title">rth</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">flowi4</span>	<span class="title">fl4</span>;</span></span><br><span class="line">	<span class="type">bool</span> do_cache = <span class="literal">true</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* IP on this device is disabled. */</span></span><br><span class="line">	<span class="comment">//相当于这个设备没配置ip地址</span></span><br><span class="line">	<span class="keyword">if</span> (!in_dev)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Check for the most weird martians, which can be not detected</span></span><br><span class="line"><span class="comment">	 * by fib_lookup.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line"></span><br><span class="line">	tun_info = skb_tunnel_info(skb);</span><br><span class="line">	<span class="keyword">if</span> (tun_info &amp;&amp; !(tun_info-&gt;mode &amp; IP_TUNNEL_INFO_TX))</span><br><span class="line">		fl4.flowi4_tun_key.tun_id = tun_info-&gt;key.tun_id;</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		fl4.flowi4_tun_key.tun_id = <span class="number">0</span>;</span><br><span class="line">	skb_dst_drop(skb);</span><br><span class="line">	<span class="comment">//源地址是多播或者受限广播（255.255*）</span></span><br><span class="line">	<span class="keyword">if</span> (ipv4_is_multicast(saddr) || ipv4_is_lbcast(saddr))</span><br><span class="line">		<span class="keyword">goto</span> martian_source;</span><br><span class="line"></span><br><span class="line">	res-&gt;fi = <span class="literal">NULL</span>;</span><br><span class="line">	res-&gt;table = <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">//目的地址是受限广播 或者源和目的同时是0</span></span><br><span class="line">	<span class="keyword">if</span> (ipv4_is_lbcast(daddr) || (saddr == <span class="number">0</span> &amp;&amp; daddr == <span class="number">0</span>))</span><br><span class="line">		<span class="keyword">goto</span> brd_input;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Accept zero addresses only to limited broadcast;</span></span><br><span class="line"><span class="comment">	 * I even do not know to fix it or not. Waiting for complains :-)</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//源地址不能是 0 网段</span></span><br><span class="line">	<span class="keyword">if</span> (ipv4_is_zeronet(saddr))</span><br><span class="line">		<span class="keyword">goto</span> martian_source;</span><br><span class="line">	<span class="comment">//目的地址不能是0网段</span></span><br><span class="line">	<span class="keyword">if</span> (ipv4_is_zeronet(daddr))</span><br><span class="line">		<span class="keyword">goto</span> martian_destination;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Following code try to avoid calling IN_DEV_NET_ROUTE_LOCALNET(),</span></span><br><span class="line"><span class="comment">	 * and call it once if daddr or/and saddr are loopback addresses</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//目的地址是回环地址，注意这里判断了是不是回环设备</span></span><br><span class="line">	<span class="comment">//这里是不允许非回环设备收到127地址的</span></span><br><span class="line">	<span class="keyword">if</span> (ipv4_is_loopback(daddr)) &#123;</span><br><span class="line">		<span class="keyword">if</span> (!IN_DEV_NET_ROUTE_LOCALNET(in_dev, net))</span><br><span class="line">			<span class="keyword">goto</span> martian_destination;</span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (ipv4_is_loopback(saddr)) &#123;</span><br><span class="line">		<span class="keyword">if</span> (!IN_DEV_NET_ROUTE_LOCALNET(in_dev, net))</span><br><span class="line">			<span class="keyword">goto</span> martian_source;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	Now we are ready to route packet.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	fl4.flowi4_l3mdev = <span class="number">0</span>;</span><br><span class="line">	fl4.flowi4_oif = <span class="number">0</span>;	<span class="comment">//接收方向查路由这里设置为0</span></span><br><span class="line">	fl4.flowi4_iif = dev-&gt;ifindex;<span class="comment">//从哪个网口进来的</span></span><br><span class="line">	fl4.flowi4_mark = skb-&gt;mark;<span class="comment">//可能被netfilter 打上过标记</span></span><br><span class="line">	fl4.flowi4_tos = tos; <span class="comment">//查路由会用到</span></span><br><span class="line">	fl4.flowi4_scope = RT_SCOPE_UNIVERSE;<span class="comment">//查路由的时候指定一个大的范围</span></span><br><span class="line">	fl4.flowi4_flags = <span class="number">0</span>;</span><br><span class="line">	fl4.daddr = daddr;</span><br><span class="line">	fl4.saddr = saddr;</span><br><span class="line">	fl4.flowi4_uid = sock_net_uid(net, <span class="literal">NULL</span>);<span class="comment">//收路径，sk设置为空</span></span><br><span class="line">	fl4.flowi4_multipath_hash = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//对数据包parse 可能会解析出port</span></span><br><span class="line">	<span class="keyword">if</span> (fib4_rules_early_flow_dissect(net, skb, &amp;fl4, &amp;_flkeys)) &#123;</span><br><span class="line">		flkeys = &amp;_flkeys;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		fl4.flowi4_proto = <span class="number">0</span>;</span><br><span class="line">		fl4.fl4_sport = <span class="number">0</span>;</span><br><span class="line">		fl4.fl4_dport = <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//真正的查路由接口</span></span><br><span class="line">	err = fib_lookup(net, &amp;fl4, res, <span class="number">0</span>);</span><br><span class="line">	<span class="keyword">if</span> (err != <span class="number">0</span>) &#123;</span><br><span class="line">		<span class="keyword">if</span> (!IN_DEV_FORWARD(in_dev))</span><br><span class="line">			err = -EHOSTUNREACH;</span><br><span class="line">		<span class="keyword">goto</span> no_route; <span class="comment">//这里也会搞一个dst/rtable挂的skb上</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//如果是广播</span></span><br><span class="line">	<span class="keyword">if</span> (res-&gt;type == RTN_BROADCAST) &#123;</span><br><span class="line">		<span class="comment">//允许广播转发</span></span><br><span class="line">		<span class="keyword">if</span> (IN_DEV_BFORWARD(in_dev))</span><br><span class="line">			<span class="keyword">goto</span> make_route;<span class="comment">//这里相当于仅仅转发不接收</span></span><br><span class="line">		<span class="comment">/* not do cache if bc_forwarding is enabled */</span></span><br><span class="line">		<span class="keyword">if</span> (IPV4_DEVCONF_ALL(net, BC_FORWARDING))</span><br><span class="line">			do_cache = <span class="literal">false</span>;</span><br><span class="line">		<span class="keyword">goto</span> brd_input;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//上送本地的情况，反路径过滤看看</span></span><br><span class="line">	<span class="keyword">if</span> (res-&gt;type == RTN_LOCAL) &#123;</span><br><span class="line">		err = fib_validate_source(skb, saddr, daddr, tos,</span><br><span class="line">					  <span class="number">0</span>, dev, in_dev, &amp;itag);</span><br><span class="line">		<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">			<span class="keyword">goto</span> martian_source;</span><br><span class="line">		<span class="keyword">goto</span> local_input;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//走到这里就是不是广播也不是本地，那就看能不能转发了</span></span><br><span class="line">	<span class="keyword">if</span> (!IN_DEV_FORWARD(in_dev)) &#123;</span><br><span class="line">		err = -EHOSTUNREACH;</span><br><span class="line">		<span class="keyword">goto</span> no_route;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//开了转发，但是类型不是单播，那就时异常了</span></span><br><span class="line">	<span class="keyword">if</span> (res-&gt;type != RTN_UNICAST)</span><br><span class="line">		<span class="keyword">goto</span> martian_destination;</span><br><span class="line"></span><br><span class="line">make_route:</span><br><span class="line">	<span class="comment">//找里设置了forward</span></span><br><span class="line">	err = ip_mkroute_input(skb, res, in_dev, daddr, saddr, tos, flkeys);</span><br><span class="line">out:	<span class="keyword">return</span> err;</span><br><span class="line"></span><br><span class="line">brd_input:<span class="comment">//广播处理</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;protocol != htons(ETH_P_IP))</span><br><span class="line">		<span class="keyword">goto</span> e_inval;</span><br><span class="line">	<span class="comment">//进行源地址的检查！</span></span><br><span class="line">	<span class="keyword">if</span> (!ipv4_is_zeronet(saddr)) &#123;</span><br><span class="line">		err = fib_validate_source(skb, saddr, <span class="number">0</span>, tos, <span class="number">0</span>, dev,</span><br><span class="line">					  in_dev, &amp;itag);</span><br><span class="line">		<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">			<span class="keyword">goto</span> martian_source;</span><br><span class="line">	&#125;</span><br><span class="line">	flags |= RTCF_BROADCAST;</span><br><span class="line">	res-&gt;type = RTN_BROADCAST;</span><br><span class="line">	RT_CACHE_STAT_INC(in_brd);</span><br><span class="line">	<span class="comment">//处理完之后广播包上送本机</span></span><br><span class="line"></span><br><span class="line"><span class="comment">//上送本地，没路由，广播都会走到这里！</span></span><br><span class="line">local_input:</span><br><span class="line">	<span class="keyword">if</span> (IN_DEV_ORCONF(in_dev, NOPOLICY))</span><br><span class="line">		IPCB(skb)-&gt;flags |= IPSKB_NOPOLICY;</span><br><span class="line"></span><br><span class="line">	do_cache &amp;= res-&gt;fi &amp;&amp; !itag;</span><br><span class="line">	<span class="comment">//通常会走这个吧</span></span><br><span class="line">	<span class="keyword">if</span> (do_cache) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">fib_nh_common</span> *<span class="title">nhc</span> =</span> FIB_RES_NHC(*res);</span><br><span class="line">		<span class="comment">//从nhc 找到rtable 为什么 nhc 上会挂一个 nhc_rth_input</span></span><br><span class="line">		<span class="comment">//相当于从小的找到大的 因为上面res的已经限制了？</span></span><br><span class="line">		<span class="comment">//注意这里第一次rth可能是空下面要创建</span></span><br><span class="line">		rth = rcu_dereference(nhc-&gt;nhc_rth_input);</span><br><span class="line">		<span class="keyword">if</span> (rt_cache_valid(rth)) &#123;</span><br><span class="line">			skb_dst_set_noref(skb, &amp;rth-&gt;dst);<span class="comment">//关联skb</span></span><br><span class="line">			err = <span class="number">0</span>;</span><br><span class="line">			<span class="keyword">goto</span> out; <span class="comment">//注意这里直接返回了</span></span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//这里会设置ip_local_deliver</span></span><br><span class="line">	rth = rt_dst_alloc(ip_rt_get_dev(net, res),</span><br><span class="line">			   flags | RTCF_LOCAL, res-&gt;type, <span class="literal">false</span>);</span><br><span class="line">	<span class="keyword">if</span> (!rth)</span><br><span class="line">		<span class="keyword">goto</span> e_nobufs;</span><br><span class="line">	<span class="comment">//不应该用于输出</span></span><br><span class="line">	rth-&gt;dst.output= ip_rt_bug;</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_IP_ROUTE_CLASSID</span></span><br><span class="line">	rth-&gt;dst.tclassid = itag;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	rth-&gt;rt_is_input = <span class="number">1</span>;<span class="comment">//标识输入</span></span><br><span class="line"></span><br><span class="line">	RT_CACHE_STAT_INC(in_slow_tot);</span><br><span class="line">	<span class="comment">//不可达的处理 input 改成 ip_error</span></span><br><span class="line">	<span class="keyword">if</span> (res-&gt;type == RTN_UNREACHABLE) &#123;</span><br><span class="line">		rth-&gt;dst.input= ip_error;</span><br><span class="line">		rth-&gt;dst.error= -err;</span><br><span class="line">		rth-&gt;rt_flags	&amp;= ~RTCF_LOCAL;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//这里要做缓存</span></span><br><span class="line">	<span class="keyword">if</span> (do_cache) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">fib_nh_common</span> *<span class="title">nhc</span> =</span> FIB_RES_NHC(*res);</span><br><span class="line"></span><br><span class="line">		rth-&gt;dst.lwtstate = lwtstate_get(nhc-&gt;nhc_lwtstate);</span><br><span class="line">		<span class="keyword">if</span> (lwtunnel_input_redirect(rth-&gt;dst.lwtstate)) &#123;</span><br><span class="line">			WARN_ON(rth-&gt;dst.input == lwtunnel_input);</span><br><span class="line">			rth-&gt;dst.lwtstate-&gt;orig_input = rth-&gt;dst.input;</span><br><span class="line">			rth-&gt;dst.input = lwtunnel_input;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//尝试把这个新建好的 rtable 挂到 nhc-&gt;nhc_rth_input 上！！！</span></span><br><span class="line">		<span class="keyword">if</span> (unlikely(!rt_cache_route(nhc, rth)))</span><br><span class="line">			rt_add_uncached_list(rth);</span><br><span class="line">	&#125;</span><br><span class="line">	skb_dst_set(skb, &amp;rth-&gt;dst);</span><br><span class="line">	err = <span class="number">0</span>;</span><br><span class="line">	<span class="keyword">goto</span> out;</span><br><span class="line"><span class="comment">//没找到路由这里设置了不可达</span></span><br><span class="line">no_route:</span><br><span class="line">	RT_CACHE_STAT_INC(in_no_route);</span><br><span class="line">	res-&gt;type = RTN_UNREACHABLE;</span><br><span class="line">	res-&gt;fi = <span class="literal">NULL</span>;</span><br><span class="line">	res-&gt;table = <span class="literal">NULL</span>;</span><br><span class="line">	<span class="keyword">goto</span> local_input;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	Do not cache martian addresses: they should be logged (RFC1812)</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">martian_destination:</span><br><span class="line">	RT_CACHE_STAT_INC(in_martian_dst);</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_IP_ROUTE_VERBOSE</span></span><br><span class="line">	<span class="keyword">if</span> (IN_DEV_LOG_MARTIANS(in_dev))</span><br><span class="line">		net_warn_ratelimited(<span class="string">&quot;martian destination %pI4 from %pI4, dev %s\n&quot;</span>,</span><br><span class="line">				     &amp;daddr, &amp;saddr, dev-&gt;name);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line"></span><br><span class="line">e_inval:</span><br><span class="line">	err = -EINVAL;</span><br><span class="line">	<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">e_nobufs:</span><br><span class="line">	err = -ENOBUFS;</span><br><span class="line">	<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">martian_source:</span><br><span class="line">	ip_handle_martian_source(dev, in_dev, skb, daddr, saddr);</span><br><span class="line">	<span class="keyword">goto</span> out;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>ip_route_input_slow()</code> 首先对报文进行合法性检查，比如源地址、目的地址是否合法，如果合法则将源&#x2F;目的 <code>IP</code>、<code>TOS</code>、<code>mark</code> 等填充成一个 <code>flowi4</code> 结构，然后调用 <code>fib_lookup()</code> 做真正的路由查找。查找完成后根据结果决定数据包的去向（通过设置<code>rt-&gt;dst.output</code>是<code>ip_local_deliver</code>还是<code>ip_forward</code>），如果是发给本机的，就上送本机，如果是普通单播且开启了转发，就进入转发路径。无论是哪种情况，都会构造或者复用一个 <code>rtable</code>，并挂到 <code>skb-&gt;dst</code> 上，指导后续处理逻辑。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/IP/" rel="tag"># IP</a>
+              <a href="/tags/%E8%B7%AF%E7%94%B1%E5%AD%90%E7%B3%BB%E7%BB%9F/" rel="tag"># 路由子系统</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/03/29/%E8%B7%AF%E7%94%B1%EF%BC%88%E4%B8%89%EF%BC%89/" rel="prev" title="notifier 触发路由变化">
+      <i class="fa fa-chevron-left"></i> notifier 触发路由变化
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BC%95%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">引言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#ip-route-input-rcu"><span class="nav-number">2.</span> <span class="nav-text">ip_route_input_rcu</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#ip-route-input-slow"><span class="nav-number">3.</span> <span class="nav-text">ip_route_input_slow</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">111</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">24</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
