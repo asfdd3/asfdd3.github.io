@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="上文说到，ip_route_input_slow中完成对数据包地址合法性的检查之后，会调用fib_lookup来进行真正的路由查找，而fib_lookup是有两套实现的，取决是是否编译MULTIPLE_TABLES ，这里分析开启了MULTIPLE_TABLES的情况，具体代码如下所示： 1234567891011121314151617181920212223242526272829303132">
+<meta property="og:type" content="article">
+<meta property="og:title" content="路由查找与反向路径过滤">
+<meta property="og:url" content="http://example.com/2026/04/05/%E8%B7%AF%E7%94%B1%EF%BC%88%E4%BA%94%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="上文说到，ip_route_input_slow中完成对数据包地址合法性的检查之后，会调用fib_lookup来进行真正的路由查找，而fib_lookup是有两套实现的，取决是是否编译MULTIPLE_TABLES ，这里分析开启了MULTIPLE_TABLES的情况，具体代码如下所示： 1234567891011121314151617181920212223242526272829303132">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-04-05T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-04-06T13:43:50.071Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="IP">
+<meta property="article:tag" content="路由子系统">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/04/05/%E8%B7%AF%E7%94%B1%EF%BC%88%E4%BA%94%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>路由查找与反向路径过滤 | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/05/%E8%B7%AF%E7%94%B1%EF%BC%88%E4%BA%94%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          路由查找与反向路径过滤
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-04-05 22:00:00" itemprop="dateCreated datePublished" datetime="2026-04-05T22:00:00+08:00">2026-04-05</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-04-06 21:43:50" itemprop="dateModified" datetime="2026-04-06T21:43:50+08:00">2026-04-06</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/04/05/%E8%B7%AF%E7%94%B1%EF%BC%88%E4%BA%94%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/04/05/%E8%B7%AF%E7%94%B1%EF%BC%88%E4%BA%94%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>上文说到，<code>ip_route_input_slow</code>中完成对数据包地址合法性的检查之后，会调用<code>fib_lookup</code>来进行真正的路由查找，而<code>fib_lookup</code>是有两套实现的，取决是是否编译<code>MULTIPLE_TABLES</code> ，这里分析开启了<code>MULTIPLE_TABLES</code>的情况，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> <span class="title function_">fib_lookup</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> flowi4 *flp,</span></span><br><span class="line"><span class="params">			     <span class="keyword">struct</span> fib_result *res, <span class="type">unsigned</span> <span class="type">int</span> flags)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_table</span> *<span class="title">tb</span>;</span></span><br><span class="line">	<span class="type">int</span> err = -ENETUNREACH;</span><br><span class="line"></span><br><span class="line">	flags |= FIB_LOOKUP_NOREF;</span><br><span class="line">	<span class="comment">//如果配置了策略路由，通常不走这里</span></span><br><span class="line">	<span class="keyword">if</span> (net-&gt;ipv4.fib_has_custom_rules)</span><br><span class="line">		<span class="keyword">return</span> __fib_lookup(net, flp, res, flags);</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line"></span><br><span class="line">	res-&gt;tclassid = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//没有配置策略路由的情况</span></span><br><span class="line">	tb = rcu_dereference_rtnl(net-&gt;ipv4.fib_main);</span><br><span class="line">	<span class="keyword">if</span> (tb)<span class="comment">//main</span></span><br><span class="line">		err = fib_table_lookup(tb, flp, res, flags);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!err)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	tb = rcu_dereference_rtnl(net-&gt;ipv4.fib_default);</span><br><span class="line">	<span class="keyword">if</span> (tb)<span class="comment">//default</span></span><br><span class="line">		err = fib_table_lookup(tb, flp, res, flags);</span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">if</span> (err == -EAGAIN)</span><br><span class="line">		err = -ENETUNREACH;</span><br><span class="line"></span><br><span class="line">	rcu_read_unlock();</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p> <code>fib_lookup()</code> 如果用户配置了策略路由（通常情况下没有）则调用<code>__fib_lookup</code>进行查找，否则先查 main 表，命中就返回，否则再查 default 表。</p>
+<p><code>__fib_lookup</code>的具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __fib_lookup(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> flowi4 *flp,</span><br><span class="line">		 <span class="keyword">struct</span> fib_result *res, <span class="type">unsigned</span> <span class="type">int</span> flags)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_lookup_arg</span> <span class="title">arg</span> =</span> &#123;</span><br><span class="line">		.result = res,</span><br><span class="line">		.flags = flags,</span><br><span class="line">	&#125;;</span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* update flow if oif or iif point to device enslaved to l3mdev */</span></span><br><span class="line">	l3mdev_update_flow(net, flowi4_to_flowi(flp));</span><br><span class="line">	<span class="comment">//拿着当前这个 flow，去遍历 IPv4 的 rule 链，按 rule 去匹配</span></span><br><span class="line">	<span class="comment">//这里注意，协议栈初始化的时候会注册三个表！！！main local default 通过ip命令也可以添加</span></span><br><span class="line">	err = fib_rules_lookup(net-&gt;ipv4.rules_ops, flowi4_to_flowi(flp), <span class="number">0</span>, &amp;arg);</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_IP_ROUTE_CLASSID</span></span><br><span class="line">	<span class="keyword">if</span> (arg.rule)</span><br><span class="line">		res-&gt;tclassid = ((<span class="keyword">struct</span> fib4_rule *)arg.rule)-&gt;tclassid;</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		res-&gt;tclassid = <span class="number">0</span>;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (err == -ESRCH)</span><br><span class="line">		err = -ENETUNREACH;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">int</span> <span class="title function_">fib_rules_lookup</span><span class="params">(<span class="keyword">struct</span> fib_rules_ops *ops, <span class="keyword">struct</span> flowi *fl,</span></span><br><span class="line"><span class="params">		     <span class="type">int</span> flags, <span class="keyword">struct</span> fib_lookup_arg *arg)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_rule</span> *<span class="title">rule</span>;</span></span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	<span class="comment">//遍历规则链表</span></span><br><span class="line">	list_for_each_entry_rcu(rule, &amp;ops-&gt;rules_list, <span class="built_in">list</span>) &#123;</span><br><span class="line">jumped:</span><br><span class="line"></span><br><span class="line">		<span class="comment">//比较原地址目的地址 tos if等是否匹配</span></span><br><span class="line">		<span class="keyword">if</span> (!fib_rule_match(rule, ops, fl, flags, arg))</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="comment">//相当于要跳转到到另一个rule去查 为什么这么设计？</span></span><br><span class="line">		<span class="keyword">if</span> (rule-&gt;action == FR_ACT_GOTO) &#123;</span><br><span class="line">			<span class="class"><span class="keyword">struct</span> <span class="title">fib_rule</span> *<span class="title">target</span>;</span></span><br><span class="line"></span><br><span class="line">			target = rcu_dereference(rule-&gt;ctarget);</span><br><span class="line">			<span class="keyword">if</span> (target == <span class="literal">NULL</span>) &#123;</span><br><span class="line">				<span class="keyword">continue</span>;</span><br><span class="line">			&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">				rule = target;</span><br><span class="line">				<span class="keyword">goto</span> jumped;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> (rule-&gt;action == FR_ACT_NOP)<span class="comment">//什么也不干</span></span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="keyword">else</span> <span class="comment">//正常情况</span></span><br><span class="line">			err = INDIRECT_CALL_MT(ops-&gt;action,</span><br><span class="line">					       fib6_rule_action,</span><br><span class="line">					       fib4_rule_action,<span class="comment">//根据rule配置决定去查哪个表</span></span><br><span class="line">					       rule, fl, flags, arg);</span><br><span class="line">			<span class="comment">//可能还需要过滤掉某些已经查到的结果</span></span><br><span class="line">		<span class="keyword">if</span> (!err &amp;&amp; ops-&gt;suppress &amp;&amp; INDIRECT_CALL_MT(ops-&gt;suppress,</span><br><span class="line">							      fib6_rule_suppress,</span><br><span class="line">							      fib4_rule_suppress,</span><br><span class="line">							      rule, flags, arg))</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (err != -EAGAIN) &#123;</span><br><span class="line">			<span class="keyword">if</span> ((arg-&gt;flags &amp; FIB_LOOKUP_NOREF) ||</span><br><span class="line">			    likely(refcount_inc_not_zero(&amp;rule-&gt;refcnt))) &#123;</span><br><span class="line">				arg-&gt;rule = rule;</span><br><span class="line">				<span class="keyword">goto</span> out;<span class="comment">//返回成功</span></span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	err = -ESRCH;</span><br><span class="line">out:</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>__fib_lookup()</code> 只是简单的包裹了一下 <code>fib_rules_lookup</code> ，<code>fib_rules_lookup</code>首先<strong>按顺序遍历 rule 链表</strong>，对于每条规则，先看源地址、目的地址、TOS、输入输出接口等条件是否匹配，匹配后再根据 action 处理，例如<code>NOP</code> 就直接跳过，普通情况则调用 <code>fib4_rule_action()</code> 按这条 rule 的配置去查指定路由表（例如 local、main、default 或用户自定义表）。<code>fib4_rule_action</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line">INDIRECT_CALLABLE_SCOPE <span class="type">int</span> <span class="title function_">fib4_rule_action</span><span class="params">(<span class="keyword">struct</span> fib_rule *rule,</span></span><br><span class="line"><span class="params">					     <span class="keyword">struct</span> flowi *flp, <span class="type">int</span> flags,</span></span><br><span class="line"><span class="params">					     <span class="keyword">struct</span> fib_lookup_arg *arg)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> err = -EAGAIN;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_table</span> *<span class="title">tbl</span>;</span></span><br><span class="line">	u32 tb_id;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">switch</span> (rule-&gt;action) &#123;</span><br><span class="line">	<span class="keyword">case</span> FR_ACT_TO_TBL:</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">case</span> FR_ACT_UNREACHABLE:</span><br><span class="line">		<span class="keyword">return</span> -ENETUNREACH;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">case</span> FR_ACT_PROHIBIT:</span><br><span class="line">		<span class="keyword">return</span> -EACCES;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">case</span> FR_ACT_BLACKHOLE:</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	<span class="comment">//获取路由表id</span></span><br><span class="line">	tb_id = fib_rule_get_table(rule, arg);</span><br><span class="line">	<span class="comment">//根据id从全局路由表中拿到路由表</span></span><br><span class="line">	tbl = fib_get_table(rule-&gt;fr_net, tb_id);</span><br><span class="line">	<span class="keyword">if</span> (tbl)</span><br><span class="line">	<span class="comment">//真正的查找</span></span><br><span class="line">		err = fib_table_lookup(tbl, &amp;flp-&gt;u.ip4,</span><br><span class="line">				       (<span class="keyword">struct</span> fib_result *)arg-&gt;result,</span><br><span class="line">				       arg-&gt;flags);</span><br><span class="line"></span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p> <code>fib4_rule_action()</code> 的主要逻辑为，如果 rule 的 action 是 <code>FR_ACT_TO_TBL</code>，就先从 rule 中取出要查的路由表 ID，再根据这个 ID 找到对应的 <code>fib_table</code>，最后调用 <code>fib_table_lookup()</code> 在这张表里做真正的路由查找，这里注意无论是否配置策略路由，<strong><code>fib_table_lookup</code>都是查找路由的真正入口函数，可以说是核心中的核心</strong>，例如其实没有开启策略路由<code>fib_lookup</code>中就会调用<code>fib_table_lookup</code>直接查找<code>main</code>表或者<code>local</code>表。</p>
+<p>fib_table_lookup具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br><span class="line">217</span><br><span class="line">218</span><br><span class="line">219</span><br><span class="line">220</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* should be called with rcu_read_lock */</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">fib_table_lookup</span><span class="params">(<span class="keyword">struct</span> fib_table *tb, <span class="type">const</span> <span class="keyword">struct</span> flowi4 *flp,</span></span><br><span class="line"><span class="params">		     <span class="keyword">struct</span> fib_result *res, <span class="type">int</span> fib_flags)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">trie</span> *<span class="title">t</span> =</span> (<span class="keyword">struct</span> trie *) tb-&gt;tb_data; <span class="comment">//真正的路由数据</span></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_IP_FIB_TRIE_STATS</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">trie_use_stats</span> __<span class="title">percpu</span> *<span class="title">stats</span> =</span> t-&gt;stats;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="type">const</span> t_key key = ntohl(flp-&gt;daddr); <span class="comment">//目的ip地址</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">key_vector</span> *<span class="title">n</span>, *<span class="title">pn</span>;</span> <span class="comment">//n是当前的遍历到的节点，pn是父节点用来回溯</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_alias</span> *<span class="title">fa</span>;</span> <span class="comment">//路由表项</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> index;</span><br><span class="line">	t_key cindex;<span class="comment">//指向哪个index，应该就是指向哪个树节点</span></span><br><span class="line"></span><br><span class="line">	pn = t-&gt;kv;</span><br><span class="line">	cindex = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//树的根开始</span></span><br><span class="line">	n = get_child_rcu(pn, cindex);</span><br><span class="line">	<span class="keyword">if</span> (!n) &#123;</span><br><span class="line">		trace_fib_table_lookup(tb-&gt;tb_id, flp, <span class="literal">NULL</span>, -EAGAIN);</span><br><span class="line">		<span class="keyword">return</span> -EAGAIN;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_IP_FIB_TRIE_STATS</span></span><br><span class="line">	this_cpu_inc(stats-&gt;gets);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Step 1: Travel to the longest prefix match in the trie */</span></span><br><span class="line">	<span class="keyword">for</span> (;;) &#123;</span><br><span class="line">		<span class="comment">//非常关键，目的ip和当前trie节点的key进行异或，相当于得到差异</span></span><br><span class="line">		<span class="comment">//异或之后在在右移pos，这里的pos相当于从第几位开始看，也表示差异的开始，同时也可以作为索引！，合理</span></span><br><span class="line">		index = get_cindex(key, n);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* This bit of code is a bit tricky but it combines multiple</span></span><br><span class="line"><span class="comment">		 * checks into a single check.  The prefix consists of the</span></span><br><span class="line"><span class="comment">		 * prefix plus zeros for the &quot;bits&quot; in the prefix. The index</span></span><br><span class="line"><span class="comment">		 * is the difference between the key and this value.  From</span></span><br><span class="line"><span class="comment">		 * this we can actually derive several pieces of data.</span></span><br><span class="line"><span class="comment">		 *   if (index &gt;= (1ul &lt;&lt; bits))</span></span><br><span class="line"><span class="comment">		 *     we have a mismatch in skip bits and failed</span></span><br><span class="line"><span class="comment">		 *   else</span></span><br><span class="line"><span class="comment">		 *     we know the value is cindex</span></span><br><span class="line"><span class="comment">		 *</span></span><br><span class="line"><span class="comment">		 * This check is safe even if bits == KEYLENGTH due to the</span></span><br><span class="line"><span class="comment">		 * fact that we can only allocate a node with 32 bits if a</span></span><br><span class="line"><span class="comment">		 * long is greater than 32 bits.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//相当于异或的结果超出了索引的范围，那就直接不用在找了差异太大</span></span><br><span class="line">		<span class="keyword">if</span> (index &gt;= (<span class="number">1ul</span> &lt;&lt; n-&gt;bits))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* we have found a leaf. Prefixes have already been compared */</span></span><br><span class="line">		<span class="comment">//叶子节点，直接找到！</span></span><br><span class="line">		<span class="keyword">if</span> (IS_LEAF(n))</span><br><span class="line">			<span class="keyword">goto</span> found;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* only record pn and cindex if we are going to be chopping</span></span><br><span class="line"><span class="comment">		 * bits later.  Otherwise we are just wasting cycles.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//当前节点后面还有回退的空间</span></span><br><span class="line">		<span class="keyword">if</span> (n-&gt;slen &gt; n-&gt;pos) &#123;</span><br><span class="line">			pn = n;<span class="comment">//保存用来回溯的节点</span></span><br><span class="line">			cindex = index;<span class="comment">//这里是for循环更新的地方</span></span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		n = get_child_rcu(n, index);</span><br><span class="line">		<span class="keyword">if</span> (unlikely(!n))</span><br><span class="line">			<span class="keyword">goto</span> backtrace;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Step 2: Sort out leaves and begin backtracing for longest prefix */</span></span><br><span class="line">	<span class="keyword">for</span> (;;) &#123;</span><br><span class="line">		<span class="comment">/* record the pointer where our next node pointer is stored */</span></span><br><span class="line">		<span class="comment">//先拿到当前节点的 child 数组起点</span></span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">key_vector</span> __<span class="title">rcu</span> **<span class="title">cptr</span> =</span> n-&gt;tnode;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* This test verifies that none of the bits that differ</span></span><br><span class="line"><span class="comment">		 * between the key and the prefix exist in the region of</span></span><br><span class="line"><span class="comment">		 * the lsb and higher in the prefix.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//目标 key 和当前节点的前缀不匹配 || 没有回溯的机会了</span></span><br><span class="line">		<span class="keyword">if</span> (unlikely(prefix_mismatch(key, n)) || (n-&gt;slen == n-&gt;pos))</span><br><span class="line">			<span class="keyword">goto</span> backtrace;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* exit out and process leaf */</span></span><br><span class="line">		<span class="comment">//已经是叶子了</span></span><br><span class="line">		<span class="keyword">if</span> (unlikely(IS_LEAF(n)))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Don&#x27;t bother recording parent info.  Since we are in</span></span><br><span class="line"><span class="comment">		 * prefix match mode we will have to come back to wherever</span></span><br><span class="line"><span class="comment">		 * we started this traversal anyway</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//如果当前节点不是叶子，就尝试取 child</span></span><br><span class="line">		<span class="keyword">while</span> ((n = rcu_dereference(*cptr)) == <span class="literal">NULL</span>) &#123;</span><br><span class="line">backtrace:</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_IP_FIB_TRIE_STATS</span></span><br><span class="line">			<span class="keyword">if</span> (!n)</span><br><span class="line">				this_cpu_inc(stats-&gt;null_node_hit);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">			<span class="comment">/* If we are at cindex 0 there are no more bits for</span></span><br><span class="line"><span class="comment">			 * us to strip at this level so we must ascend back</span></span><br><span class="line"><span class="comment">			 * up one level to see if there are any more bits to</span></span><br><span class="line"><span class="comment">			 * be stripped there.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="comment">//先看当前层还有没有可退的空间</span></span><br><span class="line">			<span class="keyword">while</span> (!cindex) &#123;</span><br><span class="line">				t_key pkey = pn-&gt;key;<span class="comment">//当前父节点的key</span></span><br><span class="line"></span><br><span class="line">				<span class="comment">/* If we don&#x27;t have a parent then there is</span></span><br><span class="line"><span class="comment">				 * nothing for us to do as we do not have any</span></span><br><span class="line"><span class="comment">				 * further nodes to parse.</span></span><br><span class="line"><span class="comment">				 */</span></span><br><span class="line">				<span class="keyword">if</span> (IS_TRIE(pn)) &#123;</span><br><span class="line">					trace_fib_table_lookup(tb-&gt;tb_id, flp,</span><br><span class="line">							       <span class="literal">NULL</span>, -EAGAIN);</span><br><span class="line">					<span class="keyword">return</span> -EAGAIN;</span><br><span class="line">				&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_IP_FIB_TRIE_STATS</span></span><br><span class="line">				this_cpu_inc(stats-&gt;backtrack);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">				<span class="comment">/* Get Child&#x27;s index */</span></span><br><span class="line">				pn = node_parent_rcu(pn);<span class="comment">//父亲的父亲？</span></span><br><span class="line">				cindex = get_index(pkey, pn); <span class="comment">//刚才的节点在新父节点里的索引</span></span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* strip the least significant bit from the cindex */</span></span><br><span class="line">			cindex &amp;= cindex - <span class="number">1</span>; <span class="comment">//这个有点类似找兄弟！！</span></span><br><span class="line"></span><br><span class="line">			<span class="comment">/* grab pointer for next child node */</span></span><br><span class="line">			cptr = &amp;pn-&gt;tnode[cindex]; <span class="comment">//下次走的 child 分支</span></span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">found:</span><br><span class="line">	<span class="comment">/* this line carries forward the xor from earlier in the function */</span></span><br><span class="line">	index = key ^ n-&gt;key; <span class="comment">//目标地址和当前叶子 key 的差异位</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Step 3: Process the leaf, if that fails fall back to backtracing */</span></span><br><span class="line">	<span class="comment">//遍历叶子下的fa_alis 因为前缀相同可以能有多个fib_alias 比如dscp不同， metric不同等</span></span><br><span class="line">	hlist_for_each_entry_rcu(fa, &amp;n-&gt;leaf, fa_list) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">fib_info</span> *<span class="title">fi</span> =</span> fa-&gt;fa_info;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">fib_nh_common</span> *<span class="title">nhc</span>;</span></span><br><span class="line">		<span class="type">int</span> nhsel, err;</span><br><span class="line">		<span class="comment">//检查这fa和key的前缀是否匹配</span></span><br><span class="line">		<span class="keyword">if</span> ((BITS_PER_LONG &gt; KEYLENGTH) || (fa-&gt;fa_slen &lt; KEYLENGTH)) &#123;</span><br><span class="line">			<span class="keyword">if</span> (index &gt;= (<span class="number">1ul</span> &lt;&lt; fa-&gt;fa_slen))</span><br><span class="line">				<span class="keyword">continue</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//如果路由存在dscp 那就要必须陪匹配</span></span><br><span class="line">		<span class="keyword">if</span> (fa-&gt;fa_dscp &amp;&amp;</span><br><span class="line">		    inet_dscp_to_dsfield(fa-&gt;fa_dscp) != flp-&gt;flowi4_tos)</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="comment">/* Paired with WRITE_ONCE() in fib_release_info() */</span></span><br><span class="line">		<span class="comment">//是否已经死掉了</span></span><br><span class="line">		<span class="keyword">if</span> (READ_ONCE(fi-&gt;fib_dead))</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="comment">//scope小，继续</span></span><br><span class="line">		<span class="keyword">if</span> (fa-&gt;fa_info-&gt;fib_scope &lt; flp-&gt;flowi4_scope)</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="comment">//记录alias被访问过</span></span><br><span class="line">		fib_alias_accessed(fa);</span><br><span class="line">		err = fib_props[fa-&gt;fa_type].error;</span><br><span class="line">		<span class="keyword">if</span> (unlikely(err &lt; <span class="number">0</span>)) &#123;</span><br><span class="line">out_reject:</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_IP_FIB_TRIE_STATS</span></span><br><span class="line">			this_cpu_inc(stats-&gt;semantic_match_passed);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">			trace_fib_table_lookup(tb-&gt;tb_id, flp, <span class="literal">NULL</span>, err);</span><br><span class="line">			<span class="keyword">return</span> err;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">if</span> (fi-&gt;fib_flags &amp; RTNH_F_DEAD)</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (unlikely(fi-&gt;nh)) &#123;</span><br><span class="line">			<span class="keyword">if</span> (nexthop_is_blackhole(fi-&gt;nh)) &#123;</span><br><span class="line">				err = fib_props[RTN_BLACKHOLE].error;</span><br><span class="line">				<span class="keyword">goto</span> out_reject;</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			nhc = nexthop_get_nhc_lookup(fi-&gt;nh, fib_flags, flp,</span><br><span class="line">						     &amp;nhsel);</span><br><span class="line">			<span class="keyword">if</span> (nhc)</span><br><span class="line">				<span class="keyword">goto</span> set_result;</span><br><span class="line">			<span class="keyword">goto</span> miss;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//多路径相关正常肯定就一个</span></span><br><span class="line">		<span class="keyword">for</span> (nhsel = <span class="number">0</span>; nhsel &lt; fib_info_num_path(fi); nhsel++) &#123;</span><br><span class="line">			<span class="comment">//拿到下一跳信息 //&amp;fi-&gt;fib_nh[nhsel].nh_common;</span></span><br><span class="line">			nhc = fib_info_nhc(fi, nhsel);</span><br><span class="line">			<span class="comment">//是否link donw 是否dead就在这里判断</span></span><br><span class="line">			<span class="keyword">if</span> (!fib_lookup_good_nhc(nhc, fib_flags, flp))</span><br><span class="line">				<span class="keyword">continue</span>;</span><br><span class="line">set_result:</span><br><span class="line">			<span class="keyword">if</span> (!(fib_flags &amp; FIB_LOOKUP_NOREF))</span><br><span class="line">				refcount_inc(&amp;fi-&gt;fib_clntref);</span><br><span class="line">			<span class="comment">//构造res</span></span><br><span class="line">			res-&gt;prefix = htonl(n-&gt;key);</span><br><span class="line">			res-&gt;prefixlen = KEYLENGTH - fa-&gt;fa_slen;</span><br><span class="line">			res-&gt;nh_sel = nhsel;</span><br><span class="line">			res-&gt;nhc = nhc;</span><br><span class="line">			res-&gt;type = fa-&gt;fa_type;</span><br><span class="line">			res-&gt;scope = fi-&gt;fib_scope;</span><br><span class="line">			res-&gt;fi = fi;</span><br><span class="line">			res-&gt;table = tb;</span><br><span class="line">			res-&gt;fa_head = &amp;n-&gt;leaf;</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_IP_FIB_TRIE_STATS</span></span><br><span class="line">			this_cpu_inc(stats-&gt;semantic_match_passed);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">			trace_fib_table_lookup(tb-&gt;tb_id, flp, nhc, err);</span><br><span class="line"></span><br><span class="line">			<span class="keyword">return</span> err;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">miss:</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_IP_FIB_TRIE_STATS</span></span><br><span class="line">	this_cpu_inc(stats-&gt;semantic_match_miss);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="keyword">goto</span> backtrace;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p> <code>fib_table_lookup</code> 理解起来比较困难：-），核心思想是将目地<code>IP</code>作为 key，<strong>在压缩前缀树的结构中自顶向下遍历，通过 key 与节点前缀的比较（异或 + 位偏移）逐步选择最优分支</strong>，优先逼近最长匹配，当不满足前缀约束时，通过记录的父节点与索引信息进行回溯，继续在更短前缀空间中搜索候选路径。最终在叶子节点处遍历挂载的 <code>fib_alias</code> 链表，对每个候选项进行语义过滤（前缀长度匹配、DSCP、scope、状态有效性等），并根据路由类型确定最终的 <code>fib_nh_common</code>，<strong>命中之后将对应的前缀、前缀长度、路由类型、作用域、<code>fib_info</code> 以及下一跳信息填充到 <code>fib_result</code> 中。</strong></p>
+<p>回到<code>ip_route_input_slow</code>中，当路由查找的结果为上送本机时，还需要进行反向路径过滤检查（检查源<code>ip</code>地址是否可疑），具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Ignore rp_filter for packets protected by IPsec. */</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">fib_validate_source</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, __be32 src, __be32 dst,</span></span><br><span class="line"><span class="params">			u8 tos, <span class="type">int</span> oif, <span class="keyword">struct</span> net_device *dev,</span></span><br><span class="line"><span class="params">			<span class="keyword">struct</span> in_device *idev, u32 *itag)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> r = secpath_exists(skb) ? <span class="number">0</span> : IN_DEV_RPFILTER(idev);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> dev_net(dev);</span><br><span class="line">	<span class="comment">//是否启用 ，开了反向路径过滤就不走这里了</span></span><br><span class="line">	<span class="keyword">if</span> (!r &amp;&amp; !fib_num_tclassid_users(net) &amp;&amp;</span><br><span class="line">	    (dev-&gt;ifindex != oif || !IN_DEV_TX_REDIRECTS(idev))) &#123;</span><br><span class="line">		<span class="keyword">if</span> (IN_DEV_ACCEPT_LOCAL(idev)) <span class="comment">//那么即使源地址看起来像本地地址也放行</span></span><br><span class="line">			<span class="keyword">goto</span> ok;</span><br><span class="line">		<span class="comment">/* with custom local routes in place, checking local addresses</span></span><br><span class="line"><span class="comment">		 * only will be too optimistic, with custom rules, checking</span></span><br><span class="line"><span class="comment">		 * local addresses only can be too strict, e.g. due to vrf</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="keyword">if</span> (net-&gt;ipv4.fib_has_custom_local_routes || <span class="comment">//有自定义策略路由</span></span><br><span class="line">		    fib4_has_custom_rules(net))</span><br><span class="line">			<span class="keyword">goto</span> full_check;</span><br><span class="line">		<span class="comment">/* Within the same container, it is regarded as a martian source,</span></span><br><span class="line"><span class="comment">		 * and the same host but different containers are not.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//查一下 src 是不是本机持有的 IPv4 地址</span></span><br><span class="line">		<span class="keyword">if</span> (inet_lookup_ifaddr_rcu(net, src))</span><br><span class="line">			<span class="keyword">return</span> -EINVAL;</span><br><span class="line"></span><br><span class="line">ok:</span><br><span class="line">		*itag = <span class="number">0</span>;</span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">full_check:</span><br><span class="line">	<span class="keyword">return</span> __fib_validate_source(skb, src, dst, tos, oif, dev, r, idev, itag);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>fib_validate_source</code>核心逻辑是<strong>如果没有开启反向路径过滤且没有复杂策略路由，就根据是否允许本地地址等配置放行或拒绝，但只要开启了 <code>rp_filter</code>就直接进入 <code>__fib_validate_source()</code>，通过查路由表做完整的反向路径检查，判断该源地址从当前接口接收是否合理。</strong> </p>
+<p><code>__fib_validate_source</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> __fib_validate_source(<span class="keyword">struct</span> sk_buff *skb, __be32 src, __be32 dst,</span><br><span class="line">				 u8 tos, <span class="type">int</span> oif, <span class="keyword">struct</span> net_device *dev,</span><br><span class="line">				 <span class="type">int</span> rpf, <span class="keyword">struct</span> in_device *idev, u32 *itag)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> dev_net(dev);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">flow_keys</span> <span class="title">flkeys</span>;</span></span><br><span class="line">	<span class="type">int</span> ret, no_addr;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">fib_result</span> <span class="title">res</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">flowi4</span> <span class="title">fl4</span>;</span></span><br><span class="line">	<span class="type">bool</span> dev_match;</span><br><span class="line"></span><br><span class="line">	fl4.flowi4_oif = <span class="number">0</span>; <span class="comment">//不指定出接口</span></span><br><span class="line">	fl4.flowi4_l3mdev = l3mdev_master_ifindex_rcu(dev);</span><br><span class="line">	fl4.flowi4_iif = oif ? : LOOPBACK_IFINDEX;</span><br><span class="line">	fl4.daddr = src; <span class="comment">//注意这里倒转了ip地址</span></span><br><span class="line">	fl4.saddr = dst;</span><br><span class="line">	fl4.flowi4_tos = tos;</span><br><span class="line">	fl4.flowi4_scope = RT_SCOPE_UNIVERSE;</span><br><span class="line">	fl4.flowi4_tun_key.tun_id = <span class="number">0</span>;</span><br><span class="line">	fl4.flowi4_flags = <span class="number">0</span>;</span><br><span class="line">	fl4.flowi4_uid = sock_net_uid(net, <span class="literal">NULL</span>);</span><br><span class="line">	fl4.flowi4_multipath_hash = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	no_addr = idev-&gt;ifa_list == <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	fl4.flowi4_mark = IN_DEV_SRC_VMARK(idev) ? skb-&gt;mark : <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//看看能不能拿port 策略路由有用到</span></span><br><span class="line">	<span class="keyword">if</span> (!fib4_rules_early_flow_dissect(net, skb, &amp;fl4, &amp;flkeys)) &#123;</span><br><span class="line">		fl4.flowi4_proto = <span class="number">0</span>;</span><br><span class="line">		fl4.fl4_sport = <span class="number">0</span>;</span><br><span class="line">		fl4.fl4_dport = <span class="number">0</span>;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		swap(fl4.fl4_sport, fl4.fl4_dport);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//查路由</span></span><br><span class="line">	<span class="keyword">if</span> (fib_lookup(net, &amp;fl4, &amp;res, <span class="number">0</span>))</span><br><span class="line">		<span class="keyword">goto</span> last_resort;</span><br><span class="line">	<span class="comment">//路由是否合法</span></span><br><span class="line">	<span class="keyword">if</span> (res.type != RTN_UNICAST &amp;&amp;</span><br><span class="line">	    (res.type != RTN_LOCAL || !IN_DEV_ACCEPT_LOCAL(idev)))</span><br><span class="line">		<span class="keyword">goto</span> e_inval;</span><br><span class="line">	fib_combine_itag(itag, &amp;res);</span><br><span class="line">	<span class="comment">//看查出来的路由是不是用当前入接口！！！</span></span><br><span class="line">	dev_match = fib_info_nh_uses_dev(res.fi, dev);</span><br><span class="line">	<span class="comment">/* This is not common, loopback packets retain skb_dst so normally they</span></span><br><span class="line"><span class="comment">	 * would not even hit this slow path.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//loopback的特殊处理</span></span><br><span class="line">	dev_match = dev_match || (res.type == RTN_LOCAL &amp;&amp;</span><br><span class="line">				  dev == net-&gt;loopback_dev);</span><br><span class="line">	<span class="comment">//通过</span></span><br><span class="line">	<span class="keyword">if</span> (dev_match) &#123;</span><br><span class="line">		ret = FIB_RES_NHC(res)-&gt;nhc_scope &gt;= RT_SCOPE_HOST;</span><br><span class="line">		<span class="keyword">return</span> ret;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//根本没有ip地址的情况，看是否是严格源路由过滤还是。。。</span></span><br><span class="line">	<span class="keyword">if</span> (no_addr)</span><br><span class="line">		<span class="keyword">goto</span> last_resort;</span><br><span class="line">	<span class="comment">//严格模式，直接失败</span></span><br><span class="line">	<span class="keyword">if</span> (rpf == <span class="number">1</span>)</span><br><span class="line">		<span class="keyword">goto</span> e_rpf;</span><br><span class="line">	fl4.flowi4_oif = dev-&gt;ifindex;</span><br><span class="line">	<span class="comment">//指定出接口再试一次，如果指定出接口都发不出去，拿干脆就认为是非法的</span></span><br><span class="line">	ret = <span class="number">0</span>;</span><br><span class="line">	<span class="keyword">if</span> (fib_lookup(net, &amp;fl4, &amp;res, FIB_LOOKUP_IGNORE_LINKSTATE) == <span class="number">0</span>) &#123;</span><br><span class="line">		<span class="keyword">if</span> (res.type == RTN_UNICAST)</span><br><span class="line">			ret = FIB_RES_NHC(res)-&gt;nhc_scope &gt;= RT_SCOPE_HOST;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line"></span><br><span class="line">last_resort:</span><br><span class="line">	<span class="keyword">if</span> (rpf)</span><br><span class="line">		<span class="keyword">goto</span> e_rpf;</span><br><span class="line">	*itag = <span class="number">0</span>;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">e_inval:</span><br><span class="line">	<span class="keyword">return</span> -EINVAL;</span><br><span class="line">e_rpf:</span><br><span class="line">	<span class="keyword">return</span> -EXDEV;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>__fib_validate_source</code><strong>核心思想就是把收到数据包的源地址 <code>src</code> 反过来做一次路由查询，检查按照本机路由视角，这个源地址是否应该从当前这个接口 <code>dev</code> 进来。</strong> 它先构造一个反向查路条件，然后调用 <code>fib_lookup()</code> 查路，如果查不到，没开 <code>rp_filter</code> 就放行，如果查到了，但结果不是正常单播路由，或者不是被允许的本地路由，就认为源地址本身不合法，如果查出来的路由确实会走当前入接口，就校验通过，如果不走当前接口，而当前接口又没配地址，就走兜底逻辑，如果开的是严格反向路径过滤，就直接判失败，如果是宽松模式，就再强制指定当前接口做一次查路，只要这个源地址至少还能从这个接口解释得通，就放行，否则拒绝。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/IP/" rel="tag"># IP</a>
+              <a href="/tags/%E8%B7%AF%E7%94%B1%E5%AD%90%E7%B3%BB%E7%BB%9F/" rel="tag"># 路由子系统</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/04/01/%E8%B7%AF%E7%94%B1%EF%BC%88%E5%9B%9B%EF%BC%89/" rel="prev" title="接收方向路由查找">
+      <i class="fa fa-chevron-left"></i> 接收方向路由查找
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">112</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">24</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
