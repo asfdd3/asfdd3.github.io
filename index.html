@@ -193,6 +193,101 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/12/%E6%B5%81%E9%87%8F%E6%8E%A7%E5%88%B6/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2026/04/12/%E6%B5%81%E9%87%8F%E6%8E%A7%E5%88%B6/" class="post-title-link" itemprop="url">流量控制(TC)初始化</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-04-12 22:00:00 / 修改时间：17:26:05" itemprop="dateCreated datePublished" datetime="2026-04-12T22:00:00+08:00">2026-04-12</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/04/12/%E6%B5%81%E9%87%8F%E6%8E%A7%E5%88%B6/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/04/12/%E6%B5%81%E9%87%8F%E6%8E%A7%E5%88%B6/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="引言"><a href="#引言" class="headerlink" title="引言"></a>引言</h2><p>在 Linux 内核网络协议栈中，流量控制（Traffic Control，TC）位于发送路径的关键位置，负责在数据包进入网卡之前完成排队与调度。内核在网络设备初始化和激活阶段，就已经为每个设备构建了一套默认的队列体系，而对于多队列网卡，则会建立分层结构，将流量分发到不同的发送队列，并为每个队列配置独立的排队策略。与此同时，这些队列规则会被绑定到设备的发送路径上，使得所有数据包在发送前都会经过统一的调度入口。后续用户后可以通过 <code>tc</code> 命令对队列规则的配置，替换和重组这套已经存在的调度结构。</p>
+<p><strong>本文重点介绍<code>mq</code> + <code>pfifofast</code></strong></p>
+<h2 id="流量控制的初始化"><a href="#流量控制的初始化" class="headerlink" title="流量控制的初始化"></a>流量控制的初始化</h2><h3 id="register-netdev"><a href="#register-netdev" class="headerlink" title="register_netdev"></a><code>register_netdev</code></h3><p>网络驱动注册网络设备时，会完成一部分初始化工作，注册时候会为所有发送队列统一挂载 <code>noop_qdisc</code> 作为初始占位调度器，并完成 ingress 队列（如存在）及发送 watchdog 定时器的初始化，为后续真正的 <code>qdisc</code> 挂载和调度激活做准备，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//注册网卡时被调用</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">dev_init_scheduler</span><span class="params">(<span class="keyword">struct</span> net_device *dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//先给每个设备注册一个空的qdisc</span></span><br><span class="line">	rcu_assign_pointer(dev-&gt;qdisc, &amp;noop_qdisc);</span><br><span class="line">	<span class="comment">//遍历网卡的每个队列，这里的队列数量是申请网络设备时候驱动注册的</span></span><br><span class="line">	netdev_for_each_tx_queue(dev, dev_init_scheduler_queue, &amp;noop_qdisc);</span><br><span class="line">	<span class="comment">//如果这个设备存在ingress 也需要初始化，这里大概率没有</span></span><br><span class="line">	<span class="keyword">if</span> (dev_ingress_queue(dev))</span><br><span class="line">		dev_init_scheduler_queue(dev, dev_ingress_queue(dev), &amp;noop_qdisc);</span><br><span class="line">	<span class="comment">//这里设置watchdog 用于判断发送队列是不是卡死了 一直发不出去</span></span><br><span class="line">	timer_setup(&amp;dev-&gt;watchdog_timer, dev_watchdog, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="dev-activate"><a href="#dev-activate" class="headerlink" title="dev_activate"></a><code>dev_activate</code></h3><p>后续在网卡<code>link up</code> 或者 逻辑上<code>up</code>会调用<code>dev_activate</code>完成实际<code>qdisc</code>的初始化工作，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//网卡open或者link up的时候会调用</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">dev_activate</span><span class="params">(<span class="keyword">struct</span> net_device *dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> need_watchdog;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* No queueing discipline is attached to device;</span></span><br><span class="line"><span class="comment">	 * create default one for devices, which need queueing</span></span><br><span class="line"><span class="comment">	 * and noqueue_qdisc for virtual interfaces</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//如果是noop 就挂默认的qdisc</span></span><br><span class="line">	<span class="keyword">if</span> (rtnl_dereference(dev-&gt;qdisc) == &amp;noop_qdisc)</span><br><span class="line">		attach_default_qdiscs(dev);</span><br><span class="line">	<span class="comment">//还没有link</span></span><br><span class="line">	<span class="keyword">if</span> (!netif_carrier_ok(dev))</span><br><span class="line">		<span class="comment">/* Delay activation until next carrier-on event */</span></span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">	need_watchdog = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//设置qdisc</span></span><br><span class="line">	netdev_for_each_tx_queue(dev, transition_one_qdisc, &amp;need_watchdog);</span><br><span class="line">	<span class="comment">//处理ingress 方向</span></span><br><span class="line">	<span class="keyword">if</span> (dev_ingress_queue(dev))</span><br><span class="line">		transition_one_qdisc(dev, dev_ingress_queue(dev), <span class="literal">NULL</span>);</span><br><span class="line">	<span class="comment">//记录当前事件，启动设备的看门狗</span></span><br><span class="line">	<span class="keyword">if</span> (need_watchdog) &#123;</span><br><span class="line">		netif_trans_update(dev);</span><br><span class="line">		dev_watchdog_up(dev);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2026/04/12/%E6%B5%81%E9%87%8F%E6%8E%A7%E5%88%B6/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/08/%E8%B7%AF%E7%94%B1%EF%BC%88%E5%85%AD%EF%BC%89/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1117,111 +1212,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2026/03/12/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%BA%8C%EF%BC%89/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2026/03/12/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%BA%8C%EF%BC%89/" class="post-title-link" itemprop="url">IP分片</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2026-03-12 22:00:00" itemprop="dateCreated datePublished" datetime="2026-03-12T22:00:00+08:00">2026-03-12</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2026-03-15 23:24:17" itemprop="dateModified" datetime="2026-03-15T23:24:17+08:00">2026-03-15</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2026/03/12/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%BA%8C%EF%BC%89/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2026/03/12/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%BA%8C%EF%BC%89/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p>在网络中，一个报文从源主机发送到目的主机的过程中，可能会经过多条不同类型的网络链路，而这些链路所能承载的最大传输单元<code>MTU</code>并不一定相同。当一个 <code>IP</code>报文的大小超过某条链路允许的 <code>MTU</code> 时，如果直接发送将无法通过该链路。为了解决这一问题，IPv4 协议设计了 <strong>IP 分片机制</strong>：在必要时将一个较大的 IP 数据报拆分成多个较小的分片分别传输，每个分片都携带自己的 IP 头部信息，并在最终目的主机处重新组装成原始数据报。在这一过程中，IP 头中的 <strong>Identification、Fragment Offset 以及 MF（More Fragments）标志位</strong> 用于标识分片之间的关系和顺序，从而保证数据能够正确地重组。</p>
-<p>内核源码中对应处理IP分片的入口是<code>ip_fragment</code>当，数据包的长度大于MTU可以承载的大小时，会调用该函数完成分片具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">ip_fragment</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">		       <span class="type">unsigned</span> <span class="type">int</span> mtu,</span></span><br><span class="line"><span class="params">		       <span class="type">int</span> (*output)(<span class="keyword">struct</span> net *, <span class="keyword">struct</span> sock *, <span class="keyword">struct</span> sk_buff *))</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">iphdr</span> *<span class="title">iph</span> =</span> ip_hdr(skb);</span><br><span class="line">	<span class="comment">//DF = 0 直接分片</span></span><br><span class="line">	<span class="keyword">if</span> ((iph-&gt;frag_off &amp; htons(IP_DF)) == <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">return</span> ip_do_fragment(net, sk, skb, output);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (unlikely(!skb-&gt;ignore_df ||</span><br><span class="line">		     (IPCB(skb)-&gt;frag_max_size &amp;&amp;</span><br><span class="line">		      IPCB(skb)-&gt;frag_max_size &gt; mtu))) &#123;</span><br><span class="line">		IP_INC_STATS(net, IPSTATS_MIB_FRAGFAILS);</span><br><span class="line">		icmp_send(skb, ICMP_DEST_UNREACH, ICMP_FRAG_NEEDED,</span><br><span class="line">			  htonl(mtu));</span><br><span class="line">		kfree_skb(skb);</span><br><span class="line">		<span class="keyword">return</span> -EMSGSIZE;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> ip_do_fragment(net, sk, skb, output);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<p>可以看到<code>ip_do_fragment</code>为实际分片的处理函数，该函数中将IP分片分为了<strong>快速路和慢速路径</strong>的处理逻辑**（取决于上层如何构造的数据包，如果构造数据包时用到了frag_list这个非线性部分则会走快速分片的逻辑，例如<code>ip_append_data</code>接口）**。</p>
-<p><code>ip_do_fragment</code>具体实现如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">ip_do_fragment</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">		   <span class="type">int</span> (*output)(<span class="keyword">struct</span> net *, <span class="keyword">struct</span> sock *, <span class="keyword">struct</span> sk_buff *))</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">iphdr</span> *<span class="title">iph</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb2</span>;</span></span><br><span class="line">	<span class="type">bool</span> mono_delivery_time = skb-&gt;mono_delivery_time;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rtable</span> *<span class="title">rt</span> =</span> skb_rtable(skb);</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> mtu, hlen, ll_rs;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_fraglist_iter</span> <span class="title">iter</span>;</span></span><br><span class="line">	<span class="type">ktime_t</span> tstamp = skb-&gt;tstamp;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_frag_state</span> <span class="title">state</span>;</span></span><br><span class="line">	<span class="type">int</span> err = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* for offloaded checksums cleanup checksum before fragmentation */</span></span><br><span class="line">	<span class="comment">//这里几乎不会进入 应该都是NONE吧</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;ip_summed == CHECKSUM_PARTIAL &amp;&amp;</span><br><span class="line">	    (err = skb_checksum_help(skb)))</span><br><span class="line">		<span class="keyword">goto</span> fail;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	Point into the IP datagram header.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//获取ip头部</span></span><br><span class="line">	iph = ip_hdr(skb);</span><br><span class="line">	<span class="comment">//返回设备的mtu</span></span><br><span class="line">	mtu = ip_skb_dst_mtu(sk, skb);</span><br><span class="line">	<span class="comment">//udp发包貌似不会进入这里</span></span><br><span class="line">	<span class="keyword">if</span> (IPCB(skb)-&gt;frag_max_size &amp;&amp; IPCB(skb)-&gt;frag_max_size &lt; mtu)</span><br><span class="line">		mtu = IPCB(skb)-&gt;frag_max_size;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	Setup starting values.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//ip头部长度 之后计算每个片可以装多少数据</span></span><br><span class="line">	hlen = iph-&gt;ihl * <span class="number">4</span>;</span><br><span class="line">	mtu = mtu - hlen;	<span class="comment">/* Size of data space */</span></span><br><span class="line">	<span class="comment">//标识进入分片流程</span></span><br><span class="line">	IPCB(skb)-&gt;flags |= IPSKB_FRAG_COMPLETE;</span><br><span class="line">	<span class="comment">//链路层需要的空间</span></span><br><span class="line">	ll_rs = LL_RESERVED_SPACE(rt-&gt;dst.dev);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* When frag_list is given, use it. First, check its validity:</span></span><br><span class="line"><span class="comment">	 * some transformers could create wrong frag_list or break existing</span></span><br><span class="line"><span class="comment">	 * one, it is not prohibited. In this case fall back to copying.</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * LATER: this step can be merged to real generation of fragments,</span></span><br><span class="line"><span class="comment">	 * we can switch to copy when see the first bad fragment.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//是否有非线性部分，这里是快速路径</span></span><br><span class="line">	<span class="keyword">if</span> (skb_has_frag_list(skb)) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">frag</span>, *<span class="title">frag2</span>;</span></span><br><span class="line">		<span class="type">unsigned</span> <span class="type">int</span> first_len = skb_pagelen(skb);<span class="comment">//实际数据的长度</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (first_len - hlen &gt; mtu ||   	<span class="comment">//第一个skb</span></span><br><span class="line">		    ((first_len - hlen) &amp; <span class="number">7</span>) ||     <span class="comment">//是否是8字节 不是8字节对其只能走慢速路径</span></span><br><span class="line">		    ip_is_fragment(iph) ||			<span class="comment">//已经是分片包了</span></span><br><span class="line">		    skb_cloned(skb) ||				<span class="comment">//skb是clone的只能走慢速路径</span></span><br><span class="line">		    skb_headroom(skb) &lt; ll_rs)		<span class="comment">//头部空间不够</span></span><br><span class="line">			<span class="keyword">goto</span> slow_path;</span><br><span class="line">		<span class="comment">//检查每个子frag</span></span><br><span class="line">		skb_walk_frags(skb, frag) &#123;</span><br><span class="line">			<span class="comment">/* Correct geometry. */</span></span><br><span class="line">			<span class="comment">//检查长度和对其清空</span></span><br><span class="line">			<span class="keyword">if</span> (frag-&gt;len &gt; mtu ||</span><br><span class="line">			    ((frag-&gt;len &amp; <span class="number">7</span>) &amp;&amp; frag-&gt;next) ||</span><br><span class="line">				<span class="comment">//放不下两个头部的空间了</span></span><br><span class="line">			    skb_headroom(frag) &lt; hlen + ll_rs)</span><br><span class="line">				<span class="keyword">goto</span> slow_path_clean;</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* Partially cloned skb? */</span></span><br><span class="line">			<span class="comment">//有其他人再用</span></span><br><span class="line">			<span class="keyword">if</span> (skb_shared(frag))</span><br><span class="line">				<span class="keyword">goto</span> slow_path_clean;</span><br><span class="line"></span><br><span class="line">			BUG_ON(frag-&gt;sk);</span><br><span class="line">			<span class="keyword">if</span> (skb-&gt;sk) &#123;</span><br><span class="line">				<span class="comment">//关联sk</span></span><br><span class="line">				frag-&gt;sk = skb-&gt;sk;</span><br><span class="line">				<span class="comment">//析构函数 关系到内存记账！！</span></span><br><span class="line">				frag-&gt;destructor = sock_wfree;</span><br><span class="line">			&#125;</span><br><span class="line">			skb-&gt;truesize -= frag-&gt;truesize;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Everything is OK. Generate! */</span></span><br><span class="line">		<span class="comment">//初始化iter 接管skb的fraglist</span></span><br><span class="line">		ip_fraglist_init(skb, iph, hlen, &amp;iter);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">for</span> (;;) &#123;</span><br><span class="line">			<span class="comment">/* Prepare header of the next frame,</span></span><br><span class="line"><span class="comment">			 * before previous one went down. */</span></span><br><span class="line">			<span class="comment">//这里是从第二片开始的，先准备下一片，在发当前片</span></span><br><span class="line">			<span class="keyword">if</span> (iter.frag) &#123;</span><br><span class="line">				<span class="type">bool</span> first_frag = (iter.offset == <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">				IPCB(iter.frag)-&gt;flags = IPCB(skb)-&gt;flags;</span><br><span class="line">				<span class="comment">//设置第二片开始的ip头 offset等</span></span><br><span class="line">				ip_fraglist_prepare(skb, &amp;iter);</span><br><span class="line">				<span class="comment">//首片选项的处理</span></span><br><span class="line">				<span class="keyword">if</span> (first_frag &amp;&amp; IPCB(skb)-&gt;opt.optlen) &#123;</span><br><span class="line">					<span class="comment">/* ipcb-&gt;opt is not populated for frags</span></span><br><span class="line"><span class="comment">					 * coming from __ip_make_skb(),</span></span><br><span class="line"><span class="comment">					 * ip_options_fragment() needs optlen</span></span><br><span class="line"><span class="comment">					 */</span></span><br><span class="line">					IPCB(iter.frag)-&gt;opt.optlen =</span><br><span class="line">						IPCB(skb)-&gt;opt.optlen;</span><br><span class="line">					<span class="comment">//处理分片的ip选项例如第二片开始的选项都是noop</span></span><br><span class="line">					ip_options_fragment(iter.frag);</span><br><span class="line">					ip_send_check(iter.iph);</span><br><span class="line">				&#125;</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			skb_set_delivery_time(skb, tstamp, mono_delivery_time);</span><br><span class="line">			err = output(net, sk, skb); <span class="comment">//向下发送数据包</span></span><br><span class="line"></span><br><span class="line">			<span class="keyword">if</span> (!err)</span><br><span class="line">				IP_INC_STATS(net, IPSTATS_MIB_FRAGCREATES);</span><br><span class="line">			<span class="keyword">if</span> (err || !iter.frag) <span class="comment">//没有下一片了退出</span></span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			<span class="comment">//获取下一片</span></span><br><span class="line">			skb = ip_fraglist_next(&amp;iter);</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (err == <span class="number">0</span>) &#123;</span><br><span class="line">			IP_INC_STATS(net, IPSTATS_MIB_FRAGOKS);</span><br><span class="line">			<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		kfree_skb_list(iter.frag);</span><br><span class="line"></span><br><span class="line">		IP_INC_STATS(net, IPSTATS_MIB_FRAGFAILS);</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line"><span class="comment">//错误处理的回退</span></span><br><span class="line">slow_path_clean:</span><br><span class="line">		skb_walk_frags(skb, frag2) &#123;</span><br><span class="line">			<span class="keyword">if</span> (frag2 == frag)</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			frag2-&gt;sk = <span class="literal">NULL</span>;</span><br><span class="line">			frag2-&gt;destructor = <span class="literal">NULL</span>;</span><br><span class="line">			skb-&gt;truesize += frag2-&gt;truesize;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">slow_path:</span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	Fragment the datagram.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//慢速路径 ，把ip头部长度 以太网头部长度 是否DF等信息填充到state中，下面循环会用到</span></span><br><span class="line">	ip_frag_init(skb, hlen, ll_rs, mtu, IPCB(skb)-&gt;flags &amp; IPSKB_FRAG_PMTU,</span><br><span class="line">		     &amp;state);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	Keep copying data until we run out.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//state.left 表示还剩多少数据没有被分到分片里</span></span><br><span class="line">	<span class="keyword">while</span> (state.left &gt; <span class="number">0</span>) &#123;</span><br><span class="line">		<span class="type">bool</span> first_frag = (state.offset == <span class="number">0</span>);</span><br><span class="line">		<span class="comment">//构造的新数据包，里面会申请skb 更新state</span></span><br><span class="line">		skb2 = ip_frag_next(skb, &amp;state);</span><br><span class="line">		<span class="keyword">if</span> (IS_ERR(skb2)) &#123;</span><br><span class="line">			err = PTR_ERR(skb2);</span><br><span class="line">			<span class="keyword">goto</span> fail;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//处理ip选项</span></span><br><span class="line">		ip_frag_ipcb(skb, skb2, first_frag);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/*</span></span><br><span class="line"><span class="comment">		 *	Put this fragment into the sending queue.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		skb_set_delivery_time(skb2, tstamp, mono_delivery_time);</span><br><span class="line">		<span class="comment">//调用发包接口</span></span><br><span class="line">		err = output(net, sk, skb2);</span><br><span class="line">		<span class="keyword">if</span> (err)</span><br><span class="line">			<span class="keyword">goto</span> fail;</span><br><span class="line"></span><br><span class="line">		IP_INC_STATS(net, IPSTATS_MIB_FRAGCREATES);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//最原始的包不要了</span></span><br><span class="line">	consume_skb(skb);</span><br><span class="line">	IP_INC_STATS(net, IPSTATS_MIB_FRAGOKS);</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line"></span><br><span class="line">fail:</span><br><span class="line">	kfree_skb(skb);</span><br><span class="line">	IP_INC_STATS(net, IPSTATS_MIB_FRAGFAILS);</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<h3 id="快速路径"><a href="#快速路径" class="headerlink" title="快速路径"></a>快速路径</h3><p><strong>快速路径</strong> 的核心思想是如果原始 <code>skb</code> 已经以 <strong>frag_list 的形式组织了多个子 <code>skb</code>（通常来自上层构造的分段结构）</strong>，并且这些子 <code>skb</code> 的大小、8 字节对齐、头部空间以及引用状态都满足分片要求，那么内核就不再重新复制数据进行分片，而是直接复用这些已有的子 <code>skb</code> 作为 IP 分片。具体流程是：首先检查第一个 <code>skb</code> 和所有 <code>frag_list</code> 中的 <code>skb</code> 是否满足 <strong>长度 ≤ <code>mtu</code>、非克隆、8 字节对齐、头部空间足够</strong> 等条件，如果全部合法，就通过 <code>ip_fraglist_init()</code> 初始化遍历状态，然后在循环中依次为每个子 <code>skb</code> 调整 <strong>IP 分片字段（<code>frag_off</code>、<code>MF</code>、<code>offset</code> 等）</strong>，随后直接调用 <code>output()</code> 将这些 <code>skb</code> 逐个发送。整个过程中不需要重新分配 <code>skb</code> 或复制 <code>payload</code>，只是修改头部并发送，从而避免数据拷贝，提高分片性能。</p>
-<p>上述<code>ip_fraglist_init</code>用于初始化记录分片过程中的必要信息，例如<code>offset</code>，<code>ip</code>头部等等，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">ip_fraglist_init</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> iphdr *iph,</span></span><br><span class="line"><span class="params">		      <span class="type">unsigned</span> <span class="type">int</span> hlen, <span class="keyword">struct</span> ip_fraglist_iter *iter)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//第一片的总ip头加负载的长度</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> first_len = skb_pagelen(skb);</span><br><span class="line">	<span class="comment">//接管fraglist</span></span><br><span class="line">	iter-&gt;frag = skb_shinfo(skb)-&gt;frag_list;</span><br><span class="line">	skb_frag_list_init(skb);</span><br><span class="line">	<span class="comment">//初始化offset和保存ip头 以及ip头长度</span></span><br><span class="line">	iter-&gt;offset = <span class="number">0</span>;</span><br><span class="line">	iter-&gt;iph = iph;</span><br><span class="line">	iter-&gt;hlen = hlen;</span><br><span class="line">	<span class="comment">//非线性部分</span></span><br><span class="line">	skb-&gt;data_len = first_len - skb_headlen(skb);</span><br><span class="line">	skb-&gt;len = first_len;</span><br><span class="line">	iph-&gt;tot_len = htons(first_len);</span><br><span class="line">	iph-&gt;frag_off = htons(IP_MF);</span><br><span class="line">	ip_send_check(iph);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2026/03/12/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%BA%8C%EF%BC%89/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1291,7 +1281,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">113</span>
+          <span class="site-state-item-count">114</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
@@ -1304,7 +1294,7 @@
       <div class="site-state-item site-state-tags">
             <a href="/tags/">
           
-        <span class="site-state-item-count">24</span>
+        <span class="site-state-item-count">25</span>
         <span class="site-state-item-name">标签</span></a>
       </div>
   </nav>
