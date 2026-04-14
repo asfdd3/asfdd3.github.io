@@ -193,6 +193,108 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/03/15/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%B8%89%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2026/03/15/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%B8%89%EF%BC%89/" class="post-title-link" itemprop="url">IP重组（一）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-03-15 22:00:00 / 修改时间：23:37:58" itemprop="dateCreated datePublished" datetime="2026-03-15T22:00:00+08:00">2026-03-15</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/03/15/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%B8%89%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/03/15/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%B8%89%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>IP 重组是TCP&#x2F;IP协议栈必须支持的功能。当一个 IP 数据包在传输过程中因为链路 MTU 限制被拆分成多个分片时，这些分片会分别独立在网络中转发，并可能乱序到达目的主机。<strong>接收端通过 Identification、Fragment Offset 和 MF 标志 来识别属于同一数据包的分片</strong>，并维护一个分片队列，按照<code>offset</code>将各个分片重新拼接成完整的数据报；只有当所有分片都到齐时，报文会被重组并继续交给上层协议处理。</p>
+<p><strong>Linux内核IP重组发生在数据包查找路由，当确定是上送本机的数据包后，在<code>ip_local_deliver</code>中会判断是否需要进行重组</strong>，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">ip_local_deliver</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	Reassemble IP fragments.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> dev_net(skb-&gt;dev);</span><br><span class="line">	<span class="comment">//有offset或者有MF,则需要进行重组</span></span><br><span class="line">	<span class="keyword">if</span> (ip_is_fragment(ip_hdr(skb))) &#123;</span><br><span class="line">		<span class="keyword">if</span> (ip_defrag(net, skb, IP_DEFRAG_LOCAL_DELIVER))</span><br><span class="line">			<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> NF_HOOK(NFPROTO_IPV4, NF_INET_LOCAL_IN,</span><br><span class="line">		       net, <span class="literal">NULL</span>, skb, skb-&gt;dev, <span class="literal">NULL</span>,</span><br><span class="line">		       ip_local_deliver_finish);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码的核心逻辑是判断数据包IP首部的的<strong>片偏移是否不为零或者有MF标志位</strong>被置位，如果满足条件则表示这个数据包需要进行重组，会一步调用<code>ip_defrag</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Process an incoming IP datagram fragment. */</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">ip_defrag</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sk_buff *skb, u32 user)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span> =</span> skb-&gt;dev ? : skb_dst(skb)-&gt;dev;</span><br><span class="line">	<span class="type">int</span> vif = l3mdev_master_ifindex_rcu(dev);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ipq</span> *<span class="title">qp</span>;</span></span><br><span class="line"></span><br><span class="line">	__IP_INC_STATS(net, IPSTATS_MIB_REASMREQDS);</span><br><span class="line">	<span class="comment">//相当于不属于某个sk</span></span><br><span class="line">	skb_orphan(skb);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Lookup (or create) queue header */</span></span><br><span class="line">	<span class="comment">//查找这个数据包所属的管理结构，如果没找到就创建一个</span></span><br><span class="line">	qp = ip_find(net, ip_hdr(skb), user, vif);</span><br><span class="line">	<span class="keyword">if</span> (qp) &#123;</span><br><span class="line">		<span class="type">int</span> ret;</span><br><span class="line"></span><br><span class="line">		spin_lock(&amp;qp-&gt;q.lock);</span><br><span class="line"></span><br><span class="line">		ret = ip_frag_queue(qp, skb);</span><br><span class="line"></span><br><span class="line">		spin_unlock(&amp;qp-&gt;q.lock);</span><br><span class="line">		ipq_put(qp);</span><br><span class="line">		<span class="keyword">return</span> ret;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	__IP_INC_STATS(net, IPSTATS_MIB_REASMFAILS);</span><br><span class="line">	kfree_skb(skb);</span><br><span class="line">	<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ip_defrag</code>中首先把数据包取消对<code>sk</code>的关联之后调用<code>ip_find</code>查找数据包对应的管理结构，如果没有则会尝试创建，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">struct</span> ipq *<span class="title function_">ip_find</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> iphdr *iph,</span></span><br><span class="line"><span class="params">			   u32 user, <span class="type">int</span> vif)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//构建hash徐要用到的key，这里的user表示是哪个模块用到</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">frag_v4_compare_key</span> <span class="title">key</span> =</span> &#123;</span><br><span class="line">		.saddr = iph-&gt;saddr,</span><br><span class="line">		.daddr = iph-&gt;daddr,</span><br><span class="line">		.user = user,</span><br><span class="line">		.vif = vif,</span><br><span class="line">		.id = iph-&gt;id,</span><br><span class="line">		.protocol = iph-&gt;protocol,</span><br><span class="line">	&#125;;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_frag_queue</span> *<span class="title">q</span>;</span></span><br><span class="line">	<span class="comment">//查找对应的管理条目，注意这里如果超IP重组阈值直接返回NULL了</span></span><br><span class="line">	q = inet_frag_find(net-&gt;ipv4.fqdir, &amp;key);</span><br><span class="line">	<span class="keyword">if</span> (!q)</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> container_of(q, <span class="keyword">struct</span> ipq, q);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>首先构造需要查找hash表使用的<code>key</code>，这里通过源IP目的IP以及<code>id</code>等构造<code>key</code>之后调用<code>inet_frag_find</code>进行查找，具体代码如下所示:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* TODO : call from rcu_read_lock() and no longer use refcount_inc_not_zero() */</span></span><br><span class="line"><span class="keyword">struct</span> inet_frag_queue *<span class="title function_">inet_frag_find</span><span class="params">(<span class="keyword">struct</span> fqdir *fqdir, <span class="type">void</span> *key)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/* This pairs with WRITE_ONCE() in fqdir_pre_exit(). */</span></span><br><span class="line">	<span class="type">long</span> high_thresh = READ_ONCE(fqdir-&gt;high_thresh);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_frag_queue</span> *<span class="title">fq</span> =</span> <span class="literal">NULL</span>, *prev;</span><br><span class="line">	<span class="comment">//是否超过系统重组使用的内存上限</span></span><br><span class="line">	<span class="keyword">if</span> (!high_thresh || frag_mem_limit(fqdir) &gt; high_thresh)</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	<span class="comment">//查找hash表，没有就创建一个</span></span><br><span class="line">	prev = rhashtable_lookup(&amp;fqdir-&gt;rhashtable, key, fqdir-&gt;f-&gt;rhash_params);</span><br><span class="line">	<span class="keyword">if</span> (!prev)</span><br><span class="line">		fq = inet_frag_create(fqdir, key, &amp;prev);</span><br><span class="line">	<span class="keyword">if</span> (!IS_ERR_OR_NULL(prev)) &#123;</span><br><span class="line">		fq = prev;</span><br><span class="line">		<span class="comment">//增加引用计数</span></span><br><span class="line">		<span class="keyword">if</span> (!refcount_inc_not_zero(&amp;fq-&gt;refcnt))</span><br><span class="line">			fq = <span class="literal">NULL</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">	<span class="keyword">return</span> fq;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>如果没有查到<code>hash</code>中对应的<code>entry</code>则会调用<code>inet_frag_create</code>创建<code>entry</code>并进行初始化（<code>inet_init</code>中注册的），设置重组超时的定时器，具体代码如下所示：</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2026/03/15/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%B8%89%EF%BC%89/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2026/03/12/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%BA%8C%EF%BC%89/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1105,113 +1207,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2026/02/03/IP%E5%9C%B0%E5%9D%80%E7%9A%84%E9%85%8D%E7%BD%AE/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2026/02/03/IP%E5%9C%B0%E5%9D%80%E7%9A%84%E9%85%8D%E7%BD%AE/" class="post-title-link" itemprop="url">netlink配置IPv4地址</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2026-02-03 22:00:00" itemprop="dateCreated datePublished" datetime="2026-02-03T22:00:00+08:00">2026-02-03</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2026-02-08 20:18:09" itemprop="dateModified" datetime="2026-02-08T20:18:09+08:00">2026-02-08</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2026/02/03/IP%E5%9C%B0%E5%9D%80%E7%9A%84%E9%85%8D%E7%BD%AE/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2026/02/03/IP%E5%9C%B0%E5%9D%80%E7%9A%84%E9%85%8D%E7%BD%AE/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p>用户态<code>iproute2</code>工具包提供了使用<code>netlink</code>对IP地址进行操作，例如用户通过以下命令给网口配置一个IP地址</p>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ip addr add 192.168.1.10/24 dev eth0</span><br></pre></td></tr></table></figure>
-
-<p><strong>其实本质上是构造了一个类型为<code>RTM_NEWADDR</code>的<code>netlink</code>消息，请求内核去完成这次地址的配置，并通过通知链机制通告给内核中其他子系统。本文侧重梳理IP地址配置和删除的整个流程，先从注册<code>netlink</code>消息开始说起：</strong></p>
-<p>内核<code>inet_init</code>中最终会调用<code>rtnl_register</code>注册<code>RTM_NEWADDR /RTM_DELADDR</code>的规则，之后当<strong>用户执行 <code>ip addr add /del</code> 命令</strong>时，只要是 IPv4，都会被派发到注册的这个函数中，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">rtnl_register(PF_INET, RTM_NEWADDR, inet_rtm_newaddr, <span class="literal">NULL</span>, <span class="number">0</span>);</span><br><span class="line"><span class="comment">//删除IP地址的命令</span></span><br><span class="line">rtnl_register(PF_INET, RTM_DELADDR, inet_rtm_deladdr, <span class="literal">NULL</span>, <span class="number">0</span>);</span><br></pre></td></tr></table></figure>
-
-<p><code>inet_rtm_newaddr</code>为实际配置IP地址时的回调函数，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">inet_rtm_newaddr</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> nlmsghdr *nlh,</span></span><br><span class="line"><span class="params">			    <span class="keyword">struct</span> netlink_ext_ack *extack)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> sock_net(skb-&gt;sk);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_ifaddr</span> *<span class="title">ifa</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_ifaddr</span> *<span class="title">ifa_existing</span>;</span></span><br><span class="line">	__u32 valid_lft = INFINITY_LIFE_TIME;</span><br><span class="line">	__u32 prefered_lft = INFINITY_LIFE_TIME;</span><br><span class="line"></span><br><span class="line">	ASSERT_RTNL();</span><br><span class="line">	<span class="comment">//把 netlink 消息解析成 in_ifaddr</span></span><br><span class="line">	ifa = rtm_to_ifaddr(net, nlh, &amp;valid_lft, &amp;prefered_lft, extack);</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR(ifa))</span><br><span class="line">		<span class="keyword">return</span> PTR_ERR(ifa);</span><br><span class="line">	<span class="comment">//这个地址是否已经在该设备上存在</span></span><br><span class="line">	ifa_existing = find_matching_ifa(ifa);</span><br><span class="line">	<span class="comment">//地址不存在，插入新地址</span></span><br><span class="line">	<span class="keyword">if</span> (!ifa_existing) &#123;</span><br><span class="line">		<span class="comment">/* It would be best to check for !NLM_F_CREATE here but</span></span><br><span class="line"><span class="comment">		 * userspace already relies on not having to provide this.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//设置存活时间</span></span><br><span class="line">		set_ifa_lifetime(ifa, valid_lft, prefered_lft);</span><br><span class="line">		<span class="comment">//注意这里加入了组播地址</span></span><br><span class="line">		<span class="keyword">if</span> (ifa-&gt;ifa_flags &amp; IFA_F_MCAUTOJOIN) &#123;</span><br><span class="line">			<span class="type">int</span> ret = ip_mc_autojoin_config(net, <span class="literal">true</span>, ifa);</span><br><span class="line"></span><br><span class="line">			<span class="keyword">if</span> (ret &lt; <span class="number">0</span>) &#123;</span><br><span class="line">				NL_SET_ERR_MSG(extack, <span class="string">&quot;ipv4: Multicast auto join failed&quot;</span>);</span><br><span class="line">				inet_free_ifa(ifa);</span><br><span class="line">				<span class="keyword">return</span> ret;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">return</span> __inet_insert_ifa(ifa, nlh, NETLINK_CB(skb).portid,</span><br><span class="line">					 extack);</span><br><span class="line">	<span class="comment">//地址已经存在 更新</span></span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		u32 new_metric = ifa-&gt;ifa_rt_priority;</span><br><span class="line">		u8 new_proto = ifa-&gt;ifa_proto;</span><br><span class="line"></span><br><span class="line">		inet_free_ifa(ifa);</span><br><span class="line">		<span class="comment">//必须是replace ip addr</span></span><br><span class="line">		<span class="keyword">if</span> (nlh-&gt;nlmsg_flags &amp; NLM_F_EXCL ||</span><br><span class="line">		    !(nlh-&gt;nlmsg_flags &amp; NLM_F_REPLACE)) &#123;</span><br><span class="line">			NL_SET_ERR_MSG(extack, <span class="string">&quot;ipv4: Address already assigned&quot;</span>);</span><br><span class="line">			<span class="keyword">return</span> -EEXIST;</span><br><span class="line">		&#125;</span><br><span class="line">		ifa = ifa_existing;</span><br><span class="line">		<span class="comment">//更新mertic</span></span><br><span class="line">		<span class="keyword">if</span> (ifa-&gt;ifa_rt_priority != new_metric) &#123;</span><br><span class="line">			fib_modify_prefix_metric(ifa, new_metric);</span><br><span class="line">			ifa-&gt;ifa_rt_priority = new_metric;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//更新来源</span></span><br><span class="line">		ifa-&gt;ifa_proto = new_proto;</span><br><span class="line"></span><br><span class="line">		set_ifa_lifetime(ifa, valid_lft, prefered_lft);</span><br><span class="line">		cancel_delayed_work(&amp;check_lifetime_work);</span><br><span class="line">		queue_delayed_work(system_power_efficient_wq,</span><br><span class="line">				&amp;check_lifetime_work, <span class="number">0</span>);</span><br><span class="line">		rtmsg_ifa(RTM_NEWADDR, ifa, nlh, NETLINK_CB(skb).portid);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>上述 <code>inet_rtm_newaddr</code> 是处理 <code>RTM_NEWADDR</code>类型<code>netlink</code> 消息的入口函数，它先把用户态发来的 <code>netlink</code> 报文解析成一个 <code>struct in_ifaddr</code>，然后判断是否已经存在该地址，<strong>如果不存在</strong>，就设置生命周期(默认是永久)，必要时进行组播自动加入，然后调用 <code>__inet_insert_ifa</code> 把该地址正式插入到 <code>in_device-&gt;ifa_list</code>，并触发路由等通知连，<strong>如果已存在</strong>，则可能更新该地址的路由优先级（<code>metric</code>），来源和生命周期。整个函数的核心思想就是：<strong>根据 <code>netlink</code> 语义，在内核中维护 <code>in_ifaddr</code> 的插入或更新</strong>。</p>
-<p>上述<code>__inet_insert_ifa</code>为完成插入的实际函数（<strong>注意<code>ioctl</code>方式配置的IP地址也会调用到这个接口</strong>）具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> __inet_insert_ifa(<span class="keyword">struct</span> in_ifaddr *ifa, <span class="keyword">struct</span> nlmsghdr *nlh,</span><br><span class="line">			     u32 portid, <span class="keyword">struct</span> netlink_ext_ack *extack)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_ifaddr</span> __<span class="title">rcu</span> **<span class="title">last_primary</span>, **<span class="title">ifap</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_device</span> *<span class="title">in_dev</span> =</span> ifa-&gt;ifa_dev;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_validator_info</span> <span class="title">ivi</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_ifaddr</span> *<span class="title">ifa1</span>;</span></span><br><span class="line">	<span class="type">int</span> ret;</span><br><span class="line"></span><br><span class="line">	ASSERT_RTNL();</span><br><span class="line">	<span class="comment">//用户配置的ip地址</span></span><br><span class="line">	<span class="keyword">if</span> (!ifa-&gt;ifa_local) &#123;</span><br><span class="line">		inet_free_ifa(ifa);</span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//设置为主地址</span></span><br><span class="line">	ifa-&gt;ifa_flags &amp;= ~IFA_F_SECONDARY;</span><br><span class="line">	last_primary = &amp;in_dev-&gt;ifa_list;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Don&#x27;t set IPv6 only flags to IPv4 addresses */</span></span><br><span class="line">	ifa-&gt;ifa_flags &amp;= ~IPV6ONLY_FLAGS;</span><br><span class="line"></span><br><span class="line">	ifap = &amp;in_dev-&gt;ifa_list;</span><br><span class="line">	ifa1 = rtnl_dereference(*ifap);</span><br><span class="line">	<span class="comment">/* 遍历设备已有地址列表 , 通常肯定没有*/</span></span><br><span class="line">	<span class="keyword">while</span> (ifa1) &#123;</span><br><span class="line">		<span class="keyword">if</span> (!(ifa1-&gt;ifa_flags &amp; IFA_F_SECONDARY) &amp;&amp;</span><br><span class="line">		    ifa-&gt;ifa_scope &lt;= ifa1-&gt;ifa_scope)<span class="comment">//主地址</span></span><br><span class="line">			last_primary = &amp;ifa1-&gt;ifa_next;</span><br><span class="line">		<span class="comment">//是否是同一个子网</span></span><br><span class="line">		<span class="keyword">if</span> (ifa1-&gt;ifa_mask == ifa-&gt;ifa_mask &amp;&amp;</span><br><span class="line">		    inet_ifa_match(ifa1-&gt;ifa_address, ifa)) &#123;</span><br><span class="line">			<span class="keyword">if</span> (ifa1-&gt;ifa_local == ifa-&gt;ifa_local) &#123;</span><br><span class="line">				inet_free_ifa(ifa);</span><br><span class="line">				<span class="keyword">return</span> -EEXIST;<span class="comment">//完全相同</span></span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">if</span> (ifa1-&gt;ifa_scope != ifa-&gt;ifa_scope) &#123;</span><br><span class="line">				NL_SET_ERR_MSG(extack, <span class="string">&quot;ipv4: Invalid scope value&quot;</span>);</span><br><span class="line">				inet_free_ifa(ifa);</span><br><span class="line">				<span class="keyword">return</span> -EINVAL;<span class="comment">//同网段却不同 scope 会导致路由冲突</span></span><br><span class="line">			&#125;</span><br><span class="line">			ifa-&gt;ifa_flags |= IFA_F_SECONDARY;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		ifap = &amp;ifa1-&gt;ifa_next;</span><br><span class="line">		ifa1 = rtnl_dereference(*ifap);<span class="comment">//下一个节点</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Allow any devices that wish to register ifaddr validtors to weigh</span></span><br><span class="line"><span class="comment">	 * in now, before changes are committed.  The rntl lock is serializing</span></span><br><span class="line"><span class="comment">	 * access here, so the state should not change between a validator call</span></span><br><span class="line"><span class="comment">	 * and a final notify on commit.  This isn&#x27;t invoked on promotion under</span></span><br><span class="line"><span class="comment">	 * the assumption that validators are checking the address itself, and</span></span><br><span class="line"><span class="comment">	 * not the flags.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	ivi.ivi_addr = ifa-&gt;ifa_address;</span><br><span class="line">	ivi.ivi_dev = ifa-&gt;ifa_dev;</span><br><span class="line">	ivi.extack = extack;</span><br><span class="line">	<span class="comment">//有没有注册这个链的</span></span><br><span class="line">	ret = blocking_notifier_call_chain(&amp;inetaddr_validator_chain,</span><br><span class="line">					   NETDEV_UP, &amp;ivi);</span><br><span class="line">	ret = notifier_to_errno(ret);</span><br><span class="line">	<span class="keyword">if</span> (ret) &#123;</span><br><span class="line">		inet_free_ifa(ifa);</span><br><span class="line">		<span class="keyword">return</span> ret;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//通常走这里</span></span><br><span class="line">	<span class="keyword">if</span> (!(ifa-&gt;ifa_flags &amp; IFA_F_SECONDARY))</span><br><span class="line">		ifap = last_primary;</span><br><span class="line">	<span class="comment">//插入链表 新节点 next 指向原来的后继</span></span><br><span class="line">	rcu_assign_pointer(ifa-&gt;ifa_next, *ifap);</span><br><span class="line">	rcu_assign_pointer(*ifap, ifa);<span class="comment">//前驱</span></span><br><span class="line">	<span class="comment">//插入hash表</span></span><br><span class="line">	inet_hash_insert(dev_net(in_dev-&gt;dev), ifa);</span><br><span class="line">	<span class="comment">//检查ip存活时间的定时器</span></span><br><span class="line">	cancel_delayed_work(&amp;check_lifetime_work);</span><br><span class="line">	queue_delayed_work(system_power_efficient_wq, &amp;check_lifetime_work, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Send message first, then call notifier.</span></span><br><span class="line"><span class="comment">	   Notifier will trigger FIB update, so that</span></span><br><span class="line"><span class="comment">	   listeners of netlink will know about new ifaddr */</span></span><br><span class="line">	<span class="comment">//广播给用户态</span></span><br><span class="line">	rtmsg_ifa(RTM_NEWADDR, ifa, nlh, portid);</span><br><span class="line">	<span class="comment">//注意这段代码很关键，是通知了路由模块的通知连</span></span><br><span class="line">	blocking_notifier_call_chain(&amp;inetaddr_chain, NETDEV_UP, ifa);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2026/02/03/IP%E5%9C%B0%E5%9D%80%E7%9A%84%E9%85%8D%E7%BD%AE/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1281,7 +1276,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">114</span>
+          <span class="site-state-item-count">115</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>

@@ -193,6 +193,107 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/14/%E7%BD%91%E5%8D%A1%E9%98%9F%E5%88%97%E7%9A%84%E9%80%89%E6%8B%A9/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2026/04/14/%E7%BD%91%E5%8D%A1%E9%98%9F%E5%88%97%E7%9A%84%E9%80%89%E6%8B%A9/" class="post-title-link" itemprop="url">网卡TX方向队列选择</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-04-14 22:00:00 / 修改时间：20:54:58" itemprop="dateCreated datePublished" datetime="2026-04-14T22:00:00+08:00">2026-04-14</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/04/14/%E7%BD%91%E5%8D%A1%E9%98%9F%E5%88%97%E7%9A%84%E9%80%89%E6%8B%A9/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/04/14/%E7%BD%91%E5%8D%A1%E9%98%9F%E5%88%97%E7%9A%84%E9%80%89%E6%8B%A9/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>在 Linux 内核发包路径中，skb 在进入驱动之前必须先确定一个发送队列（TX queue）；对于多队列网卡，这个选择通常在 dev_queue_xmit() 过程中通过 netdev_core_pick_tx() 完成，可能基于flow hash（如 skb_tx_hash()）以及 XPS 配置等因素计算得到，最终结果写入 skb-&gt;queue_mapping 并决定后续使用的 struct netdev_queue。</p>
+<p><code>netdev_core_pick_tx</code>在<code>__dev_queue_xmit</code>种被调用，核心思想是是<strong>在发包时为 skb 选择一个 TX 队列并记录下来</strong>：如果网卡是多队列设备，优先调用驱动提供的 <code>ndo_select_queue</code>（驱动自定义策略），否则走内核默认的 <code>netdev_pick_tx()</code>（通常基于 flow hash &#x2F; XPS 等）；然后对得到的队列索引做合法性限制，最终通过 <code>skb_set_queue_mapping()</code> 写入 <code>skb-&gt;queue_mapping</code>，并返回对应的 <code>struct netdev_queue</code>，后续发包就会使用这个队列，具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> netdev_queue *<span class="title function_">netdev_core_pick_tx</span><span class="params">(<span class="keyword">struct</span> net_device *dev,</span></span><br><span class="line"><span class="params">					 <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">					 <span class="keyword">struct</span> net_device *sb_dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> queue_index = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_XPS</span></span><br><span class="line">	u32 sender_cpu = skb-&gt;sender_cpu - <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (sender_cpu &gt;= (u32)NR_CPUS)</span><br><span class="line">		skb-&gt;sender_cpu = raw_smp_processor_id() + <span class="number">1</span>;<span class="comment">//获取当前cpu</span></span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="comment">//多队列的情况</span></span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;real_num_tx_queues != <span class="number">1</span>) &#123;</span><br><span class="line">		<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">net_device_ops</span> *<span class="title">ops</span> =</span> dev-&gt;netdev_ops;</span><br><span class="line">		<span class="comment">//网卡如果注册了选择队列的回调</span></span><br><span class="line">		<span class="keyword">if</span> (ops-&gt;ndo_select_queue)</span><br><span class="line">			queue_index = ops-&gt;ndo_select_queue(dev, skb, sb_dev);</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">		<span class="comment">//否则就内核选队列 </span></span><br><span class="line">			queue_index = netdev_pick_tx(dev, skb, sb_dev);</span><br><span class="line">		<span class="comment">//合法性检查</span></span><br><span class="line">		queue_index = netdev_cap_txqueue(dev, queue_index);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//记录，网卡驱动用到就是这个</span></span><br><span class="line">	skb_set_queue_mapping(skb, queue_index);</span><br><span class="line">	<span class="keyword">return</span> netdev_get_tx_queue(dev, queue_index);<span class="comment">//返回对应的队列结构</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p> 如果网卡驱动没有实现对应选择队列的回调，就会调用<code>netdev_pick_tx</code>让内核来选择一个发送队列，具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//这里最后一个参数大概率是空</span></span><br><span class="line">u16 <span class="title function_">netdev_pick_tx</span><span class="params">(<span class="keyword">struct</span> net_device *dev, <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">		     <span class="keyword">struct</span> net_device *sb_dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span> =</span> skb-&gt;sk;</span><br><span class="line">	<span class="comment">//先取 socket 之前记住的发送队列 上次是用的哪个</span></span><br><span class="line">	<span class="type">int</span> queue_index = sk_tx_queue_get(sk);</span><br><span class="line"></span><br><span class="line">	sb_dev = sb_dev ? : dev;</span><br><span class="line">	<span class="comment">//没初始化过或者上层容许重新选择发送队列</span></span><br><span class="line">	<span class="keyword">if</span> (queue_index &lt; <span class="number">0</span> || skb-&gt;ooo_okay ||  <span class="comment">//注意这个ooo_okay是几乎没有流量的时候设置的</span></span><br><span class="line">	    queue_index &gt;= dev-&gt;real_num_tx_queues) &#123; <span class="comment">//队列越界</span></span><br><span class="line">		<span class="type">int</span> new_index = get_xps_queue(dev, sb_dev, skb);<span class="comment">//通过</span></span><br><span class="line">			<span class="comment">//没选出来</span></span><br><span class="line">		<span class="keyword">if</span> (new_index &lt; <span class="number">0</span>)</span><br><span class="line">			<span class="comment">//hash算法选一个</span></span><br><span class="line">			new_index = skb_tx_hash(dev, sb_dev, skb);</span><br><span class="line">		<span class="comment">//新选出出来的和原来的不同</span></span><br><span class="line">		<span class="keyword">if</span> (queue_index != new_index &amp;&amp; sk &amp;&amp;</span><br><span class="line">		    sk_fullsock(sk) &amp;&amp;</span><br><span class="line">		    rcu_access_pointer(sk-&gt;sk_dst_cache))</span><br><span class="line">			<span class="comment">//重新设置</span></span><br><span class="line">			sk_tx_queue_set(sk, new_index);</span><br><span class="line">		<span class="comment">//返回</span></span><br><span class="line">		queue_index = new_index;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> queue_index;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">sk_tx_queue_set</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">int</span> tx_queue)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/* sk_tx_queue_mapping accept only upto a 16-bit value */</span></span><br><span class="line">	<span class="keyword">if</span> (WARN_ON_ONCE((<span class="type">unsigned</span> <span class="type">short</span>)tx_queue &gt;= USHRT_MAX))</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	sk-&gt;sk_tx_queue_mapping = tx_queue;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> <span class="title function_">sk_tx_queue_get</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">if</span> (sk &amp;&amp; sk-&gt;sk_tx_queue_mapping != NO_QUEUE_MAPPING)</span><br><span class="line">		<span class="keyword">return</span> sk-&gt;sk_tx_queue_mapping;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述代码的核心就是<strong>在复用已有队列和重新选队列之间做决策</strong>，优先从 socket 里取之前缓存的发送队列（<code>sk_tx_queue_get</code>），如果这个队列合法且允许继续用，就直接复用；否则（比如第一次发送、队列越界、或允许乱序 <code>ooo_okay</code>），就重新选择——先尝试用 XPS，选不到再用 flow hash，如果选出的新队列和旧的不一样，还会把结果缓存回 sk，方便后续复用，最终返回 queue_index。</p>
+<p>上述通过<code>xps</code>选择队列的实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//xps_maps是用户通过sys文件写出去的</span></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">get_xps_queue</span><span class="params">(<span class="keyword">struct</span> net_device *dev, <span class="keyword">struct</span> net_device *sb_dev,</span></span><br><span class="line"><span class="params">			 <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_XPS</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">xps_dev_maps</span> *<span class="title">dev_maps</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span> =</span> skb-&gt;sk;</span><br><span class="line">	<span class="type">int</span> queue_index = <span class="number">-1</span>;</span><br><span class="line">	<span class="comment">//没开启 直接-1 通过sys开启</span></span><br><span class="line">	<span class="keyword">if</span> (!static_key_false(&amp;xps_needed))</span><br><span class="line">		<span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	<span class="comment">//是否启用了 RXQS 类型的 XPS</span></span><br><span class="line">	<span class="keyword">if</span> (!static_key_false(&amp;xps_rxqs_needed))</span><br><span class="line">		<span class="keyword">goto</span> get_cpus_map;</span><br><span class="line">	<span class="comment">//启用的情况</span></span><br><span class="line">	dev_maps = rcu_dereference(sb_dev-&gt;xps_maps[XPS_RXQS]);</span><br><span class="line">	<span class="keyword">if</span> (dev_maps) &#123;</span><br><span class="line">		<span class="type">int</span> tci = sk_rx_queue_get(sk);<span class="comment">//没找到接收方向设置的地方，大概率是-1把</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (tci &gt;= <span class="number">0</span>)<span class="comment">//根据tci 和tc 选一个队列</span></span><br><span class="line">			queue_index = __get_xps_queue_idx(dev, skb, dev_maps,</span><br><span class="line">							  tci);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//没通过rxqs找到对应的队列</span></span><br><span class="line">get_cpus_map:</span><br><span class="line">	<span class="comment">//按 CPU 选 TX 队列。</span></span><br><span class="line">	<span class="keyword">if</span> (queue_index &lt; <span class="number">0</span>) &#123;</span><br><span class="line">		dev_maps = rcu_dereference(sb_dev-&gt;xps_maps[XPS_CPUS]);</span><br><span class="line">		<span class="keyword">if</span> (dev_maps) &#123;</span><br><span class="line">			<span class="type">unsigned</span> <span class="type">int</span> tci = skb-&gt;sender_cpu - <span class="number">1</span>;</span><br><span class="line">			<span class="comment">//同上</span></span><br><span class="line">			queue_index = __get_xps_queue_idx(dev, skb, dev_maps,</span><br><span class="line">							  tci);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> queue_index;</span><br><span class="line"><span class="meta">#<span class="keyword">else</span></span></span><br><span class="line">	<span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码实现的是 <strong>XPS（Transmit Packet Steering）选队列逻辑</strong>，如果系统没有开启 XPS（<code>xps_needed</code>），直接返回 -1；否则优先走 <strong>RXQS 模式</strong>（如果开启了 <code>xps_rxqs_needed</code>），尝试根据 sk 的接收队列（<code>sk_rx_queue_get</code>）去匹配一个对应的 TX 队列，实现收发队列对齐(这里分析代码感觉大概率是返回-1)，再退化为 <strong>按 CPU 选队列</strong>（<code>XPS_CPUS</code>），根据发送的<code>cpu</code>找到该 CPU 绑定的 TX 队列，最终通过 <code>__get_xps_queue_idx</code> 从用户配置的 <code>xps_maps</code> 中选出一个队列。</p>
+<p>上述<code>__get_xps_queue_idx</code>具体实现如下所示：</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2026/04/14/%E7%BD%91%E5%8D%A1%E9%98%9F%E5%88%97%E7%9A%84%E9%80%89%E6%8B%A9/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/12/%E6%B5%81%E9%87%8F%E6%8E%A7%E5%88%B6/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -218,7 +319,7 @@
               <span class="post-meta-item-text">发表于</span>
               
 
-              <time title="创建时间：2026-04-12 22:00:00 / 修改时间：17:26:05" itemprop="dateCreated datePublished" datetime="2026-04-12T22:00:00+08:00">2026-04-12</time>
+              <time title="创建时间：2026-04-12 22:00:00 / 修改时间：17:27:23" itemprop="dateCreated datePublished" datetime="2026-04-12T22:00:00+08:00">2026-04-12</time>
             </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -1110,108 +1211,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2026/03/15/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%B8%89%EF%BC%89/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2026/03/15/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%B8%89%EF%BC%89/" class="post-title-link" itemprop="url">IP重组（一）</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2026-03-15 22:00:00 / 修改时间：23:37:58" itemprop="dateCreated datePublished" datetime="2026-03-15T22:00:00+08:00">2026-03-15</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2026/03/15/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%B8%89%EF%BC%89/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2026/03/15/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%B8%89%EF%BC%89/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p>IP 重组是TCP&#x2F;IP协议栈必须支持的功能。当一个 IP 数据包在传输过程中因为链路 MTU 限制被拆分成多个分片时，这些分片会分别独立在网络中转发，并可能乱序到达目的主机。<strong>接收端通过 Identification、Fragment Offset 和 MF 标志 来识别属于同一数据包的分片</strong>，并维护一个分片队列，按照<code>offset</code>将各个分片重新拼接成完整的数据报；只有当所有分片都到齐时，报文会被重组并继续交给上层协议处理。</p>
-<p><strong>Linux内核IP重组发生在数据包查找路由，当确定是上送本机的数据包后，在<code>ip_local_deliver</code>中会判断是否需要进行重组</strong>，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">ip_local_deliver</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	Reassemble IP fragments.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> dev_net(skb-&gt;dev);</span><br><span class="line">	<span class="comment">//有offset或者有MF,则需要进行重组</span></span><br><span class="line">	<span class="keyword">if</span> (ip_is_fragment(ip_hdr(skb))) &#123;</span><br><span class="line">		<span class="keyword">if</span> (ip_defrag(net, skb, IP_DEFRAG_LOCAL_DELIVER))</span><br><span class="line">			<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> NF_HOOK(NFPROTO_IPV4, NF_INET_LOCAL_IN,</span><br><span class="line">		       net, <span class="literal">NULL</span>, skb, skb-&gt;dev, <span class="literal">NULL</span>,</span><br><span class="line">		       ip_local_deliver_finish);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>上述代码的核心逻辑是判断数据包IP首部的的<strong>片偏移是否不为零或者有MF标志位</strong>被置位，如果满足条件则表示这个数据包需要进行重组，会一步调用<code>ip_defrag</code>具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Process an incoming IP datagram fragment. */</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">ip_defrag</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sk_buff *skb, u32 user)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span> =</span> skb-&gt;dev ? : skb_dst(skb)-&gt;dev;</span><br><span class="line">	<span class="type">int</span> vif = l3mdev_master_ifindex_rcu(dev);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ipq</span> *<span class="title">qp</span>;</span></span><br><span class="line"></span><br><span class="line">	__IP_INC_STATS(net, IPSTATS_MIB_REASMREQDS);</span><br><span class="line">	<span class="comment">//相当于不属于某个sk</span></span><br><span class="line">	skb_orphan(skb);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Lookup (or create) queue header */</span></span><br><span class="line">	<span class="comment">//查找这个数据包所属的管理结构，如果没找到就创建一个</span></span><br><span class="line">	qp = ip_find(net, ip_hdr(skb), user, vif);</span><br><span class="line">	<span class="keyword">if</span> (qp) &#123;</span><br><span class="line">		<span class="type">int</span> ret;</span><br><span class="line"></span><br><span class="line">		spin_lock(&amp;qp-&gt;q.lock);</span><br><span class="line"></span><br><span class="line">		ret = ip_frag_queue(qp, skb);</span><br><span class="line"></span><br><span class="line">		spin_unlock(&amp;qp-&gt;q.lock);</span><br><span class="line">		ipq_put(qp);</span><br><span class="line">		<span class="keyword">return</span> ret;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	__IP_INC_STATS(net, IPSTATS_MIB_REASMFAILS);</span><br><span class="line">	kfree_skb(skb);</span><br><span class="line">	<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p><code>ip_defrag</code>中首先把数据包取消对<code>sk</code>的关联之后调用<code>ip_find</code>查找数据包对应的管理结构，如果没有则会尝试创建，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">struct</span> ipq *<span class="title function_">ip_find</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> iphdr *iph,</span></span><br><span class="line"><span class="params">			   u32 user, <span class="type">int</span> vif)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//构建hash徐要用到的key，这里的user表示是哪个模块用到</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">frag_v4_compare_key</span> <span class="title">key</span> =</span> &#123;</span><br><span class="line">		.saddr = iph-&gt;saddr,</span><br><span class="line">		.daddr = iph-&gt;daddr,</span><br><span class="line">		.user = user,</span><br><span class="line">		.vif = vif,</span><br><span class="line">		.id = iph-&gt;id,</span><br><span class="line">		.protocol = iph-&gt;protocol,</span><br><span class="line">	&#125;;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_frag_queue</span> *<span class="title">q</span>;</span></span><br><span class="line">	<span class="comment">//查找对应的管理条目，注意这里如果超IP重组阈值直接返回NULL了</span></span><br><span class="line">	q = inet_frag_find(net-&gt;ipv4.fqdir, &amp;key);</span><br><span class="line">	<span class="keyword">if</span> (!q)</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> container_of(q, <span class="keyword">struct</span> ipq, q);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>首先构造需要查找hash表使用的<code>key</code>，这里通过源IP目的IP以及<code>id</code>等构造<code>key</code>之后调用<code>inet_frag_find</code>进行查找，具体代码如下所示:</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* TODO : call from rcu_read_lock() and no longer use refcount_inc_not_zero() */</span></span><br><span class="line"><span class="keyword">struct</span> inet_frag_queue *<span class="title function_">inet_frag_find</span><span class="params">(<span class="keyword">struct</span> fqdir *fqdir, <span class="type">void</span> *key)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/* This pairs with WRITE_ONCE() in fqdir_pre_exit(). */</span></span><br><span class="line">	<span class="type">long</span> high_thresh = READ_ONCE(fqdir-&gt;high_thresh);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">inet_frag_queue</span> *<span class="title">fq</span> =</span> <span class="literal">NULL</span>, *prev;</span><br><span class="line">	<span class="comment">//是否超过系统重组使用的内存上限</span></span><br><span class="line">	<span class="keyword">if</span> (!high_thresh || frag_mem_limit(fqdir) &gt; high_thresh)</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	<span class="comment">//查找hash表，没有就创建一个</span></span><br><span class="line">	prev = rhashtable_lookup(&amp;fqdir-&gt;rhashtable, key, fqdir-&gt;f-&gt;rhash_params);</span><br><span class="line">	<span class="keyword">if</span> (!prev)</span><br><span class="line">		fq = inet_frag_create(fqdir, key, &amp;prev);</span><br><span class="line">	<span class="keyword">if</span> (!IS_ERR_OR_NULL(prev)) &#123;</span><br><span class="line">		fq = prev;</span><br><span class="line">		<span class="comment">//增加引用计数</span></span><br><span class="line">		<span class="keyword">if</span> (!refcount_inc_not_zero(&amp;fq-&gt;refcnt))</span><br><span class="line">			fq = <span class="literal">NULL</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">	<span class="keyword">return</span> fq;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>如果没有查到<code>hash</code>中对应的<code>entry</code>则会调用<code>inet_frag_create</code>创建<code>entry</code>并进行初始化（<code>inet_init</code>中注册的），设置重组超时的定时器，具体代码如下所示：</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2026/03/15/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%B8%89%EF%BC%89/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1281,7 +1280,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">114</span>
+          <span class="site-state-item-count">115</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
