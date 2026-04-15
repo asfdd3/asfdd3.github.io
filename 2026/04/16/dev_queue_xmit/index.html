@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="在协议栈中，数据包经过邻居子系统之后，并不会直接交给网卡驱动发送，而是要经过一层调度，核心入口就是 __dev_queue_xmit()。向下对接 TC 队列和网卡驱动， 不仅完成发送队列的选择，还会根据系统配置执行 tc、netfilter 等一系列 egress 处理逻辑，并最终决定数据包是进入排队、被丢弃，还是直接下发给驱动执行发送。 本文以 __dev_queue_xmit() 为起点，梳">
+<meta property="og:type" content="article">
+<meta property="og:title" content="__dev_queue_xmit → 网卡驱动">
+<meta property="og:url" content="http://example.com/2026/04/16/dev_queue_xmit/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="在协议栈中，数据包经过邻居子系统之后，并不会直接交给网卡驱动发送，而是要经过一层调度，核心入口就是 __dev_queue_xmit()。向下对接 TC 队列和网卡驱动， 不仅完成发送队列的选择，还会根据系统配置执行 tc、netfilter 等一系列 egress 处理逻辑，并最终决定数据包是进入排队、被丢弃，还是直接下发给驱动执行发送。 本文以 __dev_queue_xmit() 为起点，梳">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-04-16T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-04-15T12:55:48.511Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="链路层">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/04/16/dev_queue_xmit/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>__dev_queue_xmit → 网卡驱动 | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/16/dev_queue_xmit/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          __dev_queue_xmit → 网卡驱动
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-04-16 22:00:00" itemprop="dateCreated datePublished" datetime="2026-04-16T22:00:00+08:00">2026-04-16</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-04-15 20:55:48" itemprop="dateModified" datetime="2026-04-15T20:55:48+08:00">2026-04-15</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/04/16/dev_queue_xmit/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/04/16/dev_queue_xmit/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>在协议栈中，数据包经过邻居子系统之后，并不会直接交给网卡驱动发送，而是要经过一层调度，核心入口就是 <code>__dev_queue_xmit()</code>。向下对接 <code>TC</code> 队列和网卡驱动， 不仅完成发送队列的选择，还会根据系统配置执行 <code>tc</code>、<code>netfilter</code> 等一系列 <code>egress</code> 处理逻辑，并最终决定数据包是进入排队、被丢弃，还是直接下发给驱动执行发送。</p>
+<p>本文以 <code>__dev_queue_xmit()</code> 为起点，梳理数据包从进入 <code>qdisc</code> 到最终调用驱动 <code>ndo_start_xmit</code> 发出的完整路径，重点分析其调度机制以等相关代码实现。</p>
+<p><code>__dev_queue_xmit</code>代码实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __dev_queue_xmit(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> net_device *sb_dev)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span> =</span> skb-&gt;dev;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">netdev_queue</span> *<span class="title">txq</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">Qdisc</span> *<span class="title">q</span>;</span></span><br><span class="line">	<span class="type">int</span> rc = -ENOMEM;</span><br><span class="line">	<span class="type">bool</span> again = <span class="literal">false</span>;</span><br><span class="line">	<span class="comment">//这里开始时二层头</span></span><br><span class="line">	skb_reset_mac_header(skb);</span><br><span class="line">	skb_assert_len(skb);</span><br><span class="line">	<span class="comment">//用户需要获取时间戳</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(skb_shinfo(skb)-&gt;tx_flags &amp; SKBTX_SCHED_TSTAMP))</span><br><span class="line">		__skb_tstamp_tx(skb, <span class="literal">NULL</span>, <span class="literal">NULL</span>, skb-&gt;sk, SCM_TSTAMP_SCHED);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Disable soft irqs for various locks below. Also</span></span><br><span class="line"><span class="comment">	 * stops preemption for RCU.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	rcu_read_lock_bh();</span><br><span class="line">	<span class="comment">//如果没有，可能会设置skb的优先级</span></span><br><span class="line">	skb_update_prio(skb);</span><br><span class="line">	<span class="comment">//计算数据包的长度到tc的私有字段</span></span><br><span class="line">	qdisc_pkt_len_init(skb);</span><br><span class="line">	tcx_set_ingress(skb, <span class="literal">false</span>);</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_NET_EGRESS</span></span><br><span class="line"><span class="comment">//如果有egress</span></span><br><span class="line">	<span class="keyword">if</span> (static_branch_unlikely(&amp;egress_needed_key)) &#123;</span><br><span class="line">		<span class="keyword">if</span> (nf_hook_egress_active()) &#123;</span><br><span class="line">			<span class="comment">//netfilter</span></span><br><span class="line">			skb = nf_hook_egress(skb, &amp;rc, dev);</span><br><span class="line">			<span class="keyword">if</span> (!skb)</span><br><span class="line">				<span class="keyword">goto</span> out;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//这先把skip txqueue 设置为false，清掉</span></span><br><span class="line">		netdev_xmit_skip_txqueue(<span class="literal">false</span>);</span><br><span class="line">		<span class="comment">//run tc ，标记已经运行过了</span></span><br><span class="line">		nf_skip_egress(skb, <span class="literal">true</span>);</span><br><span class="line">		skb = sch_handle_egress(skb, &amp;rc, dev);</span><br><span class="line">		<span class="keyword">if</span> (!skb)</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line">		nf_skip_egress(skb, <span class="literal">false</span>);</span><br><span class="line">		<span class="comment">//是否被上面tc egress处理后需要重新选择发送队列</span></span><br><span class="line">		<span class="keyword">if</span> (netdev_xmit_txqueue_skipped())</span><br><span class="line">			txq = netdev_tx_queue_mapping(dev, skb);</span><br><span class="line">	&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="comment">/* If device/qdisc don&#x27;t need skb-&gt;dst, release it right now while</span></span><br><span class="line"><span class="comment">	 * its hot in this cpu cache.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//是否需要dst 通常不需要 特殊设备如隧道设备可能需要</span></span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;priv_flags &amp; IFF_XMIT_DST_RELEASE)</span><br><span class="line">		skb_dst_drop(skb);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		skb_dst_force(skb);</span><br><span class="line">	<span class="comment">//这里进行了发送队列的选择</span></span><br><span class="line">	<span class="keyword">if</span> (!txq)</span><br><span class="line">		txq = netdev_core_pick_tx(dev, skb, sb_dev);</span><br><span class="line"></span><br><span class="line">	q = rcu_dereference_bh(txq-&gt;qdisc);</span><br><span class="line"></span><br><span class="line">	trace_net_dev_queue(skb);</span><br><span class="line">	<span class="keyword">if</span> (q-&gt;enqueue) &#123;</span><br><span class="line">		rc = __dev_xmit_skb(skb, q, dev, txq);</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* The device has no queue. Common case for software devices:</span></span><br><span class="line"><span class="comment">	 * loopback, all the sorts of tunnels...</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">	 * Really, it is unlikely that netif_tx_lock protection is necessary</span></span><br><span class="line"><span class="comment">	 * here.  (f.e. loopback and IP tunnels are clean ignoring statistics</span></span><br><span class="line"><span class="comment">	 * counters.)</span></span><br><span class="line"><span class="comment">	 * However, it is possible, that they rely on protection</span></span><br><span class="line"><span class="comment">	 * made by us here.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">	 * Check this and shot the lock. It is not prone from deadlocks.</span></span><br><span class="line"><span class="comment">	 *Either shot noqueue qdisc, it is even simpler 8)</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//虚拟设备走这里</span></span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;flags &amp; IFF_UP) &#123;</span><br><span class="line">		<span class="comment">//拿到当前cpu</span></span><br><span class="line">		<span class="type">int</span> cpu = smp_processor_id(); <span class="comment">/* ok because BHs are off */</span></span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Other cpus might concurrently change txq-&gt;xmit_lock_owner</span></span><br><span class="line"><span class="comment">		 * to -1 or to their cpu id, but not to our id.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//检查是不是本 CPU 再次进入发送，正常肯定不是</span></span><br><span class="line">		<span class="keyword">if</span> (READ_ONCE(txq-&gt;xmit_lock_owner) != cpu) &#123;</span><br><span class="line">			<span class="comment">//是否虚拟设备递归调用虚拟设备</span></span><br><span class="line">			<span class="keyword">if</span> (dev_xmit_recursion())</span><br><span class="line">				<span class="keyword">goto</span> recursion_alert;</span><br><span class="line">			<span class="comment">//GSO 校验和 等硬件卸载能力检查</span></span><br><span class="line">			skb = validate_xmit_skb(skb, dev, &amp;again);</span><br><span class="line">			<span class="keyword">if</span> (!skb)</span><br><span class="line">				<span class="keyword">goto</span> out;</span><br><span class="line">			<span class="comment">//这个就是加锁，和上面的判断是一个</span></span><br><span class="line">			HARD_TX_LOCK(dev, txq, cpu);</span><br><span class="line">			<span class="comment">//驱动是否返回stoped</span></span><br><span class="line">			<span class="keyword">if</span> (!netif_xmit_stopped(txq)) &#123;</span><br><span class="line">				dev_xmit_recursion_inc();<span class="comment">//递归计数加1 </span></span><br><span class="line">				skb = dev_hard_start_xmit(skb, dev, txq, &amp;rc);<span class="comment">//继续向下调用</span></span><br><span class="line">				dev_xmit_recursion_dec();</span><br><span class="line">				<span class="comment">//发送完成直接out</span></span><br><span class="line">				<span class="keyword">if</span> (dev_xmit_complete(rc)) &#123;</span><br><span class="line">					HARD_TX_UNLOCK(dev, txq);</span><br><span class="line">					<span class="keyword">goto</span> out;</span><br><span class="line">				&#125;</span><br><span class="line">			&#125;</span><br><span class="line">			HARD_TX_UNLOCK(dev, txq);</span><br><span class="line">			net_crit_ratelimited(<span class="string">&quot;Virtual device %s asks to queue packet!\n&quot;</span>,</span><br><span class="line">					     dev-&gt;name);</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			<span class="comment">/* Recursion is detected! It is possible,</span></span><br><span class="line"><span class="comment">			 * unfortunately</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">recursion_alert:</span><br><span class="line">			net_crit_ratelimited(<span class="string">&quot;Dead loop on virtual device %s, fix it urgently!\n&quot;</span>,</span><br><span class="line">					     dev-&gt;name);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	rc = -ENETDOWN;</span><br><span class="line">	rcu_read_unlock_bh();</span><br><span class="line"></span><br><span class="line">	dev_core_stats_tx_dropped_inc(dev);</span><br><span class="line">	kfree_skb_list(skb);</span><br><span class="line">	<span class="keyword">return</span> rc;</span><br><span class="line">out:</span><br><span class="line">	rcu_read_unlock_bh();</span><br><span class="line">	<span class="keyword">return</span> rc;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p> <code>__dev_queue_xmit()</code> 可以把它理解成 <strong>Linux 发包路径里协议栈把包正式交给设备层处理的总入口</strong>：首先更新优先级、初始化 <code>qdisc</code> 统计长度，并在开启 egress 时执行 <code>netfilter</code> 和 <code>tc egress</code>，这一步可能重定向、丢包，或重新选发送队列。之后根据设备是否还需要 <code>dst</code> 决定提前释放路由缓存，再通过 <code>netdev_core_pick_tx()</code> 选出真正的 TX queue，并取到这个队列挂的 <code>qdisc</code>；如果这个 <code>qdisc</code> 有 <code>enqueue</code>，就交给 <code>__dev_xmit_skb()</code> 进入 <code>qdisc</code> 排队&#x2F;调度。如果没有 <code>enqueue</code>，通常说明这是 loopback、隧道之类的 <code>noqueue</code> 软件设备，直接做发送前校验、拿 <code>xmit_lock</code>、检查队列是否 stop，然后调用 <code>dev_hard_start_xmit()</code> 直接进入驱动发送。</p>
+<p>上述代码首先调用<code>qdisc_pkt_len_init</code>计算数据包的长度并保存到<code>tc</code>的私有字段中，具体代码如下所示:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">qdisc_pkt_len_init</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">skb_shared_info</span> *<span class="title">shinfo</span> =</span> skb_shinfo(skb);</span><br><span class="line"></span><br><span class="line">	qdisc_skb_cb(skb)-&gt;pkt_len = skb-&gt;len;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* To get more precise estimation of bytes sent on wire,</span></span><br><span class="line"><span class="comment">	 * we add to pkt_len the headers size of all segments</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//如果是个GSO数据包</span></span><br><span class="line">	<span class="keyword">if</span> (shinfo-&gt;gso_size &amp;&amp; skb_transport_header_was_set(skb)) &#123;</span><br><span class="line">		<span class="comment">//获取段数</span></span><br><span class="line">		u16 gso_segs = shinfo-&gt;gso_segs;</span><br><span class="line">		<span class="type">unsigned</span> <span class="type">int</span> hdr_len;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* mac layer + network layer */</span></span><br><span class="line">		<span class="comment">//mac 头 加ip头</span></span><br><span class="line">		hdr_len = skb_transport_offset(skb);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* + transport layer */</span></span><br><span class="line">		<span class="comment">//如果是个tcp</span></span><br><span class="line">		<span class="keyword">if</span> (likely(shinfo-&gt;gso_type &amp; (SKB_GSO_TCPV4 | SKB_GSO_TCPV6))) &#123;</span><br><span class="line">			<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">tcphdr</span> *<span class="title">th</span>;</span></span><br><span class="line">			<span class="class"><span class="keyword">struct</span> <span class="title">tcphdr</span> _<span class="title">tcphdr</span>;</span></span><br><span class="line">			<span class="comment">//加一个tcp头部长度</span></span><br><span class="line">			th = skb_header_pointer(skb, hdr_len,</span><br><span class="line">						<span class="keyword">sizeof</span>(_tcphdr), &amp;_tcphdr);</span><br><span class="line">			<span class="keyword">if</span> (likely(th))</span><br><span class="line">				hdr_len += __tcp_hdrlen(th);</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			<span class="keyword">struct</span> udphdr _udphdr;</span><br><span class="line">			<span class="comment">//按udp处理</span></span><br><span class="line">			<span class="keyword">if</span> (skb_header_pointer(skb, hdr_len,</span><br><span class="line">					       <span class="keyword">sizeof</span>(_udphdr), &amp;_udphdr))</span><br><span class="line">				hdr_len += <span class="keyword">sizeof</span>(<span class="keyword">struct</span> udphdr);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//特殊情况认为GSO不可靠，虚拟化场景下会有？</span></span><br><span class="line">		<span class="keyword">if</span> (shinfo-&gt;gso_type &amp; SKB_GSO_DODGY)</span><br><span class="line">			gso_segs = DIV_ROUND_UP(skb-&gt;len - hdr_len,</span><br><span class="line">						shinfo-&gt;gso_size);</span><br><span class="line">		<span class="comment">//加上头部开销，其实就是未来要多出的部分</span></span><br><span class="line">		qdisc_skb_cb(skb)-&gt;pkt_len += (gso_segs - <span class="number">1</span>) * hdr_len;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p> <code>qdisc_pkt_len_init()</code> 的核心作用就是：<strong>为 <code>qdisc</code>计算一个更真实字节数的包</strong>。一开始用 <code>skb-&gt;len</code> 作为基础长度，但如果这是一个 GSO 包（实际占用链路的字节数会更大，因为<strong>每个分段都会重复一份头部（MAC + IP + TCP&#x2F;UDP）</strong>。所以这里会先算出一个分段的头部长度（MAC+IP，再加 TCP 或 UDP 头），然后根据分段数 <code>gso_segs</code>，把额外的头部长度&#96;加到 <code>pkt_len</code> 上。</p>
+<p>如果用户配置egress的规则，则会调用<code>sch_handle_egress</code>匹配规则后执行<code>action</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> __always_inline <span class="keyword">struct</span> sk_buff *</span><br><span class="line"><span class="title function_">sch_handle_egress</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="type">int</span> *ret, <span class="keyword">struct</span> net_device *dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//用户是否配置了规则</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">bpf_mprog_entry</span> *<span class="title">entry</span> =</span> rcu_dereference_bh(dev-&gt;tcx_egress);</span><br><span class="line">	<span class="type">int</span> sch_ret;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!entry)</span><br><span class="line">		<span class="keyword">return</span> skb;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* qdisc_skb_cb(skb)-&gt;pkt_len &amp; tcx_set_ingress() was</span></span><br><span class="line"><span class="comment">	 * already set by the caller.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//ebpf</span></span><br><span class="line">	<span class="keyword">if</span> (static_branch_unlikely(&amp;tcx_needed_key)) &#123;</span><br><span class="line">		sch_ret = tcx_run(entry, skb, <span class="literal">false</span>);</span><br><span class="line">		<span class="keyword">if</span> (sch_ret != TC_ACT_UNSPEC)</span><br><span class="line">			<span class="keyword">goto</span> egress_verdict;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//常规的tc处理逻辑，这里叫mini qdisc 用户配置的 用户可以通过tc命令设置规则</span></span><br><span class="line">	<span class="comment">//比如五元组， mark 全匹配 最后返回处理结果，甚至可以决定进入哪个qdsic队列</span></span><br><span class="line">	<span class="comment">//但是如果是fifo / fq_codel / mq 等 不能决定进入哪个队列</span></span><br><span class="line">	sch_ret = tc_run(tcx_entry(entry), skb);</span><br><span class="line">egress_verdict:</span><br><span class="line">	<span class="keyword">switch</span> (sch_ret) &#123;</span><br><span class="line">	<span class="keyword">case</span> TC_ACT_REDIRECT:</span><br><span class="line">		<span class="comment">/* No need to push/pop skb&#x27;s mac_header here on egress! */</span></span><br><span class="line">		skb_do_redirect(skb);<span class="comment">//重定向，选择一个新的dev</span></span><br><span class="line">		*ret = NET_XMIT_SUCCESS;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="keyword">case</span> TC_ACT_SHOT:<span class="comment">//丢弃数据包</span></span><br><span class="line">		kfree_skb_reason(skb, SKB_DROP_REASON_TC_EGRESS);</span><br><span class="line">		*ret = NET_XMIT_DROP;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="comment">/* used by tc_run */</span></span><br><span class="line">	<span class="comment">//被偷走了</span></span><br><span class="line">	<span class="keyword">case</span> TC_ACT_STOLEN:</span><br><span class="line">	<span class="keyword">case</span> TC_ACT_QUEUED:</span><br><span class="line">	<span class="keyword">case</span> TC_ACT_TRAP:</span><br><span class="line">		consume_skb(skb);</span><br><span class="line">		fallthrough;</span><br><span class="line">	<span class="keyword">case</span> TC_ACT_CONSUMED:</span><br><span class="line">		*ret = NET_XMIT_SUCCESS;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> skb;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p> <code>sch_handle_egress()</code> 中首先看设备有没有配置 TC&#x2F;BPF 规则，没有就直接放行；有的话先跑 <code>eBPF</code>，再跑用户用 <code>tc</code> 配的规则，根据返回结果决定这个包如何被处理，继续发送、丢弃、重定向到别的设备。这里注意上目的<code>miniqdisc</code>有多种类型，取决于用户如何配置，例如这里可以通过硬件卸载TC规则。</p>
+<p>回到<code>__dev_queue_xmit</code>中处理完<code>egress</code>（如果有）之后会选择网卡队列(前文已经分析过)，并根据相应的队列获取关联的<code>qdisc</code>结构并判断拿到的<code>qdisc</code>是否有<code>enqueue</code>实现（这里注意，正常的网络设备都是有的，虚拟设备可能没有），如果有则调用<code>__dev_xmit_skb</code>进一步向下完成发送，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> __dev_xmit_skb(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> Qdisc *q,</span><br><span class="line">				 <span class="keyword">struct</span> net_device *dev,</span><br><span class="line">				 <span class="keyword">struct</span> netdev_queue *txq)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">spinlock_t</span> *root_lock = qdisc_lock(q);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">to_free</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="type">bool</span> contended;</span><br><span class="line">	<span class="type">int</span> rc;</span><br><span class="line">	<span class="comment">//考虑链路层的开销计算长度</span></span><br><span class="line">	qdisc_calculate_pkt_len(skb, q);</span><br><span class="line">	<span class="comment">//无锁qdisc 例如pfifo</span></span><br><span class="line">	<span class="keyword">if</span> (q-&gt;flags &amp; TCQ_F_NOLOCK) &#123;</span><br><span class="line">		<span class="comment">//可以bypass ， 当前队列为空 &amp;&amp; 拿到了当前运行的权限</span></span><br><span class="line">		<span class="keyword">if</span> (q-&gt;flags &amp; TCQ_F_CAN_BYPASS &amp;&amp; nolock_qdisc_is_empty(q) &amp;&amp;</span><br><span class="line">		    qdisc_run_begin(q)) &#123;</span><br><span class="line">			<span class="comment">/* Retest nolock_qdisc_is_empty() within the protection</span></span><br><span class="line"><span class="comment">			 * of q-&gt;seqlock to protect from racing with requeuing.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="comment">//其他cpu可能没有拿到锁 或重新入队了</span></span><br><span class="line">			<span class="keyword">if</span> (unlikely(!nolock_qdisc_is_empty(q))) &#123;</span><br><span class="line">				<span class="comment">//调用qdisc的enqueue</span></span><br><span class="line">				rc = dev_qdisc_enqueue(skb, q, &amp;to_free, txq);</span><br><span class="line">				<span class="comment">//处理积压的数据包</span></span><br><span class="line">				__qdisc_run(q);</span><br><span class="line">				<span class="comment">//释放运行权</span></span><br><span class="line">				qdisc_run_end(q);</span><br><span class="line"></span><br><span class="line">				<span class="keyword">goto</span> no_lock_out;</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			qdisc_bstats_cpu_update(q, skb);</span><br><span class="line">			<span class="comment">//直接发送，发送成功后继续判断是否为空，如果不为空则表示没发完 可能存在重新入队 </span></span><br><span class="line">			<span class="keyword">if</span> (sch_direct_xmit(skb, q, dev, txq, <span class="literal">NULL</span>, <span class="literal">true</span>) &amp;&amp;</span><br><span class="line">			    !nolock_qdisc_is_empty(q))</span><br><span class="line">				__qdisc_run(q);</span><br><span class="line">			<span class="comment">////释放运行权</span></span><br><span class="line">			qdisc_run_end(q);</span><br><span class="line">			<span class="keyword">return</span> NET_XMIT_SUCCESS;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//bybass失败 队列不为空，没有抢到锁</span></span><br><span class="line">		rc = dev_qdisc_enqueue(skb, q, &amp;to_free, txq);</span><br><span class="line">		<span class="comment">//里面其实就是包装了 run_begin 如果没拿到锁就不处理，仅设置一个标志位，当解锁的时候如果发现有这个标志就重新调度tx软中断发包</span></span><br><span class="line">		qdisc_run(q);</span><br><span class="line"></span><br><span class="line">no_lock_out:</span><br><span class="line">		<span class="keyword">if</span> (unlikely(to_free))</span><br><span class="line">			kfree_skb_list_reason(to_free,</span><br><span class="line">					      SKB_DROP_REASON_QDISC_DROP);</span><br><span class="line">		<span class="keyword">return</span> rc;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * Heuristic to force contended enqueues to serialize on a</span></span><br><span class="line"><span class="comment">	 * separate lock before trying to get qdisc main lock.</span></span><br><span class="line"><span class="comment">	 * This permits qdisc-&gt;running owner to get the lock more</span></span><br><span class="line"><span class="comment">	 * often and dequeue packets faster.</span></span><br><span class="line"><span class="comment">	 * On PREEMPT_RT it is possible to preempt the qdisc owner during xmit</span></span><br><span class="line"><span class="comment">	 * and then other tasks will only enqueue packets. The packets will be</span></span><br><span class="line"><span class="comment">	 * sent after the qdisc owner is scheduled again. To prevent this</span></span><br><span class="line"><span class="comment">	 * scenario the task always serialize on the lock.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//如果已经在跑这个qdisc或者允许抢占的话就需要先上一个busylock</span></span><br><span class="line">	<span class="comment">//作用是想让当前拿到锁的cpu更容易的获取rootlock 防止被其他cpu抢走</span></span><br><span class="line">	<span class="comment">//造成只入队不出队列的情况</span></span><br><span class="line">	contended = qdisc_is_running(q) || IS_ENABLED(CONFIG_PREEMPT_RT);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(contended))</span><br><span class="line">		spin_lock(&amp;q-&gt;busylock);</span><br><span class="line">	<span class="comment">//在家root锁</span></span><br><span class="line">	spin_lock(root_lock);</span><br><span class="line">	<span class="comment">//网卡是否down了</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(test_bit(__QDISC_STATE_DEACTIVATED, &amp;q-&gt;state))) &#123;</span><br><span class="line">		__qdisc_drop(skb, &amp;to_free);</span><br><span class="line">		rc = NET_XMIT_DROP;</span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> ((q-&gt;flags &amp; TCQ_F_CAN_BYPASS) &amp;&amp; !qdisc_qlen(q) &amp;&amp;<span class="comment">//快速发送路径</span></span><br><span class="line">		   qdisc_run_begin(q)) &#123;</span><br><span class="line">		<span class="comment">/*</span></span><br><span class="line"><span class="comment">		 * This is a work-conserving queue; there are no old skbs</span></span><br><span class="line"><span class="comment">		 * waiting to be sent out; and the qdisc is not running -</span></span><br><span class="line"><span class="comment">		 * xmit the skb directly.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//更新统计信息</span></span><br><span class="line">		qdisc_bstats_update(q, skb);</span><br><span class="line">		<span class="comment">//直接发送，注意这里面会解rootlock ，</span></span><br><span class="line">		<span class="keyword">if</span> (sch_direct_xmit(skb, q, dev, txq, root_lock, <span class="literal">true</span>)) &#123;</span><br><span class="line">			<span class="keyword">if</span> (unlikely(contended)) &#123;</span><br><span class="line">				spin_unlock(&amp;q-&gt;busylock);<span class="comment">//这里解锁了，意味着其他线程可以入队列了</span></span><br><span class="line">				contended = <span class="literal">false</span>;</span><br><span class="line">			&#125;</span><br><span class="line">			__qdisc_run(q);<span class="comment">//继续尝试处理积压的数据包</span></span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//clear bit 表示结束运行</span></span><br><span class="line">		qdisc_run_end(q);</span><br><span class="line">		rc = NET_XMIT_SUCCESS;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="comment">//常规入队路径，就是调用qdisc的enqueue</span></span><br><span class="line">		rc = dev_qdisc_enqueue(skb, q, &amp;to_free, txq);</span><br><span class="line">		<span class="comment">//尝试获取运行权，如果失败就是直接返回，因为有其他线程在处理了</span></span><br><span class="line">		<span class="keyword">if</span> (qdisc_run_begin(q)) &#123;</span><br><span class="line">			<span class="keyword">if</span> (unlikely(contended)) &#123;</span><br><span class="line">				spin_unlock(&amp;q-&gt;busylock);</span><br><span class="line">				contended = <span class="literal">false</span>;</span><br><span class="line">			&#125;</span><br><span class="line">			__qdisc_run(q);<span class="comment">//处理数据包</span></span><br><span class="line">			qdisc_run_end(q);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	spin_unlock(root_lock);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(to_free))</span><br><span class="line">		kfree_skb_list_reason(to_free, SKB_DROP_REASON_QDISC_DROP);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(contended))</span><br><span class="line">		spin_unlock(&amp;q-&gt;busylock);</span><br><span class="line">	<span class="keyword">return</span> rc;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p> <code>__dev_xmit_skb()</code> 核心逻辑就是决定当把 <code>skb</code> 交给 <code>qdisc</code> 之后，是直接发，还是先排队再发。它先按 <code>qdisc</code> 规则计算包长，然后分成两大类：如果是 <strong>无锁 <code>qdisc</code></strong>，就尽量走快速路径——当队列为空且成功拿到运行权时，直接调用 <code>sch_direct_xmit()</code> 继续向下发送；如果条件不满足，就先入队，再由 <code>qdisc_run()</code>&#x2F;<code>__qdisc_run()</code> 去慢慢 dequeue 发送。对于 <strong>有锁 <code>qdisc</code></strong>，逻辑类似，要靠 <code>root_lock</code> 保护队列，并额外用 <code>busylock</code> 先串行化入队，<strong>避免别人一直抢锁入队、真正发包的人反而抢不到锁</strong>这种情况。整体上它的核心思想就是：能绕过排队就直接发，不能直接发就先 <code>enqueue</code>，再由 <code>qdisc</code> 调度发送，同时保证并发情况下同一时刻只有一个执行流真正跑 <code>qdisc</code> 出队。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E9%93%BE%E8%B7%AF%E5%B1%82/" rel="tag"># 链路层</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/04/14/%E7%BD%91%E5%8D%A1%E9%98%9F%E5%88%97%E7%9A%84%E9%80%89%E6%8B%A9/" rel="prev" title="网卡TX队列选择">
+      <i class="fa fa-chevron-left"></i> 网卡TX队列选择
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">116</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">26</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

@@ -193,6 +193,113 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/03/17/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84(%E5%9B%9B%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2026/03/17/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84(%E5%9B%9B%EF%BC%89/" class="post-title-link" itemprop="url">IP重组（二）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-03-17 22:00:00" itemprop="dateCreated datePublished" datetime="2026-03-17T22:00:00+08:00">2026-03-17</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-03-15 23:40:45" itemprop="dateModified" datetime="2026-03-15T23:40:45+08:00">2026-03-15</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/03/17/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84(%E5%9B%9B%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/03/17/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84(%E5%9B%9B%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>回到<code>ip_frag_queue</code>中，当对数据包的合法性检查以及偏移等字段记录完成后，会调用<code>inet_frag_queue_insert</code>将当前数据包插入到管理分片的队列中，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">inet_frag_queue_insert</span><span class="params">(<span class="keyword">struct</span> inet_frag_queue *q, <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">			   <span class="type">int</span> offset, <span class="type">int</span> end)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//拿到最后一个分片</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">last</span> =</span> q-&gt;fragments_tail;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* RFC5722, Section 4, amended by Errata ID : 3089</span></span><br><span class="line"><span class="comment">	 *                          When reassembling an IPv6 datagram, if</span></span><br><span class="line"><span class="comment">	 *   one or more its constituent fragments is determined to be an</span></span><br><span class="line"><span class="comment">	 *   overlapping fragment, the entire datagram (and any constituent</span></span><br><span class="line"><span class="comment">	 *   fragments) MUST be silently discarded.</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * Duplicates, however, should be ignored (i.e. skb dropped, but the</span></span><br><span class="line"><span class="comment">	 * queue/fragments kept for later reassembly).</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//第一个分片</span></span><br><span class="line">	<span class="keyword">if</span> (!last)</span><br><span class="line">		<span class="comment">//初始化重组队列，设置了fragments_tail</span></span><br><span class="line">		fragrun_create(q, skb);  <span class="comment">/* First fragment. */</span></span><br><span class="line">		<span class="comment">//最后一个分片结束的位置</span></span><br><span class="line">	<span class="keyword">else</span> <span class="keyword">if</span> (last-&gt;ip_defrag_offset + last-&gt;len &lt; end) &#123;</span><br><span class="line">		<span class="comment">/* This is the common case: skb goes to the end. */</span></span><br><span class="line">		<span class="comment">/* Detect and discard overlaps. */</span></span><br><span class="line">		<span class="comment">//有重叠</span></span><br><span class="line">		<span class="keyword">if</span> (offset &lt; last-&gt;ip_defrag_offset + last-&gt;len)</span><br><span class="line">			<span class="keyword">return</span> IPFRAG_OVERLAP;</span><br><span class="line">		<span class="comment">//如果正好紧挨着，就接到最后一个 run 上</span></span><br><span class="line">		<span class="keyword">if</span> (offset == last-&gt;ip_defrag_offset + last-&gt;len)</span><br><span class="line">			fragrun_append_to_last(q, skb);</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">		<span class="comment">//完全在后面相当与有空洞</span></span><br><span class="line">			fragrun_create(q, skb);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;<span class="comment">//在中间的情况</span></span><br><span class="line">		<span class="comment">/* Binary search. Note that skb can become the first fragment,</span></span><br><span class="line"><span class="comment">		 * but not the last (covered above).</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="keyword">struct</span> rb_node **rbn, *parent;</span><br><span class="line"></span><br><span class="line">		rbn = &amp;q-&gt;rb_fragments.rb_node;</span><br><span class="line">		<span class="comment">//准备二分查找</span></span><br><span class="line">		<span class="keyword">do</span> &#123;</span><br><span class="line">			<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">curr</span>;</span></span><br><span class="line">			<span class="type">int</span> curr_run_end;</span><br><span class="line"></span><br><span class="line">			parent = *rbn;</span><br><span class="line">			curr = rb_to_skb(parent);</span><br><span class="line">			curr_run_end = curr-&gt;ip_defrag_offset +</span><br><span class="line">					FRAG_CB(curr)-&gt;frag_run_len;</span><br><span class="line">			<span class="keyword">if</span> (end &lt;= curr-&gt;ip_defrag_offset)</span><br><span class="line">				rbn = &amp;parent-&gt;rb_left;</span><br><span class="line">			<span class="keyword">else</span> <span class="keyword">if</span> (offset &gt;= curr_run_end)</span><br><span class="line">				rbn = &amp;parent-&gt;rb_right;</span><br><span class="line">			<span class="keyword">else</span> <span class="keyword">if</span> (offset &gt;= curr-&gt;ip_defrag_offset &amp;&amp;</span><br><span class="line">				 end &lt;= curr_run_end)</span><br><span class="line">				<span class="keyword">return</span> IPFRAG_DUP;</span><br><span class="line">			<span class="keyword">else</span></span><br><span class="line">				<span class="keyword">return</span> IPFRAG_OVERLAP;</span><br><span class="line">		&#125; <span class="keyword">while</span> (*rbn);</span><br><span class="line">		<span class="comment">/* Here we have parent properly set, and rbn pointing to</span></span><br><span class="line"><span class="comment">		 * one of its NULL left/right children. Insert skb.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//找到空位置后，把新分片插入红黑树</span></span><br><span class="line">		fragcb_clear(skb);</span><br><span class="line">		rb_link_node(&amp;skb-&gt;rbnode, parent, rbn);</span><br><span class="line">		rb_insert_color(&amp;skb-&gt;rbnode, &amp;q-&gt;rb_fragments);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//记录这个数据包的offset</span></span><br><span class="line">	skb-&gt;ip_defrag_offset = offset;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> IPFRAG_OK;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>inet_frag_queue_insert()</code> 的作用就是**把新的 IP 分片按 offset 插入到当前的重组队列里，并检查是否有重复或重叠。**如果这是 <strong>第一个分片</strong>，就创建一个新的分片 run；如果新分片 <strong>在当前最后一个分片之后</strong>，通常直接追加到尾部（连续就拼在一起，不连续就新建一个 run）；如果分片 <strong>落在中间位置</strong>，就通过 <strong>红黑树二分查找</strong>找到正确的位置插入。</p>
+<p>回到<code>ip_frag_queue</code>中，当数据包的首片和尾片已经集齐后，同时长度也相同，则调用<code>ip_frag_reasm</code>开始真正的重组，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Build a new IP datagram from all its fragments. */</span></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">ip_frag_reasm</span><span class="params">(<span class="keyword">struct</span> ipq *qp, <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">			 <span class="keyword">struct</span> sk_buff *prev_tail, <span class="keyword">struct</span> net_device *dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> qp-&gt;q.fqdir-&gt;net;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">iphdr</span> *<span class="title">iph</span>;</span></span><br><span class="line">	<span class="type">void</span> *reasm_data;</span><br><span class="line">	<span class="type">int</span> len, err;</span><br><span class="line">	u8 ecn;</span><br><span class="line">	<span class="comment">//从hash表中删除，关闭定时器</span></span><br><span class="line">	ipq_kill(qp);</span><br><span class="line"></span><br><span class="line">	ecn = ip_frag_ecn_table[qp-&gt;ecn];</span><br><span class="line">	<span class="keyword">if</span> (unlikely(ecn == <span class="number">0xff</span>)) &#123;</span><br><span class="line">		err = -EINVAL;</span><br><span class="line">		<span class="keyword">goto</span> out_fail;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Make the one we just received the head. */</span></span><br><span class="line">	<span class="comment">//重组前的准备工作，让刚收到的数据包作为重组的头skb，注意这里的返回值是fraglist！！！下面会传进去</span></span><br><span class="line">	reasm_data = inet_frag_reasm_prepare(&amp;qp-&gt;q, skb, prev_tail);</span><br><span class="line">	<span class="keyword">if</span> (!reasm_data)</span><br><span class="line">		<span class="keyword">goto</span> out_nomem;</span><br><span class="line">	<span class="comment">//检查长度是否合法</span></span><br><span class="line">	len = ip_hdrlen(skb) + qp-&gt;q.len;</span><br><span class="line">	err = -E2BIG;</span><br><span class="line">	<span class="keyword">if</span> (len &gt; <span class="number">65535</span>)</span><br><span class="line">		<span class="keyword">goto</span> out_oversize;</span><br><span class="line">	<span class="comment">//真正的重组数据包</span></span><br><span class="line">	inet_frag_reasm_finish(&amp;qp-&gt;q, skb, reasm_data,</span><br><span class="line">			       ip_frag_coalesce_ok(qp));</span><br><span class="line"></span><br><span class="line">	skb-&gt;dev = dev;</span><br><span class="line">	<span class="comment">//</span></span><br><span class="line">	IPCB(skb)-&gt;frag_max_size = max(qp-&gt;max_df_size, qp-&gt;q.max_size);</span><br><span class="line"></span><br><span class="line">	iph = ip_hdr(skb);</span><br><span class="line">	iph-&gt;tot_len = htons(len);</span><br><span class="line">	iph-&gt;tos |= ecn;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* When we set IP_DF on a refragmented skb we must also force a</span></span><br><span class="line"><span class="comment">	 * call to ip_fragment to avoid forwarding a DF-skb of size s while</span></span><br><span class="line"><span class="comment">	 * original sender only sent fragments of size f (where f &lt; s).</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * We only set DF/IPSKB_FRAG_PMTU if such DF fragment was the largest</span></span><br><span class="line"><span class="comment">	 * frag seen to avoid sending tiny DF-fragments in case skb was built</span></span><br><span class="line"><span class="comment">	 * from one very small df-fragment and one large non-df frag.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (qp-&gt;max_df_size == qp-&gt;q.max_size) &#123;</span><br><span class="line">		IPCB(skb)-&gt;flags |= IPSKB_FRAG_PMTU;</span><br><span class="line">		iph-&gt;frag_off = htons(IP_DF);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		iph-&gt;frag_off = <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//计算校验和</span></span><br><span class="line">	ip_send_check(iph);</span><br><span class="line"></span><br><span class="line">	__IP_INC_STATS(net, IPSTATS_MIB_REASMOKS);</span><br><span class="line">	qp-&gt;q.rb_fragments = RB_ROOT;</span><br><span class="line">	qp-&gt;q.fragments_tail = <span class="literal">NULL</span>;</span><br><span class="line">	qp-&gt;q.last_run_head = <span class="literal">NULL</span>;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">out_nomem:</span><br><span class="line">	net_dbg_ratelimited(<span class="string">&quot;queue_glue: no memory for gluing queue %p\n&quot;</span>, qp);</span><br><span class="line">	err = -ENOMEM;</span><br><span class="line">	<span class="keyword">goto</span> out_fail;</span><br><span class="line">out_oversize:</span><br><span class="line">	net_info_ratelimited(<span class="string">&quot;Oversized IP packet from %pI4\n&quot;</span>, &amp;qp-&gt;q.key.v4.saddr);</span><br><span class="line">out_fail:</span><br><span class="line">	__IP_INC_STATS(net, IPSTATS_MIB_REASMFAILS);</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ip_frag_reasm</code> 负责 <strong>把已经收齐的所有 IP 分片拼接成一个完整的数据报</strong>。首先 将当前分片队列从哈希表中移除并停止重组定时器，接着调用 <code>inet_frag_reasm_prepare()</code> 选择当前收到的分片 <code>skb</code> 作为最终报文的头 <code>skb</code>，再通过 <code>inet_frag_reasm_finish()</code> 按<code>offset</code> 将所有分片的数据拼接到该 <code>skb</code> 中完成重组。最后更新 IP 头字段，设置新的 <code>tot_len</code>，最后调用重新计算 IP 头校验和。</p>
+<p><code>inet_frag_reasm_prepare</code>负责把当前传入<code>skb</code>指向分片报文的第一个<code>skb</code>，具体代码如下所示:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//如果当前 skb 不是队列里的第一片，就把它和真正的第一片交换</span></span><br><span class="line"><span class="type">void</span> *<span class="title function_">inet_frag_reasm_prepare</span><span class="params">(<span class="keyword">struct</span> inet_frag_queue *q, <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">			      <span class="keyword">struct</span> sk_buff *parent)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">fp</span>, *<span class="title">head</span> =</span> skb_rb_first(&amp;q-&gt;rb_fragments);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> **<span class="title">nextp</span>;</span></span><br><span class="line">	<span class="type">int</span> delta;</span><br><span class="line">	<span class="comment">//head是offset最小的分片，如果刚才传入的和头部不是一个，就要调整</span></span><br><span class="line">	<span class="keyword">if</span> (head != skb) &#123;</span><br><span class="line">		<span class="comment">//先clone，保住他原来在树中的位置</span></span><br><span class="line">		fp = skb_clone(skb, GFP_ATOMIC);</span><br><span class="line">		<span class="keyword">if</span> (!fp)</span><br><span class="line">			<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">		<span class="comment">//把当前的给到clone之后，让fp保住信息</span></span><br><span class="line">		FRAG_CB(fp)-&gt;next_frag = FRAG_CB(skb)-&gt;next_frag;</span><br><span class="line">		<span class="keyword">if</span> (RB_EMPTY_NODE(&amp;skb-&gt;rbnode)) <span class="comment">//如果当前skb不在红黑树中</span></span><br><span class="line">			FRAG_CB(parent)-&gt;next_frag = fp;<span class="comment">//那就把parent指针给到他</span></span><br><span class="line">		<span class="keyword">else</span> <span class="comment">//在红黑树中，进行替换 队列中原来那个分片的位置交给 fp了</span></span><br><span class="line">			rb_replace_node(&amp;skb-&gt;rbnode, &amp;fp-&gt;rbnode,</span><br><span class="line">					&amp;q-&gt;rb_fragments);</span><br><span class="line">		<span class="comment">//更新最后一个数据包</span></span><br><span class="line">		<span class="keyword">if</span> (q-&gt;fragments_tail == skb)</span><br><span class="line">			q-&gt;fragments_tail = fp;</span><br><span class="line">		<span class="comment">//把当前数据包变成第一片了！</span></span><br><span class="line">		skb_morph(skb, head);</span><br><span class="line">		<span class="comment">//能够找到其他片</span></span><br><span class="line">		FRAG_CB(skb)-&gt;next_frag = FRAG_CB(head)-&gt;next_frag;</span><br><span class="line">		<span class="comment">//skb 替换原来的 head 节点</span></span><br><span class="line">		rb_replace_node(&amp;head-&gt;rbnode, &amp;skb-&gt;rbnode,</span><br><span class="line">				&amp;q-&gt;rb_fragments);</span><br><span class="line">		<span class="comment">//释放原本的head</span></span><br><span class="line">		consume_skb(head);</span><br><span class="line">		head = skb;</span><br><span class="line">	&#125;</span><br><span class="line">	WARN_ON(head-&gt;ip_defrag_offset != <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">	delta = -head-&gt;truesize;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Head of list must not be cloned. */</span></span><br><span class="line">	<span class="keyword">if</span> (skb_unclone(head, GFP_ATOMIC))</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	delta += head-&gt;truesize;</span><br><span class="line">	<span class="comment">//修正内存记账</span></span><br><span class="line">	<span class="keyword">if</span> (delta)</span><br><span class="line">		add_frag_mem_limit(q-&gt;fqdir, delta);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* If the first fragment is fragmented itself, we split</span></span><br><span class="line"><span class="comment">	 * it to two chunks: the first with data and paged part</span></span><br><span class="line"><span class="comment">	 * and the second, holding only fragments.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//处理skb还有fraglish的情况，通常没有吧，GRO可能会有？</span></span><br><span class="line">	<span class="comment">//核心思想就是把fraglist中的数据包挂到一个新申请的数据clone上面</span></span><br><span class="line">	<span class="keyword">if</span> (skb_has_frag_list(head)) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">clone</span>;</span></span><br><span class="line">		<span class="type">int</span> i, plen = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">		clone = alloc_skb(<span class="number">0</span>, GFP_ATOMIC);</span><br><span class="line">		<span class="keyword">if</span> (!clone)</span><br><span class="line">			<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">		<span class="comment">//把 head 原来的 frag_list 挪给 clone</span></span><br><span class="line">		skb_shinfo(clone)-&gt;frag_list = skb_shinfo(head)-&gt;frag_list;</span><br><span class="line">		<span class="comment">//设置为空</span></span><br><span class="line">		skb_frag_list_init(head);</span><br><span class="line">		<span class="comment">//统计 page frags 长度</span></span><br><span class="line">		<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; skb_shinfo(head)-&gt;nr_frags; i++)</span><br><span class="line">			plen += skb_frag_size(&amp;skb_shinfo(head)-&gt;frags[i]);</span><br><span class="line">		<span class="comment">//设置 clone 的长度信息</span></span><br><span class="line">		clone-&gt;data_len = head-&gt;data_len - plen;</span><br><span class="line">		clone-&gt;len = clone-&gt;data_len;</span><br><span class="line">		head-&gt;truesize += clone-&gt;truesize;</span><br><span class="line">		clone-&gt;csum = <span class="number">0</span>;</span><br><span class="line">		clone-&gt;ip_summed = head-&gt;ip_summed;</span><br><span class="line">		add_frag_mem_limit(q-&gt;fqdir, clone-&gt;truesize);</span><br><span class="line">		<span class="comment">//这里很关键</span></span><br><span class="line">		skb_shinfo(head)-&gt;frag_list = clone;</span><br><span class="line">		nextp = &amp;clone-&gt;next;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		nextp = &amp;skb_shinfo(head)-&gt;frag_list;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> nextp;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>inet_frag_reasm_prepare</code> 主要作用是 <strong>确保当前的 <code>skb</code> 成为队列中第一片，并整理分片链表结构，为后续数据拼接做好准备</strong>。函数首先检查当前传入的 <code>skb</code> 是否就是偏移最小的分片，如果不是，则通过 <code>skb_clone()</code> 克隆当前 <code>skb</code> ，再将当前 <code>skb</code> 与真正的第一片在红黑树中的位置进行交换。如果第一片本身还带有 <code>frag_list</code>（例如 GRO 聚合产生的 <code>skb</code>），函数会将该 <code>frag_list</code> 拆分到一个新的 <code>clone skb</code> 中，并返回<code>nextp</code>，从而为 <code>inet_frag_reasm_finish()</code> 在后续步骤中按顺序拼接各个分片数据做好结构准备。</p>
+<p>上述<code>inet_frag_reasm_finish</code>具体代码如下所示：</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2026/03/17/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84(%E5%9B%9B%EF%BC%89/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2026/03/15/IP%E5%88%86%E7%89%87%E9%87%8D%E7%BB%84%EF%BC%88%E4%B8%89%EF%BC%89/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1108,105 +1215,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2026/02/08/IPv4%20%E7%9A%84%E6%8E%A7%E5%88%B6%E9%9D%A2%E3%80%81%E6%95%B0%E6%8D%AE%E8%B7%AF%E5%BE%84%E4%B8%8E%E9%94%99%E8%AF%AF%E4%B8%8A%E6%8A%A5%E6%9C%BA%E5%88%B6/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2026/02/08/IPv4%20%E7%9A%84%E6%8E%A7%E5%88%B6%E9%9D%A2%E3%80%81%E6%95%B0%E6%8D%AE%E8%B7%AF%E5%BE%84%E4%B8%8E%E9%94%99%E8%AF%AF%E4%B8%8A%E6%8A%A5%E6%9C%BA%E5%88%B6/" class="post-title-link" itemprop="url">IPv4 的控制与错误上报机制</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2026-02-08 22:00:00 / 修改时间：20:18:21" itemprop="dateCreated datePublished" datetime="2026-02-08T22:00:00+08:00">2026-02-08</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2026/02/08/IPv4%20%E7%9A%84%E6%8E%A7%E5%88%B6%E9%9D%A2%E3%80%81%E6%95%B0%E6%8D%AE%E8%B7%AF%E5%BE%84%E4%B8%8E%E9%94%99%E8%AF%AF%E4%B8%8A%E6%8A%A5%E6%9C%BA%E5%88%B6/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2026/02/08/IPv4%20%E7%9A%84%E6%8E%A7%E5%88%B6%E9%9D%A2%E3%80%81%E6%95%B0%E6%8D%AE%E8%B7%AF%E5%BE%84%E4%B8%8E%E9%94%99%E8%AF%AF%E4%B8%8A%E6%8A%A5%E6%9C%BA%E5%88%B6/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h3 id="IP私有信息控制块"><a href="#IP私有信息控制块" class="headerlink" title="IP私有信息控制块"></a>IP私有信息控制块</h3><p>协议栈的IP层处理中会依靠<code>skb</code>的控制字段（<code>cb</code>总计48个字节）来存储IP层用到的控制信息，这个控制块主要存储IP选项，分片路由等信息，具体结构如下所示:</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">inet_skb_parm</span> &#123;</span></span><br><span class="line">	<span class="type">int</span>			iif;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_options</span>	<span class="title">opt</span>;</span>		<span class="comment">/* Compiled IP options		*/</span></span><br><span class="line">	u16			flags;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_FORWARDED		BIT(0)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_XFRM_TUNNEL_SIZE	BIT(1)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_XFRM_TRANSFORMED	BIT(2)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_FRAG_COMPLETE	BIT(3)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_REROUTED		BIT(4)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_DOREDIRECT	BIT(5)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_FRAG_PMTU		BIT(6)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_L3SLAVE		BIT(7)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_NOPOLICY		BIT(8)</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> IPSKB_MULTIPATH		BIT(9)</span></span><br><span class="line"></span><br><span class="line">	u16			frag_max_size;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
-
-<p>例如在接收数据包时，<code>ip_rcv_options</code>会解析数据包首部的IP选项保存到控制块中，在发送数据包时<code>ip_options_build</code>会将根据控制信息生成一个选项。上述<code>flags</code>用于标记是否被重组，是否需要被<code>ipsec</code>处理，是否需要重定向等信息。</p>
-<h3 id="ipv4-devconf-结构"><a href="#ipv4-devconf-结构" class="headerlink" title="ipv4_devconf 结构"></a><code>ipv4_devconf</code> 结构</h3><p> <code>ipv4_devconf</code> 是网口的IPv4系统配置，用于控制这个网口在IPv4协议栈里的所有策略行为，注意这个结构被之前介绍的in_device结构管理，每个网口都有自己的一份<code>ipv4_devconf</code> 具体结构如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">ipv4_devconf</span> &#123;</span></span><br><span class="line">	<span class="type">void</span>	*sysctl;</span><br><span class="line">	<span class="type">int</span>	data[IPV4_DEVCONF_MAX];</span><br><span class="line">	DECLARE_BITMAP(state, IPV4_DEVCONF_MAX);</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
-
-<p><code>ipv4_devconf</code>结构中有一个<code>bitmap</code>和一个数组，<code>bitmap</code>用于标识当前设备是否显示修改过配置（正常应该是全局结构继承过来的），上述data数组中存的就是每个配置项的具体开关，标识是否开启，具体有如下配置项：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">enum</span></span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">    IPV4_DEVCONF_FORWARDING = <span class="number">1</span>,   <span class="comment">// forwarding：是否允许该接口进行三层转发（路由器开关）</span></span><br><span class="line">    IPV4_DEVCONF_MC_FORWARDING,    <span class="comment">// mc_forwarding：是否转发组播报文</span></span><br><span class="line">    IPV4_DEVCONF_PROXY_ARP,        <span class="comment">// proxy_arp：是否开启 ARP 代答（替别的主机回应 ARP）</span></span><br><span class="line">    IPV4_DEVCONF_ACCEPT_REDIRECTS, <span class="comment">// accept_redirects：是否接受 ICMP Redirect 重定向</span></span><br><span class="line">    IPV4_DEVCONF_SECURE_REDIRECTS, <span class="comment">// secure_redirects：只接受“可信网关”发来的 Redirect</span></span><br><span class="line">    IPV4_DEVCONF_SEND_REDIRECTS,   <span class="comment">// send_redirects：是否向对端发送 ICMP Redirect</span></span><br><span class="line">    IPV4_DEVCONF_SHARED_MEDIA,     <span class="comment">// shared_media：多接口共享链路场景，影响地址选择与 ARP 行为</span></span><br><span class="line">    IPV4_DEVCONF_RP_FILTER,        <span class="comment">// rp_filter：反向路径过滤，防止 IP 欺骗</span></span><br><span class="line">    IPV4_DEVCONF_ACCEPT_SOURCE_ROUTE, <span class="comment">// accept_source_route：是否允许源路由（极不安全）</span></span><br><span class="line">    IPV4_DEVCONF_BOOTP_RELAY,      <span class="comment">// bootp_relay：是否作为 BOOTP relay（遗留功能）</span></span><br><span class="line">    IPV4_DEVCONF_LOG_MARTIANS,     <span class="comment">// log_martians：记录异常/伪造源地址的报文</span></span><br><span class="line">    IPV4_DEVCONF_TAG,              <span class="comment">// tag：给地址/接口打标签，供策略路由等使用</span></span><br><span class="line">    IPV4_DEVCONF_ARPFILTER,        <span class="comment">// arp_filter：是否严格根据路由选择接口回应 ARP</span></span><br><span class="line">    IPV4_DEVCONF_MEDIUM_ID,        <span class="comment">// medium_id：介质标识，用于 shared_media 判断</span></span><br><span class="line">    IPV4_DEVCONF_NOXFRM,           <span class="comment">// disable_xfrm：禁止该接口进行 IPsec/xfrm 处理</span></span><br><span class="line">    IPV4_DEVCONF_NOPOLICY,         <span class="comment">// disable_policy：禁止该接口进行策略匹配（xfrm policy）</span></span><br><span class="line">    IPV4_DEVCONF_FORCE_IGMP_VERSION, <span class="comment">// force_igmp_version：强制 IGMP 版本（v2/v3）</span></span><br><span class="line">    IPV4_DEVCONF_ARP_ANNOUNCE,     <span class="comment">// arp_announce：ARP 宣告时使用哪个源 IP（防 ARP flux）</span></span><br><span class="line">    IPV4_DEVCONF_ARP_IGNORE,       <span class="comment">// arp_ignore：收到 ARP 请求时的忽略级别</span></span><br><span class="line">    IPV4_DEVCONF_PROMOTE_SECONDARIES, <span class="comment">// promote_secondaries：删除主地址时是否提升从地址为主地址</span></span><br><span class="line">    IPV4_DEVCONF_ARP_ACCEPT,       <span class="comment">// arp_accept：是否接受 Gratuitous ARP 更新邻居表</span></span><br><span class="line">    IPV4_DEVCONF_ARP_NOTIFY,       <span class="comment">// arp_notify：本接口 IP 变化时是否发送 Gratuitous ARP</span></span><br><span class="line">    IPV4_DEVCONF_ACCEPT_LOCAL,     <span class="comment">// accept_local：是否接受源地址是本机地址的报文</span></span><br><span class="line">    IPV4_DEVCONF_SRC_VMARK,        <span class="comment">// src_valid_mark：fwmark 参与源地址选择</span></span><br><span class="line">    IPV4_DEVCONF_PROXY_ARP_PVLAN,  <span class="comment">// proxy_arp_pvlan：PVLAN 场景下的 proxy ARP</span></span><br><span class="line">    IPV4_DEVCONF_ROUTE_LOCALNET,   <span class="comment">// route_localnet：是否允许路由 127.0.0.0/8 的流量</span></span><br><span class="line">    IPV4_DEVCONF_IGMPV2_UNSOLICITED_REPORT_INTERVAL, <span class="comment">// igmpv2 上报间隔</span></span><br><span class="line">    IPV4_DEVCONF_IGMPV3_UNSOLICITED_REPORT_INTERVAL, <span class="comment">// igmpv3 上报间隔</span></span><br><span class="line">    IPV4_DEVCONF_IGNORE_ROUTES_WITH_LINKDOWN, <span class="comment">// 接口 down 时忽略其相关路由</span></span><br><span class="line">    IPV4_DEVCONF_DROP_UNICAST_IN_L2_MULTICAST, <span class="comment">// 丢弃 L2 多播帧中承载的单播 IP 包（防欺骗）</span></span><br><span class="line">    IPV4_DEVCONF_DROP_GRATUITOUS_ARP, <span class="comment">// 丢弃 Gratuitous ARP</span></span><br><span class="line">    IPV4_DEVCONF_BC_FORWARDING,    <span class="comment">// 是否允许转发广播报文</span></span><br><span class="line">    IPV4_DEVCONF_ARP_EVICT_NOCARRIER, <span class="comment">// 接口无 carrier 时清空 ARP 邻居表</span></span><br><span class="line">    __IPV4_DEVCONF_MAX</span><br><span class="line">&#125;;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<h3 id="套接字的错误队列"><a href="#套接字的错误队列" class="headerlink" title="套接字的错误队列"></a>套接字的错误队列</h3>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2026/02/08/IPv4%20%E7%9A%84%E6%8E%A7%E5%88%B6%E9%9D%A2%E3%80%81%E6%95%B0%E6%8D%AE%E8%B7%AF%E5%BE%84%E4%B8%8E%E9%94%99%E8%AF%AF%E4%B8%8A%E6%8A%A5%E6%9C%BA%E5%88%B6/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1276,7 +1284,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">115</span>
+          <span class="site-state-item-count">116</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
@@ -1289,7 +1297,7 @@
       <div class="site-state-item site-state-tags">
             <a href="/tags/">
           
-        <span class="site-state-item-count">25</span>
+        <span class="site-state-item-count">26</span>
         <span class="site-state-item-name">标签</span></a>
       </div>
   </nav>
