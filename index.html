@@ -193,6 +193,107 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/20/dev_queue_xmit%20(%E4%BA%8C)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2026/04/20/dev_queue_xmit%20(%E4%BA%8C)/" class="post-title-link" itemprop="url">__dev_queue_xmit → 网卡驱动（二）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-04-20 22:00:00 / 修改时间：21:41:41" itemprop="dateCreated datePublished" datetime="2026-04-20T22:00:00+08:00">2026-04-20</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/04/20/dev_queue_xmit%20(%E4%BA%8C)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/04/20/dev_queue_xmit%20(%E4%BA%8C)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>上文<code>__dev_queue_xmit</code>中，如果选择队列后拿到的是无锁的<code>qdisc</code>（例如<code>pfifo_fast</code>）<strong>同时当前队列是空，且当前 CPU 抢到了运行 <code>qdisc</code>的资格，就尽量不走 <code>enqueue/dequeue</code>，而是直接调用<code>sch_direct_xmit</code>尝试把 skb 发给驱动。</strong></p>
+<p><code>sch_direct_xmit</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">bool</span> <span class="title function_">sch_direct_xmit</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> Qdisc *q,</span></span><br><span class="line"><span class="params">		     <span class="keyword">struct</span> net_device *dev, <span class="keyword">struct</span> netdev_queue *txq,</span></span><br><span class="line"><span class="params">		     <span class="type">spinlock_t</span> *root_lock, <span class="type">bool</span> validate)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> ret = NETDEV_TX_BUSY;</span><br><span class="line">	<span class="type">bool</span> again = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* And release qdisc */</span></span><br><span class="line">	<span class="comment">//释放了root lock 因为要发包比较耗时</span></span><br><span class="line">	<span class="keyword">if</span> (root_lock)</span><br><span class="line">		spin_unlock(root_lock);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Note that we validate skb (GSO, checksum, ...) outside of locks */</span></span><br><span class="line">	<span class="keyword">if</span> (validate)</span><br><span class="line">		<span class="comment">//GSO vlan 分散聚合等硬件卸载能力校验</span></span><br><span class="line">		skb = validate_xmit_skb_list(skb, dev, &amp;again);</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_XFRM_OFFLOAD</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(again)) &#123;</span><br><span class="line">		<span class="keyword">if</span> (root_lock)</span><br><span class="line">			spin_lock(root_lock);</span><br><span class="line"></span><br><span class="line">		dev_requeue_skb(skb, q);</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="comment">//skb 不为空的情况，判断网卡队列是否发不出去了</span></span><br><span class="line">	<span class="keyword">if</span> (likely(skb)) &#123;</span><br><span class="line">		HARD_TX_LOCK(dev, txq, smp_processor_id());</span><br><span class="line">		<span class="keyword">if</span> (!netif_xmit_frozen_or_stopped(txq))</span><br><span class="line">			skb = dev_hard_start_xmit(skb, dev, txq, &amp;ret);</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			qdisc_maybe_clear_missed(q, txq);</span><br><span class="line">		<span class="comment">//给网卡发送队列加锁 保证ndo_start_xmit不被并发调用</span></span><br><span class="line">		HARD_TX_UNLOCK(dev, txq);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="keyword">if</span> (root_lock)</span><br><span class="line">			spin_lock(root_lock);</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//重新加锁</span></span><br><span class="line">	<span class="keyword">if</span> (root_lock)</span><br><span class="line">		spin_lock(root_lock);</span><br><span class="line">	<span class="comment">//检查返回值，判断是否发送失败</span></span><br><span class="line">	<span class="keyword">if</span> (!dev_xmit_complete(ret)) &#123;</span><br><span class="line">		<span class="comment">/* Driver returned NETDEV_TX_BUSY - requeue skb */</span></span><br><span class="line">		<span class="keyword">if</span> (unlikely(ret != NETDEV_TX_BUSY))</span><br><span class="line">			net_warn_ratelimited(<span class="string">&quot;BUG %s code %d qlen %d\n&quot;</span>,</span><br><span class="line">					     dev-&gt;name, ret, q-&gt;q.qlen);</span><br><span class="line">		<span class="comment">//重新入队</span></span><br><span class="line">		dev_requeue_skb(skb, q);</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>sch_direct_xmit()</code> 的核心流程是，先释放 qdisc 的 <code>root_lock</code>（避免发包长时间占锁），在锁外调用<code>validate_xmit_skb_list</code>对 skb 做发送前校验（<strong>其实就是看网卡是否支持硬件卸载，不支持就交给软件来做</strong>），之后加 <code>HARD_TX_LOCK</code>，并判断发送队列是否被 <code>stop/frozen</code> 如果没有则调用 <code>dev_hard_start_xmit</code> 尝试发包，发送完成后检查返回值，如果驱动返回 <code>NETDEV_TX_BUSY</code> ，<strong>就把 skb 重新入队到 qdisc</strong>。</p>
+<p>上述<code>validate_xmit_skb_list</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> sk_buff *<span class="title function_">validate_xmit_skb_list</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> net_device *dev, <span class="type">bool</span> *again)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">next</span>, *<span class="title">head</span> =</span> <span class="literal">NULL</span>, *tail;</span><br><span class="line">	<span class="comment">//注意这里可能传入的是一个链表，循环遍历这个链表，检查是否需要GSO等。。。。</span></span><br><span class="line">	<span class="keyword">for</span> (; skb != <span class="literal">NULL</span>; skb = next) &#123;</span><br><span class="line">		next = skb-&gt;next;</span><br><span class="line">		skb_mark_not_on_list(skb);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* in case skb wont be segmented, point to itself */</span></span><br><span class="line">		skb-&gt;prev = skb;</span><br><span class="line"></span><br><span class="line">		skb = validate_xmit_skb(skb, dev, again);</span><br><span class="line">		<span class="keyword">if</span> (!skb)</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (!head)</span><br><span class="line">			head = skb;</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			tail-&gt;next = skb;</span><br><span class="line">		<span class="comment">/* If skb was segmented, skb-&gt;prev points to</span></span><br><span class="line"><span class="comment">		 * the last segment. If not, it still contains skb.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		tail = skb-&gt;prev;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> head;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>validate_xmit_skb_list()</code> 的作用是遍历一个 skb 链表，对每个 skb 做发送前检查和处理（如 GSO 分段），如果某个 skb 需要分段，<code>validate_xmit_skb()</code> 会把它拆成多个 skb，并通过 <code>skb-&gt;prev</code> 指向最后一个分段，然后这里把处理后的 skb（可能是单个也可能是一串分段）重新串成一个新的链表返回；如果某个 skb 不合法或被丢弃就跳过。</p>
+<p><code>validate_xmit_skb</code>为实际检查硬件卸载能力的核心，具体包括<code>vlan</code>卸载，<code>TSO</code>卸载，<code>S/G</code>卸载的判断，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">struct</span> sk_buff *<span class="title function_">validate_xmit_skb</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> net_device *dev, <span class="type">bool</span> *again)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">netdev_features_t</span> features;</span><br><span class="line">	<span class="comment">//获取网卡注册的能力</span></span><br><span class="line">	features = netif_skb_features(skb);</span><br><span class="line">	<span class="comment">//是否支持vlan卸载</span></span><br><span class="line">	skb = validate_xmit_vlan(skb, features);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(!skb))</span><br><span class="line">		<span class="keyword">goto</span> out_null;</span><br><span class="line"></span><br><span class="line">	skb = sk_validate_xmit_skb(skb, dev);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(!skb))</span><br><span class="line">		<span class="keyword">goto</span> out_null;</span><br><span class="line">	<span class="comment">//是否需要软件做GSO</span></span><br><span class="line">	<span class="keyword">if</span> (netif_needs_gso(skb, features)) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">segs</span>;</span></span><br><span class="line"></span><br><span class="line">		segs = skb_gso_segment(skb, features);</span><br><span class="line">		<span class="keyword">if</span> (IS_ERR(segs)) &#123;</span><br><span class="line">			<span class="keyword">goto</span> out_kfree_skb;</span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> (segs) &#123;</span><br><span class="line">			consume_skb(skb);</span><br><span class="line">			skb = segs;</span><br><span class="line">		&#125;</span><br><span class="line">	<span class="comment">//是否需要软件线性化 不支持sg</span></span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="keyword">if</span> (skb_needs_linearize(skb, features) &amp;&amp;</span><br><span class="line">		    __skb_linearize(skb))</span><br><span class="line">			<span class="keyword">goto</span> out_kfree_skb;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* If packet is not checksummed and device does not</span></span><br><span class="line"><span class="comment">		 * support checksumming for this protocol, complete</span></span><br><span class="line"><span class="comment">		 * checksumming here.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//是否支持校验和卸载，这里注意支持gso一定支持校验和卸载</span></span><br><span class="line">		<span class="keyword">if</span> (skb-&gt;ip_summed == CHECKSUM_PARTIAL) &#123;</span><br><span class="line">			<span class="keyword">if</span> (skb-&gt;encapsulation)</span><br><span class="line">				skb_set_inner_transport_header(skb,</span><br><span class="line">							       skb_checksum_start_offset(skb));</span><br><span class="line">			<span class="keyword">else</span></span><br><span class="line">				skb_set_transport_header(skb,</span><br><span class="line">							 skb_checksum_start_offset(skb));</span><br><span class="line">			<span class="keyword">if</span> (skb_csum_hwoffload_help(skb, features))</span><br><span class="line">				<span class="keyword">goto</span> out_kfree_skb;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	skb = validate_xmit_xfrm(skb, features, again);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> skb;</span><br><span class="line"></span><br><span class="line">out_kfree_skb:</span><br><span class="line">	kfree_skb(skb);</span><br><span class="line">out_null:</span><br><span class="line">	dev_core_stats_tx_dropped_inc(dev);</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>回到<code>sch_direct_xmit</code>中完成硬件卸载能力的判断后，会调用<code>dev_hard_start_xmit</code>继续完成发送，具体代码如下所示：</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2026/04/20/dev_queue_xmit%20(%E4%BA%8C)/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/16/dev_queue_xmit/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -207,7 +308,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2026/04/16/dev_queue_xmit/" class="post-title-link" itemprop="url">__dev_queue_xmit → 网卡驱动</a>
+            <a href="/2026/04/16/dev_queue_xmit/" class="post-title-link" itemprop="url">__dev_queue_xmit → 网卡驱动（一）</a>
         </h2>
 
         <div class="post-meta">
@@ -224,7 +325,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2026-04-15 20:55:48" itemprop="dateModified" datetime="2026-04-15T20:55:48+08:00">2026-04-15</time>
+                <time title="修改时间：2026-04-20 19:39:51" itemprop="dateModified" datetime="2026-04-20T19:39:51+08:00">2026-04-20</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -1115,106 +1216,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2026/03/22/%E8%B7%AF%E7%94%B1/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2026/03/22/%E8%B7%AF%E7%94%B1/" class="post-title-link" itemprop="url">路由子系统的初始化</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2026-03-22 22:00:00 / 修改时间：20:16:40" itemprop="dateCreated datePublished" datetime="2026-03-22T22:00:00+08:00">2026-03-22</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2026/03/22/%E8%B7%AF%E7%94%B1/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2026/03/22/%E8%B7%AF%E7%94%B1/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="引言"><a href="#引言" class="headerlink" title="引言"></a>引言</h2><p>Linux 网络协议栈中，路由表是路由子系统的核心。与传统认知中查路由表的简单模型不同，Linux 内核中的路由实现由多个子系统协同完成，包括 FIB路由表、策略路由以及基于前缀树结构。本文旨在从源码出发，分析路由子系统的初始化流程。</p>
-<p><code>ip_rt_init</code>为初始化路由子系统的函数之一，在网络子系统初始化函数<code>inet_init</code>中被调用，主要逻辑初始化路由子系统，其中也涉及到一些非路由子系统的初始化，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __init <span class="title function_">ip_rt_init</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">void</span> *idents_hash;</span><br><span class="line">	<span class="type">int</span> cpu;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* For modern hosts, this will use 2 MB of memory */</span></span><br><span class="line">	<span class="comment">//初始化ip idhash表 ，分成两个部分，前半部分是id 后半部分是时间戳</span></span><br><span class="line">	<span class="comment">//注意这里的hash表tcp应该用不上，udp可能会用到，取决于是否connect？</span></span><br><span class="line">	idents_hash = alloc_large_system_hash(<span class="string">&quot;IP idents&quot;</span>,</span><br><span class="line">					      <span class="keyword">sizeof</span>(*ip_idents) + <span class="keyword">sizeof</span>(*ip_tstamps),</span><br><span class="line">					      <span class="number">0</span>,</span><br><span class="line">					      <span class="number">16</span>, <span class="comment">/* one bucket per 64 KB */</span></span><br><span class="line">					      HASH_ZERO,</span><br><span class="line">					      <span class="literal">NULL</span>,</span><br><span class="line">					      &amp;ip_idents_mask,</span><br><span class="line">					      <span class="number">2048</span>,</span><br><span class="line">					      <span class="number">256</span>*<span class="number">1024</span>);</span><br><span class="line"></span><br><span class="line">	ip_idents = idents_hash;</span><br><span class="line"></span><br><span class="line">	get_random_bytes(ip_idents, (ip_idents_mask + <span class="number">1</span>) * <span class="keyword">sizeof</span>(*ip_idents));</span><br><span class="line"></span><br><span class="line">	ip_tstamps = idents_hash + (ip_idents_mask + <span class="number">1</span>) * <span class="keyword">sizeof</span>(*ip_idents);</span><br><span class="line">	<span class="comment">//初始化每 CPU 的 rt_uncached_list，如果不缓存路由会加到这个列表中</span></span><br><span class="line">	<span class="comment">//什么叫不被缓存 貌似就是不被sk管理就要放到这里，应该是为了解决并发的问题？</span></span><br><span class="line">	for_each_possible_cpu(cpu) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">uncached_list</span> *<span class="title">ul</span> =</span> &amp;per_cpu(rt_uncached_list, cpu);</span><br><span class="line"></span><br><span class="line">		INIT_LIST_HEAD(&amp;ul-&gt;head);</span><br><span class="line">		INIT_LIST_HEAD(&amp;ul-&gt;quarantine);</span><br><span class="line">		spin_lock_init(&amp;ul-&gt;lock);</span><br><span class="line">	&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_IP_ROUTE_CLASSID</span></span><br><span class="line">	ip_rt_acct = __alloc_percpu(<span class="number">256</span> * <span class="keyword">sizeof</span>(<span class="keyword">struct</span> ip_rt_acct), __alignof__(<span class="keyword">struct</span> ip_rt_acct));</span><br><span class="line">	<span class="keyword">if</span> (!ip_rt_acct)</span><br><span class="line">		panic(<span class="string">&quot;IP: failed to allocate ip_rt_acct\n&quot;</span>);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="comment">//为 struct rtable 创建 slab cache</span></span><br><span class="line">	ipv4_dst_ops.kmem_cachep =</span><br><span class="line">		kmem_cache_create(<span class="string">&quot;ip_dst_cache&quot;</span>, <span class="keyword">sizeof</span>(<span class="keyword">struct</span> rtable), <span class="number">0</span>,</span><br><span class="line">				  SLAB_HWCACHE_ALIGN|SLAB_PANIC, <span class="literal">NULL</span>);</span><br><span class="line">	<span class="comment">//黑洞路由的复用</span></span><br><span class="line">	ipv4_dst_blackhole_ops.kmem_cachep = ipv4_dst_ops.kmem_cachep;</span><br><span class="line">	<span class="comment">//初始化 per cpu的计数器，用于记录当前系统有多少个dst_entry</span></span><br><span class="line">	<span class="keyword">if</span> (dst_entries_init(&amp;ipv4_dst_ops) &lt; <span class="number">0</span>)</span><br><span class="line">		panic(<span class="string">&quot;IP: failed to allocate ipv4_dst_ops counter\n&quot;</span>);</span><br><span class="line">	<span class="comment">//同上</span></span><br><span class="line">	<span class="keyword">if</span> (dst_entries_init(&amp;ipv4_dst_blackhole_ops) &lt; <span class="number">0</span>)</span><br><span class="line">		panic(<span class="string">&quot;IP: failed to allocate ipv4_dst_blackhole_ops counter\n&quot;</span>);</span><br><span class="line">	<span class="comment">//不限制路由上限</span></span><br><span class="line">	ipv4_dst_ops.gc_thresh = ~<span class="number">0</span>;</span><br><span class="line">	<span class="comment">//路由表也不设置上限</span></span><br><span class="line">	ip_rt_max_size = INT_MAX;</span><br><span class="line">	<span class="comment">//初始化 IPv4 地址管理模块</span></span><br><span class="line">	devinet_init();</span><br><span class="line">	ip_fib_init();</span><br><span class="line">	<span class="comment">//注册路由统计信息的文件！/proc/net/stat/rt_cache </span></span><br><span class="line">	<span class="comment">//一共三个文件第一个好像都没有了3.6内核以后就没有这个cache了</span></span><br><span class="line">	<span class="keyword">if</span> (ip_rt_proc_init())</span><br><span class="line">		pr_err(<span class="string">&quot;Unable to create route proc files\n&quot;</span>);</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_XFRM</span></span><br><span class="line">	xfrm_init();</span><br><span class="line">	xfrm4_init();</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span>	</span></span><br><span class="line">	<span class="comment">//ip route get </span></span><br><span class="line">	rtnl_register(PF_INET, RTM_GETROUTE, inet_rtm_getroute, <span class="literal">NULL</span>,</span><br><span class="line">		      RTNL_FLAG_DOIT_UNLOCKED);</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_SYSCTL</span></span><br><span class="line">	<span class="comment">//创建sysctl接口</span></span><br><span class="line">	register_pernet_subsys(&amp;sysctl_route_ops);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="comment">//初始化默认的mtu mss等</span></span><br><span class="line">	register_pernet_subsys(&amp;ip_rt_ops);</span><br><span class="line">	<span class="comment">//初始化路由相关的计数</span></span><br><span class="line">	register_pernet_subsys(&amp;rt_genid_ops);</span><br><span class="line">	<span class="comment">//inet_peer的初始化</span></span><br><span class="line">	register_pernet_subsys(&amp;ipv4_inetpeer_ops);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p><code>ip_rt_init</code> 首先构建 <strong>IP ID hash表</strong>，用于 <code>IP id</code> 的生成（<strong>主要给 UDP使用</strong>）；然后初始化 每 CPU 的 <code>rt_uncached_list</code>，接着创建 <code>rtable</code> 的 <code>slab</code> 缓存），并初始化 <code>dst_entry</code> 计数器，之后进入功能模块初始化：调用 <code>devinet_init()</code> 初始化 IPv4 地址管理，<code>ip_fib_init()</code> 初始化 FIB 路由表和策略路由框架；再创建 <code>/proc/net/stat/rt_cache</code> 等接口用于统计，最后通过多个 <code>register_pernet_subsys</code> 把 <strong>路由 <code>sysctl</code>、默认路由参数等按 net namespace 维度注册</strong>，确保每个 <code>netns</code> 都有独立的路由环境。</p>
-<p><code>ipv4_dst_ops</code>是路由操作函数集，<strong>在创建<code>rtable</code>结构时候会挂上这个<code>ops</code></strong>，这个<code>ops</code>多处会调用，具体回调的功能如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="class"><span class="keyword">struct</span> <span class="title">dst_ops</span> <span class="title">ipv4_dst_ops</span> =</span> &#123;</span><br><span class="line">	.family =		AF_INET,</span><br><span class="line">	.check =		ipv4_dst_check,			<span class="comment">//检查路由是否可以用经常被调用</span></span><br><span class="line">	.default_advmss =	ipv4_default_advmss, <span class="comment">//比如tcp计算mss会调用</span></span><br><span class="line">	.mtu =			ipv4_mtu,				 <span class="comment">//获取mtu会用到</span></span><br><span class="line">	.cow_metrics =		ipv4_cow_metrics,	 <span class="comment">//不会被调用</span></span><br><span class="line">	.destroy =		ipv4_dst_destroy,		 <span class="comment">//释放dst的时候</span></span><br><span class="line">	.negative_advice =	ipv4_negative_advice, <span class="comment">//tcp黑洞路由的时候会调用，是否需要丢弃这个路由</span></span><br><span class="line">	.link_failure =		ipv4_link_failure,		<span class="comment">//arp层出错调用</span></span><br><span class="line">	.update_pmtu =		ip_rt_update_pmtu,		<span class="comment">//收到icmp调用减小mtu</span></span><br><span class="line">	.redirect =		ip_do_redirect,			 <span class="comment">//收到icmp重定向会调用</span></span><br><span class="line">	.local_out =		__ip_local_out,		 <span class="comment">//发包的接口，查找路由后会设置</span></span><br><span class="line">	.neigh_lookup =		ipv4_neigh_lookup,	 <span class="comment">//查找arp表项</span></span><br><span class="line">	.confirm_neigh =	ipv4_confirm_neigh,		<span class="comment">//刷新 ARP 邻居状态</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
-
-<p>上述<code>devinet_init</code>更多的是涉及到非路由子系统的初始化，例如<code>ip</code>命令的注册，通知链的注册，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> __init <span class="title function_">devinet_init</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> i;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; IN4_ADDR_HSIZE; i++)</span><br><span class="line">		INIT_HLIST_HEAD(&amp;inet_addr_lst[i]);</span><br><span class="line"></span><br><span class="line">	register_pernet_subsys(&amp;devinet_ops);</span><br><span class="line">	<span class="comment">//把 IPv4 子系统注册到 netdevice 通知链，当网卡设备状态变化（UP/DOWN/注册/注销等）时通知 IPv4 模块</span></span><br><span class="line">	register_netdevice_notifier(&amp;ip_netdev_notifier);</span><br><span class="line"></span><br><span class="line">	queue_delayed_work(system_power_efficient_wq, &amp;check_lifetime_work, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">	rtnl_af_register(&amp;inet_af_ops);</span><br><span class="line">	<span class="comment">//通过注册netlink 用户态 通过netlink 来配置ip地址</span></span><br><span class="line">	rtnl_register(PF_INET, RTM_NEWADDR, inet_rtm_newaddr, <span class="literal">NULL</span>, <span class="number">0</span>);</span><br><span class="line">	<span class="comment">//删除IP地址的命令</span></span><br><span class="line">	rtnl_register(PF_INET, RTM_DELADDR, inet_rtm_deladdr, <span class="literal">NULL</span>, <span class="number">0</span>);</span><br><span class="line">	<span class="comment">//ip addr show</span></span><br><span class="line">	rtnl_register(PF_INET, RTM_GETADDR, <span class="literal">NULL</span>, inet_dump_ifaddr, <span class="number">0</span>);</span><br><span class="line">	<span class="comment">//ip netconf show</span></span><br><span class="line">	rtnl_register(PF_INET, RTM_GETNETCONF, inet_netconf_get_devconf,</span><br><span class="line">		      inet_netconf_dump_devconf, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<p><code>devinet_init</code> 主要是 <strong>初始化 IPv4 地址管理子系统</strong>，把 IPv4 挂到 <code>netdevice</code> 通知链能够正确响应网卡状态变化，通过 <code>rtnetlink</code> 注册 <code>NEW/DEL/GETADDR</code> 等接口，使用户态（如 <code>ip addr</code>）能够增删查 IPv4 地址和配置网络参数。</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2026/03/22/%E8%B7%AF%E7%94%B1/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1284,7 +1285,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">116</span>
+          <span class="site-state-item-count">117</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>

@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="上文__dev_queue_xmit中，如果选择队列后拿到的是无锁的qdisc（例如pfifo_fast）同时当前队列是空，且当前 CPU 抢到了运行 qdisc的资格，就尽量不走 enqueue&#x2F;dequeue，而是直接调用sch_direct_xmit尝试把 skb 发给驱动。 sch_direct_xmit具体实现如下所示： 123456789101112131415161718192021">
+<meta property="og:type" content="article">
+<meta property="og:title" content="__dev_queue_xmit → 网卡驱动（二）">
+<meta property="og:url" content="http://example.com/2026/04/20/dev_queue_xmit%20(%E4%BA%8C)/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="上文__dev_queue_xmit中，如果选择队列后拿到的是无锁的qdisc（例如pfifo_fast）同时当前队列是空，且当前 CPU 抢到了运行 qdisc的资格，就尽量不走 enqueue&#x2F;dequeue，而是直接调用sch_direct_xmit尝试把 skb 发给驱动。 sch_direct_xmit具体实现如下所示： 123456789101112131415161718192021">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-04-20T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-04-20T13:41:41.352Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="链路层">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/04/20/dev_queue_xmit%20(%E4%BA%8C)/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>__dev_queue_xmit → 网卡驱动（二） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/20/dev_queue_xmit%20(%E4%BA%8C)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          __dev_queue_xmit → 网卡驱动（二）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-04-20 22:00:00 / 修改时间：21:41:41" itemprop="dateCreated datePublished" datetime="2026-04-20T22:00:00+08:00">2026-04-20</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/04/20/dev_queue_xmit%20(%E4%BA%8C)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/04/20/dev_queue_xmit%20(%E4%BA%8C)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>上文<code>__dev_queue_xmit</code>中，如果选择队列后拿到的是无锁的<code>qdisc</code>（例如<code>pfifo_fast</code>）<strong>同时当前队列是空，且当前 CPU 抢到了运行 <code>qdisc</code>的资格，就尽量不走 <code>enqueue/dequeue</code>，而是直接调用<code>sch_direct_xmit</code>尝试把 skb 发给驱动。</strong></p>
+<p><code>sch_direct_xmit</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">bool</span> <span class="title function_">sch_direct_xmit</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> Qdisc *q,</span></span><br><span class="line"><span class="params">		     <span class="keyword">struct</span> net_device *dev, <span class="keyword">struct</span> netdev_queue *txq,</span></span><br><span class="line"><span class="params">		     <span class="type">spinlock_t</span> *root_lock, <span class="type">bool</span> validate)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> ret = NETDEV_TX_BUSY;</span><br><span class="line">	<span class="type">bool</span> again = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* And release qdisc */</span></span><br><span class="line">	<span class="comment">//释放了root lock 因为要发包比较耗时</span></span><br><span class="line">	<span class="keyword">if</span> (root_lock)</span><br><span class="line">		spin_unlock(root_lock);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Note that we validate skb (GSO, checksum, ...) outside of locks */</span></span><br><span class="line">	<span class="keyword">if</span> (validate)</span><br><span class="line">		<span class="comment">//GSO vlan 分散聚合等硬件卸载能力校验</span></span><br><span class="line">		skb = validate_xmit_skb_list(skb, dev, &amp;again);</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_XFRM_OFFLOAD</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(again)) &#123;</span><br><span class="line">		<span class="keyword">if</span> (root_lock)</span><br><span class="line">			spin_lock(root_lock);</span><br><span class="line"></span><br><span class="line">		dev_requeue_skb(skb, q);</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="comment">//skb 不为空的情况，判断网卡队列是否发不出去了</span></span><br><span class="line">	<span class="keyword">if</span> (likely(skb)) &#123;</span><br><span class="line">		HARD_TX_LOCK(dev, txq, smp_processor_id());</span><br><span class="line">		<span class="keyword">if</span> (!netif_xmit_frozen_or_stopped(txq))</span><br><span class="line">			skb = dev_hard_start_xmit(skb, dev, txq, &amp;ret);</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			qdisc_maybe_clear_missed(q, txq);</span><br><span class="line">		<span class="comment">//给网卡发送队列加锁 保证ndo_start_xmit不被并发调用</span></span><br><span class="line">		HARD_TX_UNLOCK(dev, txq);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="keyword">if</span> (root_lock)</span><br><span class="line">			spin_lock(root_lock);</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//重新加锁</span></span><br><span class="line">	<span class="keyword">if</span> (root_lock)</span><br><span class="line">		spin_lock(root_lock);</span><br><span class="line">	<span class="comment">//检查返回值，判断是否发送失败</span></span><br><span class="line">	<span class="keyword">if</span> (!dev_xmit_complete(ret)) &#123;</span><br><span class="line">		<span class="comment">/* Driver returned NETDEV_TX_BUSY - requeue skb */</span></span><br><span class="line">		<span class="keyword">if</span> (unlikely(ret != NETDEV_TX_BUSY))</span><br><span class="line">			net_warn_ratelimited(<span class="string">&quot;BUG %s code %d qlen %d\n&quot;</span>,</span><br><span class="line">					     dev-&gt;name, ret, q-&gt;q.qlen);</span><br><span class="line">		<span class="comment">//重新入队</span></span><br><span class="line">		dev_requeue_skb(skb, q);</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>sch_direct_xmit()</code> 的核心流程是，先释放 qdisc 的 <code>root_lock</code>（避免发包长时间占锁），在锁外调用<code>validate_xmit_skb_list</code>对 skb 做发送前校验（<strong>其实就是看网卡是否支持硬件卸载，不支持就交给软件来做</strong>），之后加 <code>HARD_TX_LOCK</code>，并判断发送队列是否被 <code>stop/frozen</code> 如果没有则调用 <code>dev_hard_start_xmit</code> 尝试发包，发送完成后检查返回值，如果驱动返回 <code>NETDEV_TX_BUSY</code> ，<strong>就把 skb 重新入队到 qdisc</strong>。</p>
+<p>上述<code>validate_xmit_skb_list</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> sk_buff *<span class="title function_">validate_xmit_skb_list</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> net_device *dev, <span class="type">bool</span> *again)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">next</span>, *<span class="title">head</span> =</span> <span class="literal">NULL</span>, *tail;</span><br><span class="line">	<span class="comment">//注意这里可能传入的是一个链表，循环遍历这个链表，检查是否需要GSO等。。。。</span></span><br><span class="line">	<span class="keyword">for</span> (; skb != <span class="literal">NULL</span>; skb = next) &#123;</span><br><span class="line">		next = skb-&gt;next;</span><br><span class="line">		skb_mark_not_on_list(skb);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* in case skb wont be segmented, point to itself */</span></span><br><span class="line">		skb-&gt;prev = skb;</span><br><span class="line"></span><br><span class="line">		skb = validate_xmit_skb(skb, dev, again);</span><br><span class="line">		<span class="keyword">if</span> (!skb)</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (!head)</span><br><span class="line">			head = skb;</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			tail-&gt;next = skb;</span><br><span class="line">		<span class="comment">/* If skb was segmented, skb-&gt;prev points to</span></span><br><span class="line"><span class="comment">		 * the last segment. If not, it still contains skb.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		tail = skb-&gt;prev;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> head;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>validate_xmit_skb_list()</code> 的作用是遍历一个 skb 链表，对每个 skb 做发送前检查和处理（如 GSO 分段），如果某个 skb 需要分段，<code>validate_xmit_skb()</code> 会把它拆成多个 skb，并通过 <code>skb-&gt;prev</code> 指向最后一个分段，然后这里把处理后的 skb（可能是单个也可能是一串分段）重新串成一个新的链表返回；如果某个 skb 不合法或被丢弃就跳过。</p>
+<p><code>validate_xmit_skb</code>为实际检查硬件卸载能力的核心，具体包括<code>vlan</code>卸载，<code>TSO</code>卸载，<code>S/G</code>卸载的判断，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">struct</span> sk_buff *<span class="title function_">validate_xmit_skb</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> net_device *dev, <span class="type">bool</span> *again)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">netdev_features_t</span> features;</span><br><span class="line">	<span class="comment">//获取网卡注册的能力</span></span><br><span class="line">	features = netif_skb_features(skb);</span><br><span class="line">	<span class="comment">//是否支持vlan卸载</span></span><br><span class="line">	skb = validate_xmit_vlan(skb, features);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(!skb))</span><br><span class="line">		<span class="keyword">goto</span> out_null;</span><br><span class="line"></span><br><span class="line">	skb = sk_validate_xmit_skb(skb, dev);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(!skb))</span><br><span class="line">		<span class="keyword">goto</span> out_null;</span><br><span class="line">	<span class="comment">//是否需要软件做GSO</span></span><br><span class="line">	<span class="keyword">if</span> (netif_needs_gso(skb, features)) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">segs</span>;</span></span><br><span class="line"></span><br><span class="line">		segs = skb_gso_segment(skb, features);</span><br><span class="line">		<span class="keyword">if</span> (IS_ERR(segs)) &#123;</span><br><span class="line">			<span class="keyword">goto</span> out_kfree_skb;</span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> (segs) &#123;</span><br><span class="line">			consume_skb(skb);</span><br><span class="line">			skb = segs;</span><br><span class="line">		&#125;</span><br><span class="line">	<span class="comment">//是否需要软件线性化 不支持sg</span></span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="keyword">if</span> (skb_needs_linearize(skb, features) &amp;&amp;</span><br><span class="line">		    __skb_linearize(skb))</span><br><span class="line">			<span class="keyword">goto</span> out_kfree_skb;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* If packet is not checksummed and device does not</span></span><br><span class="line"><span class="comment">		 * support checksumming for this protocol, complete</span></span><br><span class="line"><span class="comment">		 * checksumming here.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//是否支持校验和卸载，这里注意支持gso一定支持校验和卸载</span></span><br><span class="line">		<span class="keyword">if</span> (skb-&gt;ip_summed == CHECKSUM_PARTIAL) &#123;</span><br><span class="line">			<span class="keyword">if</span> (skb-&gt;encapsulation)</span><br><span class="line">				skb_set_inner_transport_header(skb,</span><br><span class="line">							       skb_checksum_start_offset(skb));</span><br><span class="line">			<span class="keyword">else</span></span><br><span class="line">				skb_set_transport_header(skb,</span><br><span class="line">							 skb_checksum_start_offset(skb));</span><br><span class="line">			<span class="keyword">if</span> (skb_csum_hwoffload_help(skb, features))</span><br><span class="line">				<span class="keyword">goto</span> out_kfree_skb;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	skb = validate_xmit_xfrm(skb, features, again);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> skb;</span><br><span class="line"></span><br><span class="line">out_kfree_skb:</span><br><span class="line">	kfree_skb(skb);</span><br><span class="line">out_null:</span><br><span class="line">	dev_core_stats_tx_dropped_inc(dev);</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>回到<code>sch_direct_xmit</code>中完成硬件卸载能力的判断后，会调用<code>dev_hard_start_xmit</code>继续完成发送，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> sk_buff *<span class="title function_">dev_hard_start_xmit</span><span class="params">(<span class="keyword">struct</span> sk_buff *first, <span class="keyword">struct</span> net_device *dev,</span></span><br><span class="line"><span class="params">				    <span class="keyword">struct</span> netdev_queue *txq, <span class="type">int</span> *ret)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span> =</span> first;</span><br><span class="line">	<span class="type">int</span> rc = NETDEV_TX_OK;</span><br><span class="line">	<span class="comment">//遍历链表，如果是个链表的话</span></span><br><span class="line">	<span class="keyword">while</span> (skb) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">next</span> =</span> skb-&gt;next;</span><br><span class="line"></span><br><span class="line">		skb_mark_not_on_list(skb);</span><br><span class="line">		<span class="comment">//向下调用</span></span><br><span class="line">		rc = xmit_one(skb, dev, txq, next != <span class="literal">NULL</span>);</span><br><span class="line">		<span class="keyword">if</span> (unlikely(!dev_xmit_complete(rc))) &#123;</span><br><span class="line">			skb-&gt;next = next;</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		skb = next;</span><br><span class="line">		<span class="comment">//驱动是否返回了描述符不够</span></span><br><span class="line">		<span class="keyword">if</span> (netif_tx_queue_stopped(txq) &amp;&amp; skb) &#123;</span><br><span class="line">			rc = NETDEV_TX_BUSY;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">	*ret = rc;</span><br><span class="line">	<span class="keyword">return</span> skb;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">xmit_one</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> net_device *dev,</span></span><br><span class="line"><span class="params">		    <span class="keyword">struct</span> netdev_queue *txq, <span class="type">bool</span> more)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> len;</span><br><span class="line">	<span class="type">int</span> rc;</span><br><span class="line">	<span class="comment">//是否注册了抓包点</span></span><br><span class="line">	<span class="keyword">if</span> (dev_nit_active(dev))</span><br><span class="line">		dev_queue_xmit_nit(skb, dev);</span><br><span class="line"></span><br><span class="line">	len = skb-&gt;len;</span><br><span class="line">	trace_net_dev_start_xmit(skb, dev);</span><br><span class="line">	rc = netdev_start_xmit(skb, dev, txq, more);</span><br><span class="line">	trace_net_dev_xmit(skb, rc, dev, len);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> rc;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">netdev_tx_t</span> <span class="title function_">netdev_start_xmit</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> net_device *dev,</span></span><br><span class="line"><span class="params">					    <span class="keyword">struct</span> netdev_queue *txq, <span class="type">bool</span> more)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">net_device_ops</span> *<span class="title">ops</span> =</span> dev-&gt;netdev_ops;</span><br><span class="line">	<span class="type">netdev_tx_t</span> rc;</span><br><span class="line">	<span class="comment">//调用网卡注册的发包函数</span></span><br><span class="line">	rc = __netdev_start_xmit(ops, skb, dev, more);</span><br><span class="line">	<span class="keyword">if</span> (rc == NETDEV_TX_OK)</span><br><span class="line">		txq_trans_update(txq);<span class="comment">//更新发送时间戳</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> rc;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>dev_hard_start_xmit()</code> 的作用是把一个 <code>skb</code>（或链表）逐个交给驱动发送：循环调用 <code>xmit_one()</code>（<strong>TX方向抓包点就是在这注册的</strong>），如果某个 skb 发送失败或驱动返回 <code>NETDEV_TX_BUSY</code>，就停止发送，并把当前未发送的 skb（以及后续链表）返回，如果发送过程中发现发送队列被 <code>stop</code>（通常是描述符不够），也会中断并返回 skb。</p>
+<p>回到<code>__dev_xmit_skb</code>中如果无锁<code>qdisc</code>不能直接发送（没有拿到运行权， 或者队列不为空等），则调用<code>dev_qdisc_enqueue</code>入队，具体实现如下所示，其实就是简单封装了<code>qdisc</code>的<code>enqueue</code>回调。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">dev_qdisc_enqueue</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> Qdisc *q,</span></span><br><span class="line"><span class="params">			     <span class="keyword">struct</span> sk_buff **to_free,</span></span><br><span class="line"><span class="params">			     <span class="keyword">struct</span> netdev_queue *txq)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> rc;</span><br><span class="line"></span><br><span class="line">	rc = q-&gt;enqueue(skb, q, to_free) &amp; NET_XMIT_MASK;</span><br><span class="line">	<span class="keyword">if</span> (rc == NET_XMIT_SUCCESS)</span><br><span class="line">		trace_qdisc_enqueue(q, txq, skb);</span><br><span class="line">	<span class="keyword">return</span> rc;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>然后调用<code>qdisc_run</code>尝试获取锁并进一步发送数据包，如果没拿到锁就不处理，仅设置一个标志位（当解锁的时候如果发现有这个标志就重新调度tx软中断发包）如果拿到了锁则会进一步调用<code>__qdisc_run</code>进行处理，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">qdisc_run</span><span class="params">(<span class="keyword">struct</span> Qdisc *q)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">if</span> (qdisc_run_begin(q)) &#123;</span><br><span class="line">		__qdisc_run(q);</span><br><span class="line">		qdisc_run_end(q);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> __qdisc_run(<span class="keyword">struct</span> Qdisc *q)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> quota = READ_ONCE(dev_tx_weight);</span><br><span class="line">	<span class="type">int</span> packets;</span><br><span class="line">	<span class="comment">//根据配额循环发送数据包</span></span><br><span class="line">	<span class="keyword">while</span> (qdisc_restart(q, &amp;packets)) &#123;</span><br><span class="line">		quota -= packets;</span><br><span class="line">		<span class="comment">//配额用尽的情况下调度软中断发包，无锁情况也是一样的，会因为设置标志位调度</span></span><br><span class="line">		<span class="keyword">if</span> (quota &lt;= <span class="number">0</span>) &#123;</span><br><span class="line">			<span class="keyword">if</span> (q-&gt;flags &amp; TCQ_F_NOLOCK)</span><br><span class="line">				set_bit(__QDISC_STATE_MISSED, &amp;q-&gt;state);</span><br><span class="line">			<span class="keyword">else</span></span><br><span class="line">				__netif_schedule(q);</span><br><span class="line"></span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>__qdisc_run()</code> 的作用是按配额（默认64）循环从 qdisc 里取包并发送：每次通过 <code>qdisc_restart()</code> 发一批 skb（这里的一批可能是其它线程入队的，可能是<code>requeue</code>的吧），同时统计发送数量递减配额；如果配额用完了，就停止本轮发送——对于无锁 qdisc 设置 <code>MISSED</code> 标志让后续继续跑，对于有锁 qdisc 则重新调度软中断；核心思想就是：限额批量发包，避免长时间占用 CPU。</p>
+<p><code>qdisc_restart</code>的核心逻辑就是调用<code>qdisc</code>的<code>dequeue</code>方法，拿到数据包后调用上面分析过的<code>sch_direct_xmit</code>继续完成发包，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">bool</span> <span class="title function_">qdisc_restart</span><span class="params">(<span class="keyword">struct</span> Qdisc *q, <span class="type">int</span> *packets)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">spinlock_t</span> *root_lock = <span class="literal">NULL</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">netdev_queue</span> *<span class="title">txq</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>;</span></span><br><span class="line">	<span class="type">bool</span> validate;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Dequeue packet */</span></span><br><span class="line">	<span class="comment">//dequeue数据包可能返回的是一个链表</span></span><br><span class="line">	skb = dequeue_skb(q, &amp;validate, packets);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(!skb))</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!(q-&gt;flags &amp; TCQ_F_NOLOCK))</span><br><span class="line">		root_lock = qdisc_lock(q);</span><br><span class="line"></span><br><span class="line">	dev = qdisc_dev(q);</span><br><span class="line">	<span class="comment">//拿到队列</span></span><br><span class="line">	txq = skb_get_tx_queue(dev, skb);</span><br><span class="line">	<span class="comment">//发送数据包</span></span><br><span class="line">	<span class="keyword">return</span> sch_direct_xmit(skb, q, dev, txq, root_lock, validate);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>qdisc_restart()</code> 的作用是调用<code>dequeue_skb</code>从 qdisc 中取出一个 skb（<strong>可能是链表</strong>），然后根据 skb 选择对应的发送队列 <code>txq</code>，最后调用 <code>sch_direct_xmit()</code> 尝试发送，上述<code>dequeue_skb</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">struct</span> sk_buff *<span class="title function_">dequeue_skb</span><span class="params">(<span class="keyword">struct</span> Qdisc *q, <span class="type">bool</span> *validate,</span></span><br><span class="line"><span class="params">				   <span class="type">int</span> *packets)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">netdev_queue</span> *<span class="title">txq</span> =</span> q-&gt;dev_queue;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	*packets = <span class="number">1</span>;</span><br><span class="line">	<span class="comment">//重入队列是否为空 requeue的进入的</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(!skb_queue_empty(&amp;q-&gt;gso_skb))) &#123;</span><br><span class="line">		<span class="type">spinlock_t</span> *lock = <span class="literal">NULL</span>;</span><br><span class="line">		<span class="comment">//无锁队列先获取seqlock</span></span><br><span class="line">		<span class="keyword">if</span> (q-&gt;flags &amp; TCQ_F_NOLOCK) &#123;</span><br><span class="line">			lock = qdisc_lock(q);</span><br><span class="line">			spin_lock(lock);</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		skb = skb_peek(&amp;q-&gt;gso_skb);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* skb may be null if another cpu pulls gso_skb off in between</span></span><br><span class="line"><span class="comment">		 * empty check and lock.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//是不是被其他线程那走了 感觉不会有这个情况啊</span></span><br><span class="line">		<span class="keyword">if</span> (!skb) &#123;</span><br><span class="line">			<span class="keyword">if</span> (lock)</span><br><span class="line">				spin_unlock(lock);</span><br><span class="line">			<span class="keyword">goto</span> validate;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* skb in gso_skb were already validated */</span></span><br><span class="line">		<span class="comment">//不需要在验证了 因为已经经过GSO了</span></span><br><span class="line">		*validate = <span class="literal">false</span>;</span><br><span class="line">		<span class="keyword">if</span> (xfrm_offload(skb))</span><br><span class="line">			*validate = <span class="literal">true</span>;</span><br><span class="line">		<span class="comment">/* check the reason of requeuing without tx lock first */</span></span><br><span class="line">		<span class="comment">//获取发送队列</span></span><br><span class="line">		txq = skb_get_tx_queue(txq-&gt;dev, skb);</span><br><span class="line">		<span class="comment">//队列可用，没有被冻结的情况出队列更新统计</span></span><br><span class="line">		<span class="keyword">if</span> (!netif_xmit_frozen_or_stopped(txq)) &#123;</span><br><span class="line">			skb = __skb_dequeue(&amp;q-&gt;gso_skb);</span><br><span class="line">			<span class="keyword">if</span> (qdisc_is_percpu_stats(q)) &#123;</span><br><span class="line">				qdisc_qstats_cpu_backlog_dec(q, skb);</span><br><span class="line">				qdisc_qstats_cpu_qlen_dec(q);</span><br><span class="line">			&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">				qdisc_qstats_backlog_dec(q, skb);</span><br><span class="line">				q-&gt;q.qlen--;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			skb = <span class="literal">NULL</span>;</span><br><span class="line">			qdisc_maybe_clear_missed(q, txq);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">if</span> (lock)</span><br><span class="line">			spin_unlock(lock);</span><br><span class="line">		<span class="keyword">goto</span> trace;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//正常的情况</span></span><br><span class="line">validate:</span><br><span class="line">	*validate = <span class="literal">true</span>;</span><br><span class="line">	<span class="comment">//一个队列一个qdisc的情况，如果队列已经freez</span></span><br><span class="line">	<span class="keyword">if</span> ((q-&gt;flags &amp; TCQ_F_ONETXQUEUE) &amp;&amp;</span><br><span class="line">	    netif_xmit_frozen_or_stopped(txq)) &#123;</span><br><span class="line">		qdisc_maybe_clear_missed(q, txq);</span><br><span class="line">		<span class="keyword">return</span> skb;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//从bad txq 取这里面队列不同的数据包，入队的地方就在下面</span></span><br><span class="line">	skb = qdisc_dequeue_skb_bad_txq(q);</span><br><span class="line">	<span class="keyword">if</span> (unlikely(skb)) &#123;</span><br><span class="line">		<span class="keyword">if</span> (skb == SKB_XOFF_MAGIC)</span><br><span class="line">			<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">		<span class="keyword">goto</span> bulk;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//正常的dequeue</span></span><br><span class="line">	skb = q-&gt;dequeue(q);</span><br><span class="line">	<span class="keyword">if</span> (skb) &#123;</span><br><span class="line">bulk:	<span class="comment">//一个队列一个qdisc的情况，在多取几个 </span></span><br><span class="line">		<span class="keyword">if</span> (qdisc_may_bulk(q))</span><br><span class="line">			try_bulk_dequeue_skb(q, skb, txq, packets);</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">		<span class="comment">//一个qdisc可能有其他硬件队列中的数据包，如果不同就放到bad txq中最多取8个</span></span><br><span class="line">			try_bulk_dequeue_skb_slow(q, skb, packets);</span><br><span class="line">	&#125;</span><br><span class="line">trace:</span><br><span class="line">	trace_qdisc_dequeue(q, txq, *packets, skb);</span><br><span class="line">	<span class="keyword">return</span> skb;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><strong><code>dequeue_skb()</code> 的作用是从 qdisc 里取出本轮要发送的 skb（可能是一个 skb，也可能是一串链表），并顺便决定这些 skb 之后是否还需要再次做 <code>validate</code>。</strong> <strong>它先优先看 <code>q-&gt;gso_skb</code> 这个重入队的队列</strong>，如果这里有包，就优先从这里取，因为这些包通常已经做过 GSO&#x2F;校验准备，取之前还会检查对应硬件发送队列是不是 stop&#x2F;frozen，不能发就先不取。若 <code>gso_skb</code> 里没有，再走正常 qdisc 出队路径：先判断单队列 qdisc 对应的 txq 是否已停，再尝试从 <code>bad_txq</code> 里取那些之前因为队列不匹配暂存的包，最后才调用 qdisc 自己的 <code>dequeue()</code> 正常出队。取到一个 skb 后，如果条件合适还会批量再多取几个。</p>
+<p><code>qdisc_may_bulk</code>用于判断一个<code>qdisc</code>是否服务于一个队列，如果一个<code>qdisc</code>只和一个队列绑定，则肯定可以一次多带几个<code>skb</code>，否则需要判断队列中数据包是否和当前数据包，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">try_bulk_dequeue_skb</span><span class="params">(<span class="keyword">struct</span> Qdisc *q,</span></span><br><span class="line"><span class="params">				 <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">				 <span class="type">const</span> <span class="keyword">struct</span> netdev_queue *txq,</span></span><br><span class="line"><span class="params">				 <span class="type">int</span> *packets)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> bytelimit = qdisc_avail_bulklimit(txq) - skb-&gt;len;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">while</span> (bytelimit &gt; <span class="number">0</span>) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">nskb</span> =</span> q-&gt;dequeue(q);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (!nskb)</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">		bytelimit -= nskb-&gt;len; <span class="comment">/* covers GSO len */</span></span><br><span class="line">		skb-&gt;next = nskb;</span><br><span class="line">		skb = nskb;</span><br><span class="line">		(*packets)++; <span class="comment">/* GSO counts as one pkt */</span></span><br><span class="line">	&#125;</span><br><span class="line">	skb_mark_not_on_list(skb);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">try_bulk_dequeue_skb_slow</span><span class="params">(<span class="keyword">struct</span> Qdisc *q,</span></span><br><span class="line"><span class="params">				      <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">				      <span class="type">int</span> *packets)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> mapping = skb_get_queue_mapping(skb);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">nskb</span>;</span></span><br><span class="line">	<span class="type">int</span> cnt = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">do</span> &#123;</span><br><span class="line">		nskb = q-&gt;dequeue(q);</span><br><span class="line">		<span class="keyword">if</span> (!nskb)</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="comment">//不是一个队列的情况</span></span><br><span class="line">		<span class="keyword">if</span> (unlikely(skb_get_queue_mapping(nskb) != mapping)) &#123;</span><br><span class="line">			<span class="comment">//数据包入bad txq，dequeue的时候会取</span></span><br><span class="line">			qdisc_enqueue_skb_bad_txq(q, nskb);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		skb-&gt;next = nskb;</span><br><span class="line">		skb = nskb;</span><br><span class="line">	&#125; <span class="keyword">while</span> (++cnt &lt; <span class="number">8</span>);</span><br><span class="line">	(*packets) += cnt;</span><br><span class="line">	skb_mark_not_on_list(skb);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述<code>try_bulk_dequeue_skb()</code> 是一个<code>qdisc</code>只服务于一个队列场景，只要总字节数没超过限制（<code>bytelimit</code>），就一直从 qdisc 里取包，直接串成链表一起发，不关心队列映射。<code>try_bulk_dequeue_skb_slow()</code> 是一个<code>qdisc</code>服务多个队列的场景，则最多只多拿 8 个包，而且要求这些包必须发往<strong>同一个硬件队列</strong>，如果遇到不一样的，就把它放回 <strong><code>bad_txq</code> 里，后续会优先从这个队列中取</strong>。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E9%93%BE%E8%B7%AF%E5%B1%82/" rel="tag"># 链路层</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/04/16/dev_queue_xmit/" rel="prev" title="__dev_queue_xmit → 网卡驱动（一）">
+      <i class="fa fa-chevron-left"></i> __dev_queue_xmit → 网卡驱动（一）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">117</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">26</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
