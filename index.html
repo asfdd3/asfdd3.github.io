@@ -193,6 +193,107 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/27/napi_gro_receive%E6%94%B6%E5%8C%85/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2026/04/27/napi_gro_receive%E6%94%B6%E5%8C%85/" class="post-title-link" itemprop="url">napi_gro_receive收包流程</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-04-27 22:00:00 / 修改时间：00:07:27" itemprop="dateCreated datePublished" datetime="2026-04-27T22:00:00+08:00">2026-04-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/04/27/napi_gro_receive%E6%94%B6%E5%8C%85/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/04/27/napi_gro_receive%E6%94%B6%E5%8C%85/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>在 Linux 内核网络收包路径中，通常会在 NAPI 轮询中完成收包，然后<strong>通过 <code>napi_gro_receive()</code> 将 <code>skb</code> 继续上送。这个函数是驱动 RX 路径和内核协议栈之间的一个重要入口</strong>，它的核心作用是：接收驱动构造好的 <code>skb</code>，尝试进行 GRO 合并，减少后续协议栈需要处理的数据包数量；如果不能合并，则把数据包继续交给通用收包路径处理。</p>
+<p><code>napi_gro_receive</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">gro_result_t</span> <span class="title function_">napi_gro_receive</span><span class="params">(<span class="keyword">struct</span> napi_struct *napi, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">gro_result_t</span> ret;</span><br><span class="line">	<span class="comment">//busypoll用到</span></span><br><span class="line">	skb_mark_napi_id(skb, napi);</span><br><span class="line">	trace_napi_gro_receive_entry(skb);</span><br><span class="line">	<span class="comment">//初始化gro用到的字段</span></span><br><span class="line">	skb_gro_reset_offset(skb, <span class="number">0</span>);</span><br><span class="line">	<span class="comment">//先调用dev_gro_receive尝试合包</span></span><br><span class="line">	ret = napi_skb_finish(napi, skb, dev_gro_receive(napi, skb));</span><br><span class="line">	trace_napi_gro_receive_exit(ret);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>首先通过 <code>skb_mark_napi_id(skb, napi)</code> 把当前 NAPI 的 ID 记录到 <code>skb</code> 中，这个信息后面可能被 busy poll 等机制使用，接着调用 初始化 GRO 处理需要用到的偏移字段，最后调用 <code>dev_gro_receive</code> 尝试把当前 <code>skb</code> 和 NAPI 上已有的 GRO 包进行合并（前文已经分析过，这里不在分析），再把合并结果交给 <code>napi_skb_finish()</code> 收尾处理。</p>
+<p><code>napi_skb_finish</code>为GRO处理完成后继续上送协议栈的处理函数，具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">gro_result_t</span> <span class="title function_">napi_skb_finish</span><span class="params">(<span class="keyword">struct</span> napi_struct *napi,</span></span><br><span class="line"><span class="params">				    <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">				    <span class="type">gro_result_t</span> ret)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">switch</span> (ret) &#123;</span><br><span class="line">	<span class="keyword">case</span> GRO_NORMAL:</span><br><span class="line">		<span class="comment">//上送协议栈，可能是GRO之后的，也可能是GRO失败的</span></span><br><span class="line">		gro_normal_one(napi, skb, <span class="number">1</span>);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="comment">//GRO处理之后的根据不同合并方式有不同的返回值</span></span><br><span class="line">	<span class="keyword">case</span> GRO_MERGED_FREE:</span><br><span class="line">		<span class="keyword">if</span> (NAPI_GRO_CB(skb)-&gt;<span class="built_in">free</span> == NAPI_GRO_FREE_STOLEN_HEAD)</span><br><span class="line">			napi_skb_free_stolen_head(skb);</span><br><span class="line">		<span class="keyword">else</span> <span class="keyword">if</span> (skb-&gt;fclone != SKB_FCLONE_UNAVAILABLE)</span><br><span class="line">			__kfree_skb(skb);</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			__napi_kfree_skb(skb, SKB_CONSUMED);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">case</span> GRO_HELD:</span><br><span class="line">	<span class="keyword">case</span> GRO_MERGED:</span><br><span class="line">	<span class="keyword">case</span> GRO_CONSUMED:</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>napi_skb_finish()</code> 是 GRO 处理后的收尾函数。它根据 <code>dev_gro_receive()</code> 的返回值决定 <code>skb</code> 怎么处理，如果是 <code>GRO_NORMAL</code>，说明这个包需要正常上送协议栈，就调用 <code>gro_normal_one()</code>；如果是 <code>GRO_MERGED_FREE</code>，说明这个 <code>skb</code> 已经被合并到别的 GRO 包里了，当前 <code>skb</code> 可以释放；如果是 <code>GRO_HELD</code>、<code>GRO_MERGED</code>、<code>GRO_CONSUMED</code>，说明 <code>skb</code> 已经被 GRO 暂存、合并或消费掉了，这里不用再处理。</p>
+<p>无论合并还是批量合并，最终都会调用<code>gro_normal_one</code>继续推送数据包，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">gro_normal_one</span><span class="params">(<span class="keyword">struct</span> napi_struct *napi, <span class="keyword">struct</span> sk_buff *skb, <span class="type">int</span> segs)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//这里先攒一攒，大于8个段的时候会上送，但是不会一直攒</span></span><br><span class="line">	<span class="comment">//当驱动处理完成的时候会也会上送</span></span><br><span class="line">	list_add_tail(&amp;skb-&gt;<span class="built_in">list</span>, &amp;napi-&gt;rx_list);</span><br><span class="line">	napi-&gt;rx_count += segs;</span><br><span class="line">	<span class="keyword">if</span> (napi-&gt;rx_count &gt;= READ_ONCE(gro_normal_batch))</span><br><span class="line">		gro_normal_list(napi);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>gro_normal_one()</code> 的作用是<strong>把需要正常上送协议栈的 <code>skb</code> 先挂到当前 NAPI 的 <code>rx_list</code> 上，暂时攒一批再统一上送</strong>。这样做可以减少每来一个包就立刻进入协议栈的开销。如果数量达到 <code>gro_normal_batch</code> 阈值，就调用 <code>gro_normal_list</code> 把这一批 <code>skb</code> 一起送入协议栈。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2026/04/27/napi_gro_receive%E6%94%B6%E5%8C%85/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/24/GRO(%E4%BA%8C)/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1123,104 +1224,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2026/03/29/%E8%B7%AF%E7%94%B1%EF%BC%88%E4%B8%89%EF%BC%89/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2026/03/29/%E8%B7%AF%E7%94%B1%EF%BC%88%E4%B8%89%EF%BC%89/" class="post-title-link" itemprop="url">notifier 触发路由变化</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2026-03-29 22:00:00 / 修改时间：22:27:03" itemprop="dateCreated datePublished" datetime="2026-03-29T22:00:00+08:00">2026-03-29</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2026/03/29/%E8%B7%AF%E7%94%B1%EF%BC%88%E4%B8%89%EF%BC%89/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2026/03/29/%E8%B7%AF%E7%94%B1%EF%BC%88%E4%B8%89%EF%BC%89/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="引言"><a href="#引言" class="headerlink" title="引言"></a>引言</h2><p>当网络设备状态发生变化（例如设备<code>up down ，link up link down</code>）或者一个网络设备的IP地址发生变化，路由子系统会通过<code>notifier</code>收到事件，<strong>上述两种事件分别会调用到<code>fib_netdev_event</code> 和 <code>fib_inetaddr_event</code></strong> 来处理相应的事件。</p>
-<h3 id="fib-netdev-event"><a href="#fib-netdev-event" class="headerlink" title="fib_netdev_event"></a><code>fib_netdev_event</code></h3><p><code>fib_netdev_event</code>() 是路由子系统注册的 <code>netdevice</code> 通知回调函数，用来在网卡状态（up&#x2F;down&#x2F;变更）发生时，同步更新对应的 FIB 路由信息，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">fib_netdev_event</span><span class="params">(<span class="keyword">struct</span> notifier_block *this, <span class="type">unsigned</span> <span class="type">long</span> event, <span class="type">void</span> *ptr)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span> =</span> netdev_notifier_info_to_dev(ptr);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">netdev_notifier_changeupper_info</span> *<span class="title">upper_info</span> =</span> ptr;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">netdev_notifier_info_ext</span> *<span class="title">info_ext</span> =</span> ptr;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_device</span> *<span class="title">in_dev</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> dev_net(dev);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_ifaddr</span> *<span class="title">ifa</span>;</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> flags;</span><br><span class="line">	<span class="comment">//net_dev 注销了</span></span><br><span class="line">	<span class="keyword">if</span> (event == NETDEV_UNREGISTER) &#123;</span><br><span class="line">		<span class="comment">//把下一跳标记为不可用</span></span><br><span class="line">		fib_disable_ip(dev, event, <span class="literal">true</span>);</span><br><span class="line">		<span class="comment">//这里是处理，per-CPU uncached_list</span></span><br><span class="line">		rt_flush_dev(dev);</span><br><span class="line">		<span class="keyword">return</span> NOTIFY_DONE;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//获取管理ip的结构</span></span><br><span class="line">	in_dev = __in_dev_get_rtnl(dev);</span><br><span class="line">	<span class="keyword">if</span> (!in_dev)</span><br><span class="line">		<span class="keyword">return</span> NOTIFY_DONE;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">switch</span> (event) &#123;</span><br><span class="line">	<span class="keyword">case</span> NETDEV_UP:</span><br><span class="line">	<span class="comment">//向路由表里面加路由</span></span><br><span class="line">		in_dev_for_each_ifa_rtnl(ifa, in_dev) &#123;</span><br><span class="line">			fib_add_ifaddr(ifa);</span><br><span class="line">		&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_IP_ROUTE_MULTIPATH</span></span><br><span class="line">		fib_sync_up(dev, RTNH_F_DEAD);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">		<span class="type">atomic_inc</span>(&amp;net-&gt;ipv4.dev_addr_genid);</span><br><span class="line">		rt_cache_flush(net);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> NETDEV_DOWN:</span><br><span class="line">		<span class="comment">//表示把和这个设备相关的路由禁用</span></span><br><span class="line">		fib_disable_ip(dev, event, <span class="literal">false</span>);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> NETDEV_CHANGE:</span><br><span class="line">		flags = dev_get_flags(dev);</span><br><span class="line">		<span class="keyword">if</span> (flags &amp; (IFF_RUNNING | IFF_LOWER_UP))<span class="comment">//这里应该相当于 linkup</span></span><br><span class="line">			fib_sync_up(dev, RTNH_F_LINKDOWN); <span class="comment">//唤醒之前被标记为dead 的下一跳</span></span><br><span class="line">		<span class="keyword">else</span> <span class="comment">//链路不通</span></span><br><span class="line">			fib_sync_down_dev(dev, event, <span class="literal">false</span>);<span class="comment">//标记下一跳为不可用</span></span><br><span class="line">		rt_cache_flush(net);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> NETDEV_CHANGEMTU: <span class="comment">//mtu变化</span></span><br><span class="line">		fib_sync_mtu(dev, info_ext-&gt;ext.mtu);</span><br><span class="line">		rt_cache_flush(net);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> NETDEV_CHANGEUPPER:</span><br><span class="line">		upper_info = ptr;</span><br><span class="line">		<span class="comment">/* flush all routes if dev is linked to or unlinked from</span></span><br><span class="line"><span class="comment">		 * an L3 master device (e.g., VRF)</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="keyword">if</span> (upper_info-&gt;upper_dev &amp;&amp;</span><br><span class="line">		    netif_is_l3_master(upper_info-&gt;upper_dev))</span><br><span class="line">			fib_disable_ip(dev, NETDEV_DOWN, <span class="literal">true</span>);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> NOTIFY_DONE;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p><code>fib_netdev_event()</code> 是路由子系统监听网卡事件后的处理函数。当设备被注销、网卡 up&#x2F;down、链路断开或恢复，内核就会通过 notifier 通知路由子系统。拿到事件以后，会去判断这个事件会不会影响当前设备相关的路由如果是<code>up</code>事件，就把这个网卡上 IP 地址对应的路由重新补进去；如果网卡 down 了或者设备被删除了，就把依赖这个设备的下一跳和路由标记成不可用；如果只是链路状态变了，就根据是 link up 还是 link down 去恢复或者禁用相关 next hop。</p>
-<p><strong>上述代码重点关注收到设备<code>up</code>事件，当设备<code>up</code>后会调用<code>fib_add_ifaddr</code>根据设备的<code>ip</code>地址生成默认的路由信息，例如直接路由，本地路由， 广播路由等，具体代码如下所示：</strong></p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">fib_add_ifaddr</span><span class="params">(<span class="keyword">struct</span> in_ifaddr *ifa)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_device</span> *<span class="title">in_dev</span> =</span> ifa-&gt;ifa_dev;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span> =</span> in_dev-&gt;dev;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_ifaddr</span> *<span class="title">prim</span> =</span> ifa;</span><br><span class="line">	__be32 mask = ifa-&gt;ifa_mask;</span><br><span class="line">	__be32 addr = ifa-&gt;ifa_local;</span><br><span class="line">	__be32 prefix = ifa-&gt;ifa_address &amp; mask;</span><br><span class="line">	<span class="comment">//处理从ip地址的情况 192.168.1.10/24  192.168.1.20/24 </span></span><br><span class="line">	<span class="keyword">if</span> (ifa-&gt;ifa_flags &amp; IFA_F_SECONDARY) &#123;</span><br><span class="line">		<span class="comment">//这里是在找主ip地址</span></span><br><span class="line">		prim = inet_ifa_byprefix(in_dev, prefix, mask);</span><br><span class="line">		<span class="keyword">if</span> (!prim) &#123;</span><br><span class="line">			pr_warn(<span class="string">&quot;%s: bug: prim == NULL\n&quot;</span>, __func__);</span><br><span class="line">			<span class="keyword">return</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//先加一条 local 路由 让发往这个IP的包就应该被认为是本地接收！</span></span><br><span class="line">	fib_magic(RTM_NEWROUTE, RTN_LOCAL, addr, <span class="number">32</span>, prim, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!(dev-&gt;flags &amp; IFF_UP))<span class="comment">//网口是否被打开，注意区别linkup</span></span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Add broadcast address, if it is explicitly assigned. */</span></span><br><span class="line">	<span class="comment">//如果配置了广播地址，就给这个广播地址加一个路由，不能是有限广播地址</span></span><br><span class="line">	<span class="keyword">if</span> (ifa-&gt;ifa_broadcast &amp;&amp; ifa-&gt;ifa_broadcast != htonl(<span class="number">0xFFFFFFFF</span>)) &#123;</span><br><span class="line">		fib_magic(RTM_NEWROUTE, RTN_BROADCAST, ifa-&gt;ifa_broadcast, <span class="number">32</span>,</span><br><span class="line">			  prim, <span class="number">0</span>);</span><br><span class="line">		<span class="comment">//看看是不是需要更新一下邻居表项(比如失效了)</span></span><br><span class="line">		arp_invalidate(dev, ifa-&gt;ifa_broadcast, <span class="literal">false</span>);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//最常见的情况，如果这个地址是一个正常网段的地址，那就配置一个直连路由</span></span><br><span class="line">	<span class="keyword">if</span> (!ipv4_is_zeronet(prefix) &amp;&amp; !(ifa-&gt;ifa_flags &amp; IFA_F_SECONDARY) &amp;&amp;</span><br><span class="line">	    (prefix != addr || ifa-&gt;ifa_prefixlen &lt; <span class="number">32</span>)) &#123;<span class="comment">////如果是192.168.21.10/32这种的那就没必要</span></span><br><span class="line">		<span class="keyword">if</span> (!(ifa-&gt;ifa_flags &amp; IFA_F_NOPREFIXROUTE))</span><br><span class="line">			fib_magic(RTM_NEWROUTE,</span><br><span class="line">				  dev-&gt;flags &amp; IFF_LOOPBACK ? RTN_LOCAL : RTN_UNICAST,</span><br><span class="line">				  prefix, ifa-&gt;ifa_prefixlen, prim,</span><br><span class="line">				  ifa-&gt;ifa_rt_priority);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Add the network broadcast address, when it makes sense */</span></span><br><span class="line">		<span class="comment">//这里不是和上面的重复了吗？ 注意上面是显示配置的</span></span><br><span class="line">		<span class="keyword">if</span> (ifa-&gt;ifa_prefixlen &lt; <span class="number">31</span>) &#123;<span class="comment">//网络广播地址才有意义，加一个广播路由</span></span><br><span class="line">			fib_magic(RTM_NEWROUTE, RTN_BROADCAST, prefix | ~mask,<span class="comment">//算广播地址</span></span><br><span class="line">				  <span class="number">32</span>, prim, <span class="number">0</span>);</span><br><span class="line">			arp_invalidate(dev, prefix | ~mask, <span class="literal">false</span>);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p><code>fib_add_ifaddr()</code> 本质上是 <strong>给一个新配置的 IP 地址补齐它该有的所有路由</strong>。先加一条 <strong>local 路由</strong>（保证发往这个 IP 的包会被当成本地接收），如果网卡已经 up，则根据情况继续添加路由，例如如果是一个正常网段地址（例如24位掩码），还会自动加一条 <strong>直连路由</strong>，同时还会补一条网络广播地址的路由。总体来说，这个函数就是把一个 IP 地址从配置变成在路由层真正可用。</p>
-<p><code>fib_add_ifaddr</code>中的<code>fib_magic</code>是用于修改路由表（插入或者删除）的入口函数（里面调用了<code>fib_table_insert</code>&#x2F;<code>fib_table_delete</code>，这里不在重复分析），具体实现如下所示：</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2026/03/29/%E8%B7%AF%E7%94%B1%EF%BC%88%E4%B8%89%EF%BC%89/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1290,7 +1293,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">119</span>
+          <span class="site-state-item-count">120</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
@@ -1303,7 +1306,7 @@
       <div class="site-state-item site-state-tags">
             <a href="/tags/">
           
-        <span class="site-state-item-count">27</span>
+        <span class="site-state-item-count">28</span>
         <span class="site-state-item-name">标签</span></a>
       </div>
   </nav>

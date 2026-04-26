@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="在 Linux 内核网络收包路径中，通常会在 NAPI 轮询中完成收包，然后通过 napi_gro_receive() 将 skb 继续上送。这个函数是驱动 RX 路径和内核协议栈之间的一个重要入口，它的核心作用是：接收驱动构造好的 skb，尝试进行 GRO 合并，减少后续协议栈需要处理的数据包数量；如果不能合并，则把数据包继续交给通用收包路径处理。 napi_gro_receive具体实现如下所">
+<meta property="og:type" content="article">
+<meta property="og:title" content="napi_gro_receive收包流程">
+<meta property="og:url" content="http://example.com/2026/04/27/napi_gro_receive%E6%94%B6%E5%8C%85/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="在 Linux 内核网络收包路径中，通常会在 NAPI 轮询中完成收包，然后通过 napi_gro_receive() 将 skb 继续上送。这个函数是驱动 RX 路径和内核协议栈之间的一个重要入口，它的核心作用是：接收驱动构造好的 skb，尝试进行 GRO 合并，减少后续协议栈需要处理的数据包数量；如果不能合并，则把数据包继续交给通用收包路径处理。 napi_gro_receive具体实现如下所">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-04-27T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-04-26T16:07:27.343Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="网卡驱动">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/04/27/napi_gro_receive%E6%94%B6%E5%8C%85/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>napi_gro_receive收包流程 | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/27/napi_gro_receive%E6%94%B6%E5%8C%85/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          napi_gro_receive收包流程
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-04-27 22:00:00 / 修改时间：00:07:27" itemprop="dateCreated datePublished" datetime="2026-04-27T22:00:00+08:00">2026-04-27</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/04/27/napi_gro_receive%E6%94%B6%E5%8C%85/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/04/27/napi_gro_receive%E6%94%B6%E5%8C%85/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>在 Linux 内核网络收包路径中，通常会在 NAPI 轮询中完成收包，然后<strong>通过 <code>napi_gro_receive()</code> 将 <code>skb</code> 继续上送。这个函数是驱动 RX 路径和内核协议栈之间的一个重要入口</strong>，它的核心作用是：接收驱动构造好的 <code>skb</code>，尝试进行 GRO 合并，减少后续协议栈需要处理的数据包数量；如果不能合并，则把数据包继续交给通用收包路径处理。</p>
+<p><code>napi_gro_receive</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">gro_result_t</span> <span class="title function_">napi_gro_receive</span><span class="params">(<span class="keyword">struct</span> napi_struct *napi, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">gro_result_t</span> ret;</span><br><span class="line">	<span class="comment">//busypoll用到</span></span><br><span class="line">	skb_mark_napi_id(skb, napi);</span><br><span class="line">	trace_napi_gro_receive_entry(skb);</span><br><span class="line">	<span class="comment">//初始化gro用到的字段</span></span><br><span class="line">	skb_gro_reset_offset(skb, <span class="number">0</span>);</span><br><span class="line">	<span class="comment">//先调用dev_gro_receive尝试合包</span></span><br><span class="line">	ret = napi_skb_finish(napi, skb, dev_gro_receive(napi, skb));</span><br><span class="line">	trace_napi_gro_receive_exit(ret);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>首先通过 <code>skb_mark_napi_id(skb, napi)</code> 把当前 NAPI 的 ID 记录到 <code>skb</code> 中，这个信息后面可能被 busy poll 等机制使用，接着调用 初始化 GRO 处理需要用到的偏移字段，最后调用 <code>dev_gro_receive</code> 尝试把当前 <code>skb</code> 和 NAPI 上已有的 GRO 包进行合并（前文已经分析过，这里不在分析），再把合并结果交给 <code>napi_skb_finish()</code> 收尾处理。</p>
+<p><code>napi_skb_finish</code>为GRO处理完成后继续上送协议栈的处理函数，具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">gro_result_t</span> <span class="title function_">napi_skb_finish</span><span class="params">(<span class="keyword">struct</span> napi_struct *napi,</span></span><br><span class="line"><span class="params">				    <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">				    <span class="type">gro_result_t</span> ret)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">switch</span> (ret) &#123;</span><br><span class="line">	<span class="keyword">case</span> GRO_NORMAL:</span><br><span class="line">		<span class="comment">//上送协议栈，可能是GRO之后的，也可能是GRO失败的</span></span><br><span class="line">		gro_normal_one(napi, skb, <span class="number">1</span>);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="comment">//GRO处理之后的根据不同合并方式有不同的返回值</span></span><br><span class="line">	<span class="keyword">case</span> GRO_MERGED_FREE:</span><br><span class="line">		<span class="keyword">if</span> (NAPI_GRO_CB(skb)-&gt;<span class="built_in">free</span> == NAPI_GRO_FREE_STOLEN_HEAD)</span><br><span class="line">			napi_skb_free_stolen_head(skb);</span><br><span class="line">		<span class="keyword">else</span> <span class="keyword">if</span> (skb-&gt;fclone != SKB_FCLONE_UNAVAILABLE)</span><br><span class="line">			__kfree_skb(skb);</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			__napi_kfree_skb(skb, SKB_CONSUMED);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">case</span> GRO_HELD:</span><br><span class="line">	<span class="keyword">case</span> GRO_MERGED:</span><br><span class="line">	<span class="keyword">case</span> GRO_CONSUMED:</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>napi_skb_finish()</code> 是 GRO 处理后的收尾函数。它根据 <code>dev_gro_receive()</code> 的返回值决定 <code>skb</code> 怎么处理，如果是 <code>GRO_NORMAL</code>，说明这个包需要正常上送协议栈，就调用 <code>gro_normal_one()</code>；如果是 <code>GRO_MERGED_FREE</code>，说明这个 <code>skb</code> 已经被合并到别的 GRO 包里了，当前 <code>skb</code> 可以释放；如果是 <code>GRO_HELD</code>、<code>GRO_MERGED</code>、<code>GRO_CONSUMED</code>，说明 <code>skb</code> 已经被 GRO 暂存、合并或消费掉了，这里不用再处理。</p>
+<p>无论合并还是批量合并，最终都会调用<code>gro_normal_one</code>继续推送数据包，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">gro_normal_one</span><span class="params">(<span class="keyword">struct</span> napi_struct *napi, <span class="keyword">struct</span> sk_buff *skb, <span class="type">int</span> segs)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//这里先攒一攒，大于8个段的时候会上送，但是不会一直攒</span></span><br><span class="line">	<span class="comment">//当驱动处理完成的时候会也会上送</span></span><br><span class="line">	list_add_tail(&amp;skb-&gt;<span class="built_in">list</span>, &amp;napi-&gt;rx_list);</span><br><span class="line">	napi-&gt;rx_count += segs;</span><br><span class="line">	<span class="keyword">if</span> (napi-&gt;rx_count &gt;= READ_ONCE(gro_normal_batch))</span><br><span class="line">		gro_normal_list(napi);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>gro_normal_one()</code> 的作用是<strong>把需要正常上送协议栈的 <code>skb</code> 先挂到当前 NAPI 的 <code>rx_list</code> 上，暂时攒一批再统一上送</strong>。这样做可以减少每来一个包就立刻进入协议栈的开销。如果数量达到 <code>gro_normal_batch</code> 阈值，就调用 <code>gro_normal_list</code> 把这一批 <code>skb</code> 一起送入协议栈。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">gro_normal_list</span><span class="params">(<span class="keyword">struct</span> napi_struct *napi)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">if</span> (!napi-&gt;rx_count)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//这里传入的是list 也就是管理skb的链表，在外面挂上去的</span></span><br><span class="line">	netif_receive_skb_list_internal(&amp;napi-&gt;rx_list);</span><br><span class="line">	INIT_LIST_HEAD(&amp;napi-&gt;rx_list);</span><br><span class="line">	napi-&gt;rx_count = <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>gro_normal_list()</code> 的作用是<strong>把前面攒在 <code>napi-&gt;rx_list</code> 里的 <code>skb</code> 批量上送到协议栈</strong>。如果 <code>rx_count</code> 为 0，说明当前没有需要上送的包，直接返回；否则调用 <code>netif_receive_skb_list_internal，把整个 </code>skb&#96; 链表一次性交给协议栈处理</p>
+<p>上述<code>netif_receive_skb_list_internal</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">netif_receive_skb_list_internal</span><span class="params">(<span class="keyword">struct</span> list_head *head)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>, *<span class="title">next</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">list_head</span> <span class="title">sublist</span>;</span></span><br><span class="line">	<span class="comment">//在初始化一个链表，这里这么做的目的就是想去除时间戳相关的skb</span></span><br><span class="line">	INIT_LIST_HEAD(&amp;sublist);</span><br><span class="line">	list_for_each_entry_safe(skb, next, head, <span class="built_in">list</span>) &#123;</span><br><span class="line">		net_timestamp_check(READ_ONCE(netdev_tstamp_prequeue), skb);</span><br><span class="line">		skb_list_del_init(skb);</span><br><span class="line">		<span class="comment">//时间戳的处理，一般不会有吧</span></span><br><span class="line">		<span class="keyword">if</span> (!skb_defer_rx_timestamp(skb))</span><br><span class="line">			list_add_tail(&amp;skb-&gt;<span class="built_in">list</span>, &amp;sublist);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//挂到sublist上</span></span><br><span class="line">	list_splice_init(&amp;sublist, head);</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	<span class="comment">//rps//rfs的处理</span></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_RPS</span></span><br><span class="line">	<span class="keyword">if</span> (static_branch_unlikely(&amp;rps_needed)) &#123;</span><br><span class="line">		list_for_each_entry_safe(skb, next, head, <span class="built_in">list</span>) &#123;</span><br><span class="line">			<span class="class"><span class="keyword">struct</span> <span class="title">rps_dev_flow</span> <span class="title">voidflow</span>, *<span class="title">rflow</span> =</span> &amp;voidflow;</span><br><span class="line">			<span class="comment">//根据hash值找到对应的cpu</span></span><br><span class="line">			<span class="type">int</span> cpu = get_rps_cpu(skb-&gt;dev, skb, &amp;rflow);</span><br><span class="line"></span><br><span class="line">			<span class="keyword">if</span> (cpu &gt;= <span class="number">0</span>) &#123;</span><br><span class="line">				<span class="comment">/* Will be handled, remove from list */</span></span><br><span class="line">				skb_list_del_init(skb);</span><br><span class="line">				enqueue_to_backlog(skb, cpu, &amp;rflow-&gt;last_qtail);</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="comment">//上送协议栈</span></span><br><span class="line">	__netif_receive_skb_list(head);</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>netif_receive_skb_list_internal()</code> 的重点就是<strong>把 NAPI&#x2F;GRO 攒好的 <code>skb</code> 链表批量送入协议栈</strong>。在真正上送前，它会先遍历 <code>skb</code> 链表，处理接收时间戳，把需要等待硬件时间戳的 <code>skb</code> 暂时过滤掉，**然后如果开启了 RPS&#x2F;RFS，就根据 <code>skb</code> 的 hash 选择目标 CPU，把部分 <code>skb</code> 转交到其他 CPU 的 backlog 队列处理；**最后剩下的 <code>skb</code> 才会通过 <code>__netif_receive_skb_list</code> 进入真正的协议栈接收流程。<code>__netif_receive_skb_list</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> __netif_receive_skb_list(<span class="keyword">struct</span> list_head *head)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> noreclaim_flag = <span class="number">0</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>, *<span class="title">next</span>;</span></span><br><span class="line">	<span class="type">bool</span> pfmemalloc = <span class="literal">false</span>; <span class="comment">/* Is current sublist PF_MEMALLOC? */</span></span><br><span class="line">	<span class="comment">//遍历链表判断是否有内存压力下申请的数据包</span></span><br><span class="line">	list_for_each_entry_safe(skb, next, head, <span class="built_in">list</span>) &#123;</span><br><span class="line">		<span class="keyword">if</span> ((sk_memalloc_socks() &amp;&amp; skb_pfmemalloc(skb)) != pfmemalloc) &#123;</span><br><span class="line">			<span class="class"><span class="keyword">struct</span> <span class="title">list_head</span> <span class="title">sublist</span>;</span></span><br><span class="line"></span><br><span class="line">			<span class="comment">/* Handle the previous sublist */</span></span><br><span class="line">			<span class="comment">//切割链表</span></span><br><span class="line">			list_cut_before(&amp;sublist, head, &amp;skb-&gt;<span class="built_in">list</span>);</span><br><span class="line">			<span class="keyword">if</span> (!list_empty(&amp;sublist))</span><br><span class="line">				__netif_receive_skb_list_core(&amp;sublist, pfmemalloc);</span><br><span class="line">			<span class="comment">//剩下的要么是全pf， 要么全不是pf</span></span><br><span class="line">			pfmemalloc = !pfmemalloc;</span><br><span class="line">			<span class="comment">/* See comments in __netif_receive_skb */</span></span><br><span class="line">			<span class="keyword">if</span> (pfmemalloc)</span><br><span class="line">				noreclaim_flag = memalloc_noreclaim_save();</span><br><span class="line">			<span class="keyword">else</span></span><br><span class="line">				memalloc_noreclaim_restore(noreclaim_flag);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">/* Handle the remaining sublist */</span></span><br><span class="line">	<span class="comment">//正常情况直接走这里</span></span><br><span class="line">	<span class="keyword">if</span> (!list_empty(head))</span><br><span class="line">		__netif_receive_skb_list_core(head, pfmemalloc);</span><br><span class="line">	<span class="comment">/* Restore pflags */</span></span><br><span class="line">	<span class="keyword">if</span> (pfmemalloc)</span><br><span class="line">		memalloc_noreclaim_restore(noreclaim_flag);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>__netif_receive_skb_list()</code> 的重点是<strong>把一批 <code>skb</code> 按是否属于 <code>pfmemalloc</code> 场景分成不同子链表，再分别送入核心接收流程</strong>。正常情况下，大多数 <code>skb</code> 都不是 <code>pfmemalloc</code>，所以会直接走最后的 <code>__netif_receive_skb_list_core</code>，只有在系统内存紧张、<code>skb</code> 来自紧急内存池时，才会把普通 <code>skb</code> 和 <code>pfmemalloc</code> <code>skb</code> 分开处理。</p>
+<p><code>__netif_receive_skb_list_core</code>具体代码如下所示</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> __netif_receive_skb_list_core(<span class="keyword">struct</span> list_head *head, <span class="type">bool</span> pfmemalloc)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/* Fast-path assumptions:</span></span><br><span class="line"><span class="comment">	 * - There is no RX handler.</span></span><br><span class="line"><span class="comment">	 * - Only one packet_type matches.</span></span><br><span class="line"><span class="comment">	 * If either of these fails, we will end up doing some per-packet</span></span><br><span class="line"><span class="comment">	 * processing in-line, then handling the &#x27;last ptype&#x27; for the whole</span></span><br><span class="line"><span class="comment">	 * sublist.  This can&#x27;t cause out-of-order delivery to any single ptype,</span></span><br><span class="line"><span class="comment">	 * because the &#x27;last ptype&#x27; must be constant across the sublist, and all</span></span><br><span class="line"><span class="comment">	 * other ptypes are handled per-packet.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">/* Current (common) ptype of sublist */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">packet_type</span> *<span class="title">pt_curr</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="comment">/* Current (common) orig_dev of sublist */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">od_curr</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">list_head</span> <span class="title">sublist</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>, *<span class="title">next</span>;</span></span><br><span class="line">	<span class="comment">//在初始化一个链表，和外层初始化链表一个目的</span></span><br><span class="line">	INIT_LIST_HEAD(&amp;sublist);</span><br><span class="line">	<span class="comment">//遍历链表</span></span><br><span class="line">	list_for_each_entry_safe(skb, next, head, <span class="built_in">list</span>) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">orig_dev</span> =</span> skb-&gt;dev;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">packet_type</span> *<span class="title">pt_prev</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">		skb_list_del_init(skb);</span><br><span class="line">		<span class="comment">//找到数据包处理的具体流程</span></span><br><span class="line">		__netif_receive_skb_core(&amp;skb, pfmemalloc, &amp;pt_prev);</span><br><span class="line">		<span class="comment">//没有匹配的协议</span></span><br><span class="line">		<span class="keyword">if</span> (!pt_prev)</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="comment">//协议不同或者设备不同</span></span><br><span class="line">		<span class="keyword">if</span> (pt_curr != pt_prev || od_curr != orig_dev) &#123;</span><br><span class="line">			<span class="comment">/* dispatch old sublist */</span></span><br><span class="line">			<span class="comment">//直接上送之前的！！！</span></span><br><span class="line">			__netif_receive_skb_list_ptype(&amp;sublist, pt_curr, od_curr);</span><br><span class="line">			<span class="comment">/* start new sublist */</span></span><br><span class="line">			<span class="comment">//在初始化一个新的</span></span><br><span class="line">			INIT_LIST_HEAD(&amp;sublist);</span><br><span class="line">			<span class="comment">//更新协议和设备</span></span><br><span class="line">			pt_curr = pt_prev;</span><br><span class="line">			od_curr = orig_dev;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//否则攒一攒</span></span><br><span class="line">		list_add_tail(&amp;skb-&gt;<span class="built_in">list</span>, &amp;sublist);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* dispatch final sublist */</span></span><br><span class="line">	<span class="comment">//统一上送</span></span><br><span class="line">	__netif_receive_skb_list_ptype(&amp;sublist, pt_curr, od_curr);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>__netif_receive_skb_list_core()</code> 的核心思想是：<strong>先逐个 <code>skb</code> 调用 <code>__netif_receive_skb_core()</code> 找到最终要交给哪个协议处理函数，然后把“协议处理者相同、原始入口设备相同”的 <code>skb</code> 再攒成一个小链表，最后批量投递。</strong></p>
+<p><code>__netif_receive_skb_core</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> __netif_receive_skb_core(<span class="keyword">struct</span> sk_buff **pskb, <span class="type">bool</span> pfmemalloc,</span><br><span class="line">				    <span class="keyword">struct</span> packet_type **ppt_prev)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">packet_type</span> *<span class="title">ptype</span>, *<span class="title">pt_prev</span>;</span></span><br><span class="line">	<span class="type">rx_handler_func_t</span> *rx_handler;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span> =</span> *pskb;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">orig_dev</span>;</span></span><br><span class="line">	<span class="type">bool</span> deliver_exact = <span class="literal">false</span>;</span><br><span class="line">	<span class="type">int</span> ret = NET_RX_DROP;</span><br><span class="line">	__be16 type;</span><br><span class="line"></span><br><span class="line">	net_timestamp_check(!READ_ONCE(netdev_tstamp_prequeue), skb);</span><br><span class="line"></span><br><span class="line">	trace_netif_receive_skb(skb);</span><br><span class="line">	<span class="comment">//先拿到收包的设备</span></span><br><span class="line">	orig_dev = skb-&gt;dev;</span><br><span class="line">	<span class="comment">//设置访问头部的指针偏移</span></span><br><span class="line">	skb_reset_network_header(skb);</span><br><span class="line">	<span class="keyword">if</span> (!skb_transport_header_was_set(skb))</span><br><span class="line">		skb_reset_transport_header(skb);</span><br><span class="line">	skb_reset_mac_len(skb);</span><br><span class="line"></span><br><span class="line">	pt_prev = <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">another_round:</span><br><span class="line">	skb-&gt;skb_iif = skb-&gt;dev-&gt;ifindex;</span><br><span class="line">	<span class="comment">//通过 proc/net/softstat可以查看</span></span><br><span class="line">	__this_cpu_inc(softnet_data.processed);</span><br><span class="line">	<span class="comment">//通用XDP处理点</span></span><br><span class="line">	<span class="keyword">if</span> (static_branch_unlikely(&amp;generic_xdp_needed_key)) &#123;</span><br><span class="line">		<span class="type">int</span> ret2;</span><br><span class="line"></span><br><span class="line">		migrate_disable();</span><br><span class="line">		ret2 = do_xdp_generic(rcu_dereference(skb-&gt;dev-&gt;xdp_prog), skb);</span><br><span class="line">		migrate_enable();</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (ret2 != XDP_PASS) &#123;</span><br><span class="line">			ret = NET_RX_DROP;</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//处理硬件没有卸载vlan的情况 ，剥vlan头，保存到skb中</span></span><br><span class="line">	<span class="keyword">if</span> (eth_type_vlan(skb-&gt;protocol)) &#123;</span><br><span class="line">		skb = skb_vlan_untag(skb);</span><br><span class="line">		<span class="keyword">if</span> (unlikely(!skb))</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (skb_skip_tc_classify(skb))</span><br><span class="line">		<span class="keyword">goto</span> skip_classify;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (pfmemalloc)</span><br><span class="line">		<span class="keyword">goto</span> skip_taps;</span><br><span class="line">	<span class="comment">//抓包点，AF_pakcket类型套</span></span><br><span class="line">	list_for_each_entry_rcu(ptype, &amp;ptype_all, <span class="built_in">list</span>) &#123;</span><br><span class="line">		<span class="keyword">if</span> (pt_prev)</span><br><span class="line">			ret = deliver_skb(skb, pt_prev, orig_dev);</span><br><span class="line">		pt_prev = ptype;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	list_for_each_entry_rcu(ptype, &amp;skb-&gt;dev-&gt;ptype_all, <span class="built_in">list</span>) &#123;</span><br><span class="line">		<span class="keyword">if</span> (pt_prev)</span><br><span class="line">			ret = deliver_skb(skb, pt_prev, orig_dev);</span><br><span class="line">		pt_prev = ptype;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">skip_taps:<span class="comment">//tc ingress ,和egress 基本一样</span></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_NET_INGRESS</span></span><br><span class="line">	<span class="keyword">if</span> (static_branch_unlikely(&amp;ingress_needed_key)) &#123;</span><br><span class="line">		<span class="type">bool</span> another = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">		nf_skip_egress(skb, <span class="literal">true</span>);</span><br><span class="line">		skb = sch_handle_ingress(skb, &amp;pt_prev, &amp;ret, orig_dev,</span><br><span class="line">					 &amp;another);</span><br><span class="line">		<span class="keyword">if</span> (another)</span><br><span class="line">			<span class="keyword">goto</span> another_round;</span><br><span class="line">		<span class="keyword">if</span> (!skb)</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">		nf_skip_egress(skb, <span class="literal">false</span>);</span><br><span class="line">		<span class="keyword">if</span> (nf_ingress(skb, &amp;pt_prev, &amp;ret, orig_dev) &lt; <span class="number">0</span>)</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line">	&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	skb_reset_redirect(skb);</span><br><span class="line">skip_classify:</span><br><span class="line">	<span class="keyword">if</span> (pfmemalloc &amp;&amp; !skb_pfmemalloc_protocol(skb))</span><br><span class="line">		<span class="keyword">goto</span> drop;</span><br><span class="line"><span class="comment">//处理有vlan的情况，这里会找到vlan的netdev</span></span><br><span class="line">	<span class="keyword">if</span> (skb_vlan_tag_present(skb)) &#123;</span><br><span class="line">		<span class="keyword">if</span> (pt_prev) &#123;</span><br><span class="line">			ret = deliver_skb(skb, pt_prev, orig_dev);</span><br><span class="line">			pt_prev = <span class="literal">NULL</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//这里会通过vlan id 找到对应的vlan设备然后在走一遍anotherround</span></span><br><span class="line">		<span class="keyword">if</span> (vlan_do_receive(&amp;skb))</span><br><span class="line">			<span class="keyword">goto</span> another_round;</span><br><span class="line">		<span class="keyword">else</span> <span class="keyword">if</span> (unlikely(!skb))</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//ovs bond br 等设备在这里勾数据包</span></span><br><span class="line">	rx_handler = rcu_dereference(skb-&gt;dev-&gt;rx_handler);</span><br><span class="line">	<span class="keyword">if</span> (rx_handler) &#123;</span><br><span class="line">		<span class="keyword">if</span> (pt_prev) &#123;</span><br><span class="line">			ret = deliver_skb(skb, pt_prev, orig_dev);</span><br><span class="line">			pt_prev = <span class="literal">NULL</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">switch</span> (rx_handler(&amp;skb)) &#123;</span><br><span class="line">		<span class="keyword">case</span> RX_HANDLER_CONSUMED:<span class="comment">//已经被处理了</span></span><br><span class="line">			ret = NET_RX_SUCCESS;</span><br><span class="line">			<span class="keyword">goto</span> out;</span><br><span class="line">		<span class="keyword">case</span> RX_HANDLER_ANOTHER:<span class="comment">//设备变了，在走一变</span></span><br><span class="line">			<span class="keyword">goto</span> another_round;</span><br><span class="line">		<span class="keyword">case</span> RX_HANDLER_EXACT:</span><br><span class="line">			deliver_exact = <span class="literal">true</span>;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> RX_HANDLER_PASS:<span class="comment">//继续处理</span></span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">default</span>:</span><br><span class="line">			BUG();</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//处理没有找到vlan设备的情况</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(skb_vlan_tag_present(skb)) &amp;&amp; !netdev_uses_dsa(skb-&gt;dev)) &#123;</span><br><span class="line">check_vlan_id:</span><br><span class="line">		<span class="keyword">if</span> (skb_vlan_tag_get_id(skb)) &#123;</span><br><span class="line">			<span class="comment">/* Vlan id is non 0 and vlan_do_receive() above couldn&#x27;t</span></span><br><span class="line"><span class="comment">			 * find vlan device.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="comment">//那就认为这个包不是应该发给本机的</span></span><br><span class="line">			skb-&gt;pkt_type = PACKET_OTHERHOST;</span><br><span class="line">			<span class="comment">//处理双层vlan 外层id是0的情况</span></span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> (eth_type_vlan(skb-&gt;protocol)) &#123;</span><br><span class="line">			<span class="comment">/* Outer header is 802.1P with vlan 0, inner header is</span></span><br><span class="line"><span class="comment">			 * 802.1Q or 802.1AD and vlan_do_receive() above could</span></span><br><span class="line"><span class="comment">			 * not find vlan dev for vlan id 0.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="comment">//清掉外vlan</span></span><br><span class="line">			__vlan_hwaccel_clear_tag(skb);</span><br><span class="line">			<span class="comment">//提取内层的vlan</span></span><br><span class="line">			skb = skb_vlan_untag(skb);</span><br><span class="line">			<span class="keyword">if</span> (unlikely(!skb))</span><br><span class="line">				<span class="keyword">goto</span> out;</span><br><span class="line">			<span class="keyword">if</span> (vlan_do_receive(&amp;skb))</span><br><span class="line">				<span class="comment">/* After stripping off 802.1P header with vlan 0</span></span><br><span class="line"><span class="comment">				 * vlan dev is found for inner header.</span></span><br><span class="line"><span class="comment">				 */</span></span><br><span class="line">				<span class="keyword">goto</span> another_round;</span><br><span class="line">			<span class="keyword">else</span> <span class="keyword">if</span> (unlikely(!skb))</span><br><span class="line">				<span class="keyword">goto</span> out;</span><br><span class="line">			<span class="keyword">else</span></span><br><span class="line">				<span class="comment">/* We have stripped outer 802.1P vlan 0 header.</span></span><br><span class="line"><span class="comment">				 * But could not find vlan dev.</span></span><br><span class="line"><span class="comment">				 * check again for vlan id to set OTHERHOST.</span></span><br><span class="line"><span class="comment">				 */</span></span><br><span class="line">				<span class="keyword">goto</span> check_vlan_id;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">/* Note: we might in the future use prio bits</span></span><br><span class="line"><span class="comment">		 * and set skb-&gt;priority like in vlan_do_receive()</span></span><br><span class="line"><span class="comment">		 * For the time being, just ignore Priority Code Point</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//清调vlan标志</span></span><br><span class="line">		__vlan_hwaccel_clear_tag(skb);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	type = skb-&gt;protocol;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* deliver only exact match when indicated */</span></span><br><span class="line">	<span class="comment">//通常的情况</span></span><br><span class="line">	<span class="keyword">if</span> (likely(!deliver_exact)) &#123;</span><br><span class="line">		deliver_ptype_list_skb(skb, &amp;pt_prev, orig_dev, type,</span><br><span class="line">				       &amp;ptype_base[ntohs(type) &amp;</span><br><span class="line">						   PTYPE_HASH_MASK]);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//	//精确匹配的情况，只能分发给在具体设备上的</span></span><br><span class="line">	deliver_ptype_list_skb(skb, &amp;pt_prev, orig_dev, type,</span><br><span class="line">			       &amp;orig_dev-&gt;ptype_specific);</span><br><span class="line"></span><br><span class="line">	<span class="comment">//比如说bond3</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(skb-&gt;dev != orig_dev)) &#123;</span><br><span class="line">		deliver_ptype_list_skb(skb, &amp;pt_prev, orig_dev, type,</span><br><span class="line">				       &amp;skb-&gt;dev-&gt;ptype_specific);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (pt_prev) &#123;</span><br><span class="line">		<span class="keyword">if</span> (unlikely(skb_orphan_frags_rx(skb, GFP_ATOMIC)))</span><br><span class="line">			<span class="keyword">goto</span> drop;</span><br><span class="line">		*ppt_prev = pt_prev;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">	<span class="comment">//没找到对应的处理函数，这里增加drop 统计信息， ifconfig 中的drop字段一部分就是在这里体现的</span></span><br><span class="line">	<span class="comment">//注意只是一部分</span></span><br><span class="line">drop:</span><br><span class="line">		<span class="keyword">if</span> (!deliver_exact)</span><br><span class="line">			dev_core_stats_rx_dropped_inc(skb-&gt;dev);</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			dev_core_stats_rx_nohandler_inc(skb-&gt;dev);</span><br><span class="line">		kfree_skb_reason(skb, SKB_DROP_REASON_UNHANDLED_PROTO);</span><br><span class="line">		<span class="comment">/* Jamal, now you will not able to escape explaining</span></span><br><span class="line"><span class="comment">		 * me how you were going to use this. :-)</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		ret = NET_RX_DROP;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">	<span class="comment">/* The invariant here is that if *ppt_prev is not NULL</span></span><br><span class="line"><span class="comment">	 * then skb should also be non-NULL.</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * Apparently *ppt_prev assignment above holds this invariant due to</span></span><br><span class="line"><span class="comment">	 * skb dereferencing near it.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	*pskb = skb;</span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>__netif_receive_skb_core()</code>可以理解为 <strong>进入协议栈前的核心分发函数</strong>。它先记录原始收包设备 <code>orig_dev</code>，先经过 <code>generic XDP</code>，如果 <code>XDP</code> 不是 <code>PASS</code> 就直接结束。接着处理 <code>VLAN</code>：如果 <code>VLAN</code> 头还在报文里，就剥掉<code>VLAN</code>头并保存到 <code>skb</code>中；然后经过抓包点 <code>ptype_all</code>，所以 <code>tcpdump</code> 这类 <code>AF_PACKET</code> 可以在这里看到包；之后进入 <code>tc ingress / netfilter ingress</code>，可能放行、丢包或者重定向。再往后，如果 <code>skb</code> 带 <code>VLAN tag</code>，会调用 <code>vlan_do_receive()</code> 根据 VLAN ID 找对应的 VLAN 子接口，找到后修改 <code>skb-&gt;dev</code> 并重新走 <code>another_round</code>。如果设备注册了 <code>rx_handler</code>，比如 bridge、bond、OVS，也会在这里接管 <code>skb</code>。最后根据 <code>skb-&gt;protocol</code> 查找协议处理入口：普通情况查全局 <code>ptype_base</code>，比如 IPv4 对应 <code>ip_rcv()</code>；同时还会查具体设备上的 <code>ptype_specific</code>。如果找到处理函数，就通过 <code>ppt_prev</code> 返回给外层继续投递；如果没有找到，就释放 <code>skb</code>，并增加 <code>drop</code>统计。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" rel="tag"># 网卡驱动</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/04/24/GRO(%E4%BA%8C)/" rel="prev" title="GRO（二）">
+      <i class="fa fa-chevron-left"></i> GRO（二）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">120</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">28</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
