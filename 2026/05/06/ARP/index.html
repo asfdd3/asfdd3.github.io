@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="引言邻居子系统是网络协议栈中负责下一跳邻居管理的通用框架，它主要解决的问题是当内核已经知道数据包该从哪个网卡、发给哪个 IP 后，如何进一步找到对应的二层地址（MAC），以及如何维护这些邻居的可达状态。为此，内核实现了一整套通用机制，包括邻居表管理、状态机、定时器、探测重传、缓存队列以及老化回收等功能。而 ARP 则是这个通用框架在 IPv4 下的具体实现，负责通过 ARP Request&amp;#x2">
+<meta property="og:type" content="article">
+<meta property="og:title" content="ARP初始化（一）">
+<meta property="og:url" content="http://example.com/2026/05/06/ARP/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="引言邻居子系统是网络协议栈中负责下一跳邻居管理的通用框架，它主要解决的问题是当内核已经知道数据包该从哪个网卡、发给哪个 IP 后，如何进一步找到对应的二层地址（MAC），以及如何维护这些邻居的可达状态。为此，内核实现了一整套通用机制，包括邻居表管理、状态机、定时器、探测重传、缓存队列以及老化回收等功能。而 ARP 则是这个通用框架在 IPv4 下的具体实现，负责通过 ARP Request&amp;#x2">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-05-06T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-05-06T16:02:27.338Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="ARP">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/05/06/ARP/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>ARP初始化（一） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/05/06/ARP/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          ARP初始化（一）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-05-06 22:00:00" itemprop="dateCreated datePublished" datetime="2026-05-06T22:00:00+08:00">2026-05-06</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-05-07 00:02:27" itemprop="dateModified" datetime="2026-05-07T00:02:27+08:00">2026-05-07</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/05/06/ARP/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/05/06/ARP/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="引言"><a href="#引言" class="headerlink" title="引言"></a>引言</h2><p><strong>邻居子系统是网络协议栈中负责下一跳邻居管理的通用框架</strong>，它主要解决的问题是当内核已经知道数据包该从哪个网卡、发给哪个 IP 后，如何进一步找到对应的二层地址（MAC），以及如何维护这些邻居的可达状态。为此，内核实现了一整套通用机制，包括邻居表管理、状态机、定时器、探测重传、缓存队列以及老化回收等功能。<strong>而 ARP 则是这个通用框架在 IPv4 下的具体实现</strong>，负责通过 ARP Request&#x2F;Reply 报文完成 IPv4 地址到 MAC 地址的解析。</p>
+<hr>
+<h2 id="ARP-报文格式"><a href="#ARP-报文格式" class="headerlink" title="ARP 报文格式"></a>ARP 报文格式</h2><figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"> 0                   15 16                  31</span><br><span class="line">+----------------------+----------------------+</span><br><span class="line">|   Hardware Type      |    Protocol Type     |</span><br><span class="line">+----------------------+----------------------+</span><br><span class="line">| HLen | PLen |            Opcode            |</span><br><span class="line">+----------------------+----------------------+</span><br><span class="line">|                                              |</span><br><span class="line">|          Sender MAC Address (6B)             |</span><br><span class="line">|                                              |</span><br><span class="line">+----------------------+----------------------+</span><br><span class="line">|          Sender IP Address (4B)              |</span><br><span class="line">+---------------------------------------------+</span><br><span class="line">|                                              |</span><br><span class="line">|          Target MAC Address (6B)             |</span><br><span class="line">|                                              |</span><br><span class="line">+----------------------+----------------------+</span><br><span class="line">|          Target IP Address (4B)              |</span><br><span class="line">+---------------------------------------------+</span><br></pre></td></tr></table></figure>
+
+<h3 id="字段含义"><a href="#字段含义" class="headerlink" title="字段含义"></a>字段含义</h3><table>
+<thead>
+<tr>
+<th>字段</th>
+<th>含义</th>
+<th>常见值</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Hardware Type</td>
+<td>链路层类型</td>
+<td>1（Ethernet）</td>
+</tr>
+<tr>
+<td>Protocol Type</td>
+<td>上层协议类型</td>
+<td>0x0800（IPv4）</td>
+</tr>
+<tr>
+<td>HLen</td>
+<td>MAC 地址长度</td>
+<td>6</td>
+</tr>
+<tr>
+<td>PLen</td>
+<td>IP 地址长度</td>
+<td>4</td>
+</tr>
+<tr>
+<td>Opcode</td>
+<td>ARP 操作类型</td>
+<td>1&#x3D;Request，2&#x3D;Reply</td>
+</tr>
+<tr>
+<td>Sender MAC</td>
+<td>发送方 MAC</td>
+<td>本机 MAC</td>
+</tr>
+<tr>
+<td>Sender IP</td>
+<td>发送方 IP</td>
+<td>本机 IP</td>
+</tr>
+<tr>
+<td>Target MAC</td>
+<td>目标 MAC</td>
+<td>Request 中通常为全0</td>
+</tr>
+<tr>
+<td>Target IP</td>
+<td>目标 IP</td>
+<td>要解析的 IP</td>
+</tr>
+</tbody></table>
+<h2 id="初始化"><a href="#初始化" class="headerlink" title="初始化"></a>初始化</h2><p><code>arp_init()</code> 是 Linux 内核 ARP 模块的初始化入口，它主要完成 ARP 与整个网络协议栈的注册和关联。首先通过 <code>neigh_table_init()</code> 将 <code>arp_tbl</code> 注册到通用邻居子系统中。随后通过 <code>dev_add_pack()</code> 注册 ARP 报文接收入口 <code>arp_packet_type</code>，这样网卡收到以太网类型为 <code>0x0806</code> 的 ARP 报文就会进入 <code>arp_rcv()</code> 处理流程。接着 <code>register_pernet_subsys()</code> 会为每个网络命名空间创建对应的 ARP 相关数据结构和 <code>proc/sysctl</code> 接口，使不同 namespace 之间的 ARP 配置和邻居表能够互相隔离。<code>neigh_sysctl_register()</code> 则用于注册邻居子系统相关的 <code>sysctl</code> 参数，方便用户动态调整邻居行为。最后通过 <code>register_netdevice_notifier()</code> 注册网卡事件通知链，这样当网卡 <code>up/down</code>、地址变化或设备注销时，ARP 模块也能同步更新对应的邻居状态和 ARP 表项。</p>
+<p><code>arp_init</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> __init <span class="title function_">arp_init</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//把arp_tbl注册到邻居子系统</span></span><br><span class="line">	neigh_table_init(NEIGH_ARP_TABLE, &amp;arp_tbl);</span><br><span class="line">	<span class="comment">//注册arp rcv</span></span><br><span class="line">	dev_add_pack(&amp;arp_packet_type);</span><br><span class="line">	<span class="comment">//每个命令空间一个导出文件</span></span><br><span class="line">	register_pernet_subsys(&amp;arp_net_ops);</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_SYSCTL</span></span><br><span class="line">	neigh_sysctl_register(<span class="literal">NULL</span>, &amp;arp_tbl.parms, <span class="literal">NULL</span>);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	register_netdevice_notifier(&amp;arp_netdev_notifier);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>neigh_table_init</code>用于将<code>arp_tbl</code>注册到邻居子系统中，<code>arp_tbl</code>为邻居表的一个实例，可以理解为ARP 的总管理器，具体定义如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">neigh_table</span> <span class="title">arp_tbl</span> =</span> &#123;</span><br><span class="line">	.family		= AF_INET,</span><br><span class="line">	.key_len	= <span class="number">4</span>,					 <span class="comment">//目的ip是4字节</span></span><br><span class="line">	.protocol	= cpu_to_be16(ETH_P_IP), <span class="comment">//</span></span><br><span class="line">	.hash		= arp_hash,				 <span class="comment">//查hash表时候的hash函数 ipv4+netdev+随机值</span></span><br><span class="line">	.key_eq		= arp_key_eq,			 <span class="comment">//比较key是否相同</span></span><br><span class="line">	.constructor	= arp_constructor,   <span class="comment">//初始化</span></span><br><span class="line">	.proxy_redo	= parp_redo,			 <span class="comment">//代理arp</span></span><br><span class="line">	.is_multicast	= arp_is_multicast,  <span class="comment">//判断ip 地址是否是多播地址</span></span><br><span class="line">	.id		= <span class="string">&quot;arp_cache&quot;</span>,</span><br><span class="line">	.parms		= &#123;						 <span class="comment">//默认邻居表项的时间</span></span><br><span class="line">		.tbl			= &amp;arp_tbl,</span><br><span class="line">		.reachable_time		= <span class="number">30</span> * HZ,</span><br><span class="line">		.data	= &#123;</span><br><span class="line">			[NEIGH_VAR_MCAST_PROBES] = <span class="number">3</span>,    	<span class="comment">//广播的次数，，默认是3次</span></span><br><span class="line">			[NEIGH_VAR_UCAST_PROBES] = <span class="number">3</span>,	 	<span class="comment">//单播的次数 默认是3 表示已经知道对端的mac了</span></span><br><span class="line">			[NEIGH_VAR_RETRANS_TIME] = <span class="number">1</span> * HZ,  <span class="comment">//探测重传的间隔</span></span><br><span class="line">			[NEIGH_VAR_BASE_REACHABLE_TIME] = <span class="number">30</span> * HZ,	 <span class="comment">//可达时间，认为30秒有效</span></span><br><span class="line">			<span class="comment">////REACHABLE 老化成 STALE 后，如果又有数据要发给它，内核不会马上探测，</span></span><br><span class="line">			<span class="comment">// 而是先进入因为这 5 秒内如果收到了对方的正常流量，就可以顺便证明它还活着，不需要额外发 ARP 探测。</span></span><br><span class="line">			[NEIGH_VAR_DELAY_PROBE_TIME] = <span class="number">5</span> * HZ,		</span><br><span class="line">			[NEIGH_VAR_INTERVAL_PROBE_TIME_MS] = <span class="number">5</span> * HZ, <span class="comment">//更细粒度的探测间隔</span></span><br><span class="line">			[NEIGH_VAR_GC_STALETIME] = <span class="number">60</span> * HZ,          <span class="comment">//ARP 表项变旧之后，GC 多久可以考虑回收它</span></span><br><span class="line">			[NEIGH_VAR_QUEUE_LEN_BYTES] = SK_WMEM_MAX,   <span class="comment">//存包的上限</span></span><br><span class="line">			[NEIGH_VAR_PROXY_QLEN] = <span class="number">64</span>,  				 <span class="comment">//arp代理请求的最大数量</span></span><br><span class="line">			[NEIGH_VAR_ANYCAST_DELAY] = <span class="number">1</span> * HZ,</span><br><span class="line">			[NEIGH_VAR_PROXY_DELAY]	= (<span class="number">8</span> * HZ) / <span class="number">10</span>,     <span class="comment">//代理arp 回复前的延迟</span></span><br><span class="line">			[NEIGH_VAR_LOCKTIME] = <span class="number">1</span> * HZ,				 <span class="comment">//在1s内不希望被覆盖</span></span><br><span class="line">		&#125;,</span><br><span class="line">	&#125;,</span><br><span class="line">	.gc_interval	= <span class="number">30</span> * HZ,        <span class="comment">//GC 的扫描间隔</span></span><br><span class="line">	.gc_thresh1	= <span class="number">128</span>,				  <span class="comment">//低水位阈值，小于这个不需要清理</span></span><br><span class="line">	.gc_thresh2	= <span class="number">512</span>,				  <span class="comment">//中水位 清理没用的邻居表</span></span><br><span class="line">	.gc_thresh3	= <span class="number">1024</span>,				 <span class="comment">//压力很大，强制回收</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p><code>arp_tbl</code> 是 Linux 内核中 IPv4 ARP 使用的核心邻居表对象，本质上是邻居子系统 <code>struct neigh_table</code> 的一个实例，负责管理整个 ARP 表以及相关的状态机、定时器和 GC 逻辑。这里通过 <code>family=AF_INET</code> 指定它属于 IPv4，<code>key_len=4</code> 表示使用 4 字节 IPv4 地址作为查找 key，<code>hash</code> 和 <code>key_eq</code> 用于邻居表项的查找和比较，<code>constructor</code> 则负责新邻居表项的初始化。<code>parms</code> 中定义了 ARP 的默认行为参数，例如 <code>reachable_time</code> 表示邻居默认可达时间，<code>RETRANS_TIME</code> 表示 ARP 重传间隔，<code>DELAY_PROBE_TIME</code> 表示邻居进入 STALE 后不会立刻探测，而是先等待一段时间。最后的 <code>gc_interval</code> 和 <code>gc_thresh1/2/3</code> 则用于 ARP 表的垃圾回收和容量控制，避免邻居表无限增长。</p>
+<h3 id="arp-constructor"><a href="#arp-constructor" class="headerlink" title="arp_constructor"></a><code>arp_constructor</code></h3><p>上述<code>arp_constructor</code>在创建邻居表项（例如发送<code>arp</code>请求时）会被调用，用于完成 ARP 邻居表项初始化，具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//create neighbor 之后会调用这个初始化函数</span></span><br><span class="line"><span class="comment">//初始化状态，设置回调函数</span></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">arp_constructor</span><span class="params">(<span class="keyword">struct</span> neighbour *neigh)</span></span><br><span class="line">&#123;</span><br><span class="line">	__be32 addr;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span> =</span> neigh-&gt;dev;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_device</span> *<span class="title">in_dev</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">neigh_parms</span> *<span class="title">parms</span>;</span></span><br><span class="line">	u32 inaddr_any = INADDR_ANY;</span><br><span class="line">	<span class="comment">//loop back 设备处理</span></span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;flags &amp; (IFF_LOOPBACK | IFF_POINTOPOINT))</span><br><span class="line">		<span class="built_in">memcpy</span>(neigh-&gt;primary_key, &amp;inaddr_any, arp_tbl.key_len);</span><br><span class="line">	<span class="comment">//提取key 在createneigh的时候设置的</span></span><br><span class="line">	addr = *(__be32 *)neigh-&gt;primary_key;</span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	<span class="comment">//拿到indev</span></span><br><span class="line">	in_dev = __in_dev_get_rcu(dev);</span><br><span class="line">	<span class="keyword">if</span> (!in_dev) &#123;</span><br><span class="line">		rcu_read_unlock();</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line">		&#125;</span><br><span class="line">	<span class="comment">//返回一个地址类型，例如 rtn_unicast</span></span><br><span class="line">	<span class="comment">//这个值会决定后面是需要arp 二层地址类型，以及nud_state设置成什么</span></span><br><span class="line">	neigh-&gt;type = inet_addr_type_dev_table(dev_net(dev), dev, addr);</span><br><span class="line"></span><br><span class="line">	parms = in_dev-&gt;arp_parms;</span><br><span class="line">	__neigh_parms_put(neigh-&gt;parms);</span><br><span class="line">	neigh-&gt;parms = neigh_parms_clone(parms);</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">	<span class="comment">//是否有headrops 在注册设备的时候通过ether_setup设置</span></span><br><span class="line">	<span class="keyword">if</span> (!dev-&gt;header_ops) &#123;</span><br><span class="line">		neigh-&gt;nud_state = NUD_NOARP;</span><br><span class="line">		neigh-&gt;ops = &amp;arp_direct_ops; <span class="comment">//这个回调就是直接调用dev_queue_xmit</span></span><br><span class="line">		neigh-&gt;output = neigh_direct_output; <span class="comment">//同上</span></span><br><span class="line">	&#125; <span class="keyword">else</span> &#123; <span class="comment">//以太网设备通常肯定走这里</span></span><br><span class="line">		<span class="comment">/* Good devices (checked by reading texts, but only Ethernet is</span></span><br><span class="line"><span class="comment">		   tested)</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">		   ARPHRD_ETHER: (ethernet, apfddi)</span></span><br><span class="line"><span class="comment">		   ARPHRD_FDDI: (fddi)</span></span><br><span class="line"><span class="comment">		   ARPHRD_IEEE802: (tr)</span></span><br><span class="line"><span class="comment">		   ARPHRD_METRICOM: (strip)</span></span><br><span class="line"><span class="comment">		   ARPHRD_ARCNET:</span></span><br><span class="line"><span class="comment">		   etc. etc. etc.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">		   ARPHRD_IPDDP will also work, if author repairs it.</span></span><br><span class="line"><span class="comment">		   I did not it, because this driver does not work even</span></span><br><span class="line"><span class="comment">		   in old paradigm.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//如果目的地址是多播地址，那就是不需要arp</span></span><br><span class="line">		<span class="comment">//直接算一个二层地址就ok了</span></span><br><span class="line">		<span class="keyword">if</span> (neigh-&gt;type == RTN_MULTICAST) &#123;</span><br><span class="line">			neigh-&gt;nud_state = NUD_NOARP;</span><br><span class="line">			arp_mc_map(addr, neigh-&gt;ha, dev, <span class="number">1</span>);</span><br><span class="line">		<span class="comment">//回环设备的处理</span></span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> (dev-&gt;flags &amp; (IFF_NOARP | IFF_LOOPBACK)) &#123;</span><br><span class="line">			neigh-&gt;nud_state = NUD_NOARP;</span><br><span class="line">			<span class="built_in">memcpy</span>(neigh-&gt;ha, dev-&gt;dev_addr, dev-&gt;addr_len);</span><br><span class="line">		<span class="comment">//如果是一个广播地址或者点对点设备</span></span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> (neigh-&gt;type == RTN_BROADCAST ||</span><br><span class="line">			   (dev-&gt;flags &amp; IFF_POINTOPOINT)) &#123;</span><br><span class="line">			neigh-&gt;nud_state = NUD_NOARP;</span><br><span class="line">			<span class="comment">//copy 全f</span></span><br><span class="line">			<span class="built_in">memcpy</span>(neigh-&gt;ha, dev-&gt;broadcast, dev-&gt;addr_len);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//设置neghbor的回调</span></span><br><span class="line">		<span class="keyword">if</span> (dev-&gt;header_ops-&gt;cache)</span><br><span class="line">			neigh-&gt;ops = &amp;arp_hh_ops;<span class="comment">////正常以太网设备都这里</span></span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			neigh-&gt;ops = &amp;arp_generic_ops;<span class="comment">//没有二层头的？  很简单，直接发</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (neigh-&gt;nud_state &amp; NUD_VALID)</span><br><span class="line">			neigh-&gt;output = neigh-&gt;ops-&gt;connected_output;</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			neigh-&gt;output = neigh-&gt;ops-&gt;output;<span class="comment">//正常的普通单播邻居表走这里，因为还没有设置状态neigh_resolve_output</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>arp_constructor()</code> 是 ARP 邻居表项的初始化函数，在内核新建 <code>struct neighbour</code> 时被调用，它主要负责根据目标 IP 类型和网卡类型初始化这个 <code>neighbour</code> 的行为。函数首先会判断目标地址是单播、多播还是广播，并获取当前网卡对应的 ARP 参数，例如 <code>reachable_time</code>、<code>retrans_time</code> 等。对于多播、广播、回环或 <code>NOARP</code> 设备，由于不需要真正进行 ARP 解析，因此会直接设置 <code>NUD_NOARP</code> 状态并提前生成目标 MAC 地址；而对于普通以太网单播地址，则会根据网卡是否支持二层头缓存来设置 <code>neigh-&gt;ops</code>，通常以太网设备会使用 <code>arp_hh_ops</code>，其中包含 <code>neighbour</code> 的 <code>output</code>、<code>connected_output</code> 等发送回调。随后内核会根据当前邻居状态初始化 <code>neigh-&gt;output</code>，如果邻居已经有效则直接使用快速发送路径，否则通常会设置为 <code>neigh_resolve_output</code>，这样后续真正发包时如果还不知道 MAC，就会自动触发 ARP 请求进行地址解析。</p>
+<h3 id="arp-hh-ops"><a href="#arp-hh-ops" class="headerlink" title="arp_hh_ops"></a><code>arp_hh_ops</code></h3><p><code>arp_hh_ops</code> 是 ARP 邻居表项使用的一组 <code>neighbour</code> 操作函数集合，具体定义如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">neigh_ops</span> <span class="title">arp_hh_ops</span> =</span> &#123;</span><br><span class="line">	.family =		AF_INET,</span><br><span class="line">	.solicit =		arp_solicit,  		<span class="comment">//arp请求 annouce 申请数据包</span></span><br><span class="line">	.error_report =		arp_error_report, <span class="comment">//当邻居解析失败</span></span><br><span class="line">	.output =		neigh_resolve_output,</span><br><span class="line">	.connected_output =	neigh_resolve_output,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+
+
+<h3 id="arp-solicit"><a href="#arp-solicit" class="headerlink" title="arp_solicit"></a><code>arp_solicit</code></h3><p><code>arp_solicit()</code> 是 ARP 邻居子系统中的主动探测函数，它的核心作用是构造并发送 ARP Request，用来解析或探测目标邻居的 MAC 地址。具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">arp_solicit</span><span class="params">(<span class="keyword">struct</span> neighbour *neigh, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	__be32 saddr = <span class="number">0</span>;</span><br><span class="line">	u8 dst_ha[MAX_ADDR_LEN], *dst_hw = <span class="literal">NULL</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span> =</span> neigh-&gt;dev;</span><br><span class="line">	__be32 target = *(__be32 *)neigh-&gt;primary_key;</span><br><span class="line">	<span class="type">int</span> probes = <span class="type">atomic_read</span>(&amp;neigh-&gt;probes);<span class="comment">//探测一次后会增加</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">in_device</span> *<span class="title">in_dev</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">dst_entry</span> *<span class="title">dst</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	<span class="comment">//获取设备的indev</span></span><br><span class="line">	in_dev = __in_dev_get_rcu(dev);</span><br><span class="line">	<span class="keyword">if</span> (!in_dev) &#123;</span><br><span class="line">		rcu_read_unlock();</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//根据announce 选择源ip地址，这里默认是0</span></span><br><span class="line">	<span class="keyword">switch</span> (IN_DEV_ARP_ANNOUNCE(in_dev)) &#123;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">	<span class="keyword">case</span> <span class="number">0</span>:		<span class="comment">/* By default announce any local IP */</span></span><br><span class="line">		<span class="comment">//如果数据包的源ip地址是本机的那就用这个！</span></span><br><span class="line">		<span class="keyword">if</span> (skb &amp;&amp; inet_addr_type_dev_table(dev_net(dev), dev,</span><br><span class="line">					  ip_hdr(skb)-&gt;saddr) == RTN_LOCAL)</span><br><span class="line">			saddr = ip_hdr(skb)-&gt;saddr;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> <span class="number">1</span>:		<span class="comment">/* Restrict announcements of saddr in same subnet */</span></span><br><span class="line">		<span class="keyword">if</span> (!skb)</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		</span><br><span class="line">		saddr = ip_hdr(skb)-&gt;saddr;</span><br><span class="line">		<span class="keyword">if</span> (inet_addr_type_dev_table(dev_net(dev), dev,</span><br><span class="line">					     saddr) == RTN_LOCAL) &#123;</span><br><span class="line">			<span class="comment">/* saddr should be known to target */</span></span><br><span class="line">			<span class="comment">//目的ip和源ip必须在同一个子网中！</span></span><br><span class="line">			<span class="keyword">if</span> (inet_addr_onlink(in_dev, target, saddr))</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		saddr = <span class="number">0</span>;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> <span class="number">2</span>:		<span class="comment">/* Avoid secondary IPs, get a primary/preferred one */</span></span><br><span class="line">		<span class="comment">//不使用数据包中的ip地址，从网口中获取一个ip地址</span></span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">	<span class="comment">//如果前面没选出addr这里从设备中选出一个arp用到的源地址</span></span><br><span class="line">	<span class="keyword">if</span> (!saddr)</span><br><span class="line">		saddr = inet_select_addr(dev, target, RT_SCOPE_LINK);</span><br><span class="line"></span><br><span class="line">	<span class="comment">//计算探测次数是否用尽了 小于0 没用尽，貌似通常是走这个分支？ </span></span><br><span class="line">	<span class="comment">//这里注意第一次探测应该走下面的分支，因为这个参数已经提前被加过了！</span></span><br><span class="line">	probes -= NEIGH_VAR(neigh-&gt;parms, UCAST_PROBES);</span><br><span class="line">	<span class="keyword">if</span> (probes &lt; <span class="number">0</span>) &#123;</span><br><span class="line">		<span class="keyword">if</span> (!(READ_ONCE(neigh-&gt;nud_state) &amp; NUD_VALID))</span><br><span class="line">			pr_debug(<span class="string">&quot;trying to ucast probe in NUD_INVALID\n&quot;</span>);</span><br><span class="line">		neigh_ha_snapshot(dst_ha, neigh, dev);<span class="comment">//就是从neigh中memcpy 地址到dst_ha中</span></span><br><span class="line">		dst_hw = dst_ha;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="comment">//这里正常就是0</span></span><br><span class="line">		probes -= NEIGH_VAR(neigh-&gt;parms, APP_PROBES);</span><br><span class="line">		<span class="keyword">if</span> (probes &lt; <span class="number">0</span>) &#123;</span><br><span class="line">			neigh_app_ns(neigh);</span><br><span class="line">			<span class="keyword">return</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (skb &amp;&amp; !(dev-&gt;priv_flags &amp; IFF_XMIT_DST_RELEASE))</span><br><span class="line">		dst = skb_dst(skb);</span><br><span class="line">	<span class="comment">//构造arp报文</span></span><br><span class="line">	arp_send_dst(ARPOP_REQUEST, ETH_P_ARP, target, dev, saddr,</span><br><span class="line">		     dst_hw, dev-&gt;dev_addr, <span class="literal">NULL</span>, dst);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>arp_solicit()</code> 是真正负责发送 ARP <code>Request</code> 的核心函数。函数开始会先获取目标 IPv4 地址以及当前邻居的 probe 次数，<strong>然后根据 <code>arp_announce</code> 配置决定 ARP Request 使用哪个源 IP</strong>，默认情况下会优先使用 <code>skb</code> 中属于本机的源 IP，<strong>而更严格的模式则要求源 IP 必须与目标位于同一子网</strong>。如果前面没有选出合适的源地址，则通过 <code>inet_select_addr()</code> 从网卡上重新选择一个。接下来函数会根据 <code>neigh-&gt;probes</code> 判断当前是单播探测、应用层探测还是广播 ARP 探测，如果之前已经解析过 MAC，则会优先使用旧 MAC 做单播 ARP probe，减少广播；否则会走广播 ARP。最后通过 <code>arp_send_dst()</code> 构造并发送 ARP Request 报文。</p>
+<h3 id="arp-send-dst"><a href="#arp-send-dst" class="headerlink" title="arp_send_dst"></a><code>arp_send_dst</code></h3><p><code>arp_send_dst</code>用于真正的构造并发送一个<code>arp</code>报文，具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Create and send an arp packet. */</span></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">arp_send_dst</span><span class="params">(<span class="type">int</span> type, <span class="type">int</span> ptype, __be32 dest_ip,</span></span><br><span class="line"><span class="params">			 <span class="keyword">struct</span> net_device *dev, __be32 src_ip,</span></span><br><span class="line"><span class="params">			 <span class="type">const</span> <span class="type">unsigned</span> <span class="type">char</span> *dest_hw,</span></span><br><span class="line"><span class="params">			 <span class="type">const</span> <span class="type">unsigned</span> <span class="type">char</span> *src_hw,</span></span><br><span class="line"><span class="params">			 <span class="type">const</span> <span class="type">unsigned</span> <span class="type">char</span> *target_hw,</span></span><br><span class="line"><span class="params">			 <span class="keyword">struct</span> dst_entry *dst)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>;</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* arp on this interface. */</span></span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;flags &amp; IFF_NOARP)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//构造arp报文</span></span><br><span class="line">	skb = arp_create(type, ptype, dest_ip, dev, src_ip,</span><br><span class="line">			 dest_hw, src_hw, target_hw);</span><br><span class="line">	<span class="keyword">if</span> (!skb)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//这里通常应该是NULL</span></span><br><span class="line">	skb_dst_set(skb, dst_clone(dst));</span><br><span class="line">	<span class="comment">//封装一个netfilter钩子，然后调用dev_queue_xmit</span></span><br><span class="line">	arp_xmit(skb);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>arp_send_dst()</code> 首先检查网卡是否支持 ARP，然后通过 <code>arp_create()</code> 构造完整的 ARP <code>skb</code>，包括 ARP 头和二层以太网头。构造完成后会将路由信息挂到 <code>skb</code> 上，最后调用 <code>arp_xmit()</code> 发送数据包，而 <code>arp_xmit()</code> 内部会经过 <code>netfilter</code> 的 ARP hook，最终通过 <code>dev_queue_xmit()</code> 将 ARP 报文交给网卡驱动发送出去。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/ARP/" rel="tag"># ARP</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/04/27/napi_gro_receive%E6%94%B6%E5%8C%85/" rel="prev" title="napi_gro_receive收包流程">
+      <i class="fa fa-chevron-left"></i> napi_gro_receive收包流程
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BC%95%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">引言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#ARP-%E6%8A%A5%E6%96%87%E6%A0%BC%E5%BC%8F"><span class="nav-number">2.</span> <span class="nav-text">ARP 报文格式</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AD%97%E6%AE%B5%E5%90%AB%E4%B9%89"><span class="nav-number">2.1.</span> <span class="nav-text">字段含义</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%88%9D%E5%A7%8B%E5%8C%96"><span class="nav-number">3.</span> <span class="nav-text">初始化</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#arp-constructor"><span class="nav-number">3.1.</span> <span class="nav-text">arp_constructor</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#arp-hh-ops"><span class="nav-number">3.2.</span> <span class="nav-text">arp_hh_ops</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#arp-solicit"><span class="nav-number">3.3.</span> <span class="nav-text">arp_solicit</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#arp-send-dst"><span class="nav-number">3.4.</span> <span class="nav-text">arp_send_dst</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">121</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">29</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
