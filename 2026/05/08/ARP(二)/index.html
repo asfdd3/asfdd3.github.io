@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="arp_send_dstarp_send_dst用于真正的构造并发送一个arp报文，具体实现如下所示： 1234567891011121314151617181920212223&#x2F;* Create and send an arp packet. *&#x2F;static void arp_send_dst(int type, int ptype, __be32 dest_ip,			 struct net">
+<meta property="og:type" content="article">
+<meta property="og:title" content="ARP初始化（二）">
+<meta property="og:url" content="http://example.com/2026/05/08/ARP(%E4%BA%8C)/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="arp_send_dstarp_send_dst用于真正的构造并发送一个arp报文，具体实现如下所示： 1234567891011121314151617181920212223&#x2F;* Create and send an arp packet. *&#x2F;static void arp_send_dst(int type, int ptype, __be32 dest_ip,			 struct net">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-05-08T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-05-08T12:14:46.935Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="ARP">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/05/08/ARP(%E4%BA%8C)/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>ARP初始化（二） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/05/08/ARP(%E4%BA%8C)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          ARP初始化（二）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-05-08 22:00:00 / 修改时间：20:14:46" itemprop="dateCreated datePublished" datetime="2026-05-08T22:00:00+08:00">2026-05-08</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/05/08/ARP(%E4%BA%8C)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/05/08/ARP(%E4%BA%8C)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h3 id="arp-send-dst"><a href="#arp-send-dst" class="headerlink" title="arp_send_dst"></a><code>arp_send_dst</code></h3><p><code>arp_send_dst</code>用于真正的构造并发送一个<code>arp</code>报文，具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Create and send an arp packet. */</span></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">arp_send_dst</span><span class="params">(<span class="type">int</span> type, <span class="type">int</span> ptype, __be32 dest_ip,</span></span><br><span class="line"><span class="params">			 <span class="keyword">struct</span> net_device *dev, __be32 src_ip,</span></span><br><span class="line"><span class="params">			 <span class="type">const</span> <span class="type">unsigned</span> <span class="type">char</span> *dest_hw,</span></span><br><span class="line"><span class="params">			 <span class="type">const</span> <span class="type">unsigned</span> <span class="type">char</span> *src_hw,</span></span><br><span class="line"><span class="params">			 <span class="type">const</span> <span class="type">unsigned</span> <span class="type">char</span> *target_hw,</span></span><br><span class="line"><span class="params">			 <span class="keyword">struct</span> dst_entry *dst)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>;</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* arp on this interface. */</span></span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;flags &amp; IFF_NOARP)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//构造arp报文</span></span><br><span class="line">	skb = arp_create(type, ptype, dest_ip, dev, src_ip,</span><br><span class="line">			 dest_hw, src_hw, target_hw);</span><br><span class="line">	<span class="keyword">if</span> (!skb)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//这里通常应该是NULL</span></span><br><span class="line">	skb_dst_set(skb, dst_clone(dst));</span><br><span class="line">	<span class="comment">//封装一个netfilter钩子，然后调用dev_queue_xmit</span></span><br><span class="line">	arp_xmit(skb);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>arp_send_dst()</code> 首先检查网卡是否支持 ARP，然后通过 <code>arp_create()</code> 构造完整的 ARP <code>skb</code>，包括 ARP 头和二层以太网头。构造完成后会将路由信息挂到 <code>skb</code> 上，最后调用 <code>arp_xmit()</code> 发送数据包，而 <code>arp_xmit()</code> 内部会经过 <code>netfilter</code> 的 ARP hook，最终通过 <code>dev_queue_xmit()</code> 将 ARP 报文交给网卡驱动发送出去。</p>
+<h3 id="arp-create"><a href="#arp-create" class="headerlink" title="arp_create"></a>arp_create</h3><p> <code>arp_create()</code> 根据传入的源&#x2F;目的 IP、MAC、设备等信息，构造一个完整的 ARP 请求或 ARP 应答报文。具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment"> *	Create an arp packet. If dest_hw is not set, we create a broadcast</span></span><br><span class="line"><span class="comment"> *	message.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="keyword">struct</span> sk_buff *<span class="title function_">arp_create</span><span class="params">(<span class="type">int</span> type, <span class="type">int</span> ptype, __be32 dest_ip,</span></span><br><span class="line"><span class="params">			   <span class="keyword">struct</span> net_device *dev, __be32 src_ip,</span></span><br><span class="line"><span class="params">			   <span class="type">const</span> <span class="type">unsigned</span> <span class="type">char</span> *dest_hw,</span></span><br><span class="line"><span class="params">			   <span class="type">const</span> <span class="type">unsigned</span> <span class="type">char</span> *src_hw,</span></span><br><span class="line"><span class="params">			   <span class="type">const</span> <span class="type">unsigned</span> <span class="type">char</span> *target_hw)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">arphdr</span> *<span class="title">arp</span>;</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span> *arp_ptr;</span><br><span class="line">	<span class="type">int</span> hlen = LL_RESERVED_SPACE(dev);</span><br><span class="line">	<span class="type">int</span> tlen = dev-&gt;needed_tailroom;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	Allocate a buffer</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//申请skb 链路层头部长度 arp报文需要的长度 还有尾部预留的，通常是0把</span></span><br><span class="line">	skb = alloc_skb(arp_hdr_len(dev) + hlen + tlen, GFP_ATOMIC);</span><br><span class="line">	<span class="keyword">if</span> (!skb)</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="comment">//移动data 和tail指针</span></span><br><span class="line">	skb_reserve(skb, hlen);</span><br><span class="line">	skb_reset_network_header(skb);</span><br><span class="line">	<span class="comment">//put 尾部</span></span><br><span class="line">	arp = skb_put(skb, arp_hdr_len(dev));</span><br><span class="line">	<span class="comment">//关联dev</span></span><br><span class="line">	skb-&gt;dev = dev;</span><br><span class="line">	skb-&gt;protocol = htons(ETH_P_ARP);</span><br><span class="line">	<span class="keyword">if</span> (!src_hw)</span><br><span class="line">		src_hw = dev-&gt;dev_addr;</span><br><span class="line">	<span class="comment">//这里填充全F</span></span><br><span class="line">	<span class="keyword">if</span> (!dest_hw)</span><br><span class="line">		dest_hw = dev-&gt;broadcast;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	Fill the device header for the ARP frame</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	 <span class="comment">//填充二层头里面调用eth_header pushskb后直接memcpy </span></span><br><span class="line">	 <span class="comment">// 这里传入的len是给ieee802.3用的</span></span><br><span class="line">	<span class="keyword">if</span> (dev_hard_header(skb, dev, ptype, dest_hw, src_hw, skb-&gt;len) &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * Fill out the arp protocol part.</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * The arp hardware type should match the device type, except for FDDI,</span></span><br><span class="line"><span class="comment">	 * which (according to RFC 1390) should always equal 1 (Ethernet).</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	Exceptions everywhere. AX.25 uses the AX.25 PID value not the</span></span><br><span class="line"><span class="comment">	 *	DIX code for the protocol. Make these device structure fields.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//填 ARP 头</span></span><br><span class="line">	<span class="keyword">switch</span> (dev-&gt;type) &#123;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		arp-&gt;ar_hrd = htons(dev-&gt;type);</span><br><span class="line">		arp-&gt;ar_pro = htons(ETH_P_IP);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">if</span> IS_ENABLED(CONFIG_AX25)</span></span><br><span class="line">	<span class="keyword">case</span> ARPHRD_AX25:</span><br><span class="line">		arp-&gt;ar_hrd = htons(ARPHRD_AX25);</span><br><span class="line">		arp-&gt;ar_pro = htons(AX25_P_IP);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">if</span> IS_ENABLED(CONFIG_NETROM)</span></span><br><span class="line">	<span class="keyword">case</span> ARPHRD_NETROM:</span><br><span class="line">		arp-&gt;ar_hrd = htons(ARPHRD_NETROM);</span><br><span class="line">		arp-&gt;ar_pro = htons(AX25_P_IP);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">if</span> IS_ENABLED(CONFIG_FDDI)</span></span><br><span class="line">	<span class="keyword">case</span> ARPHRD_FDDI:</span><br><span class="line">		arp-&gt;ar_hrd = htons(ARPHRD_ETHER);</span><br><span class="line">		arp-&gt;ar_pro = htons(ETH_P_IP);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	&#125;</span><br><span class="line">	</span><br><span class="line">	arp-&gt;ar_hln = dev-&gt;addr_len;</span><br><span class="line">	arp-&gt;ar_pln = <span class="number">4</span>;</span><br><span class="line">	arp-&gt;ar_op = htons(type);</span><br><span class="line">	<span class="comment">//填 ARP 正文</span></span><br><span class="line">	arp_ptr = (<span class="type">unsigned</span> <span class="type">char</span> *)(arp + <span class="number">1</span>);</span><br><span class="line"></span><br><span class="line">	<span class="built_in">memcpy</span>(arp_ptr, src_hw, dev-&gt;addr_len);</span><br><span class="line">	arp_ptr += dev-&gt;addr_len;</span><br><span class="line">	<span class="built_in">memcpy</span>(arp_ptr, &amp;src_ip, <span class="number">4</span>);</span><br><span class="line">	arp_ptr += <span class="number">4</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">switch</span> (dev-&gt;type) &#123;</span><br><span class="line"><span class="meta">#<span class="keyword">if</span> IS_ENABLED(CONFIG_FIREWIRE_NET)</span></span><br><span class="line">	<span class="keyword">case</span> ARPHRD_IEEE1394:</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		<span class="keyword">if</span> (target_hw)</span><br><span class="line">			<span class="built_in">memcpy</span>(arp_ptr, target_hw, dev-&gt;addr_len);</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			<span class="built_in">memset</span>(arp_ptr, <span class="number">0</span>, dev-&gt;addr_len);</span><br><span class="line">		arp_ptr += dev-&gt;addr_len;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="built_in">memcpy</span>(arp_ptr, &amp;dest_ip, <span class="number">4</span>);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> skb;</span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">	kfree_skb(skb);</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>arp_create()</code> 的作用就是申请一个 <code>skb</code>，然后依次构造完整的 ARP 数据包：先预留链路层头部空间，再填充以太网头，接着填写 ARP 头和 ARP 正文中的源&#x2F;目的 MAC、源&#x2F;目的 IP、ARP 操作类型等信息，最终返回一个可以直接发送给网卡的 ARP 报文。</p>
+<h3 id="neigh-resolve-output"><a href="#neigh-resolve-output" class="headerlink" title="neigh_resolve_output"></a>neigh_resolve_output</h3><p><code>neigh_resolve_output()</code> 的作用是在发送数据包时检查邻居（ARP）是否已经解析出目的 MAC 地址，如果已经解析完成就直接封装二层头并发包，否则先触发 ARP&#x2F;NDP 解析并把数据包暂存到邻居队列中等待解析完成后再发送，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">neigh_resolve_output</span><span class="params">(<span class="keyword">struct</span> neighbour *neigh, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> rc = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//返回0表示可以直接发，1表示需要arp</span></span><br><span class="line">	<span class="keyword">if</span> (!neigh_event_send(neigh, skb)) &#123;</span><br><span class="line">		<span class="type">int</span> err;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span> =</span> neigh-&gt;dev;</span><br><span class="line">		<span class="type">unsigned</span> <span class="type">int</span> seq;</span><br><span class="line">		<span class="comment">//有没有cache回调，以太网设备肯定是有的，第一次没有会初始化</span></span><br><span class="line">		<span class="keyword">if</span> (dev-&gt;header_ops-&gt;cache &amp;&amp; !READ_ONCE(neigh-&gt;hh.hh_len))</span><br><span class="line">			<span class="comment">//缓存目的mac和源mac</span></span><br><span class="line">			neigh_hh_init(neigh);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">do</span> &#123;</span><br><span class="line">			<span class="comment">//调用netdev的headops的create memcpy二层头</span></span><br><span class="line">			__skb_pull(skb, skb_network_offset(skb));</span><br><span class="line">			seq = read_seqbegin(&amp;neigh-&gt;ha_lock);</span><br><span class="line">			err = dev_hard_header(skb, dev, ntohs(skb-&gt;protocol),</span><br><span class="line">					      neigh-&gt;ha, <span class="literal">NULL</span>, skb-&gt;len);</span><br><span class="line">		&#125; <span class="keyword">while</span> (read_seqretry(&amp;neigh-&gt;ha_lock, seq));</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (err &gt;= <span class="number">0</span>)</span><br><span class="line">			rc = dev_queue_xmit(skb);</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			<span class="keyword">goto</span> out_kfree_skb;</span><br><span class="line">	&#125;</span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">return</span> rc;</span><br><span class="line">out_kfree_skb:</span><br><span class="line">	rc = -EINVAL;</span><br><span class="line">	kfree_skb(skb);</span><br><span class="line">	<span class="keyword">goto</span> out;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>neigh_resolve_output()</code> 的作用就是在邻居项已经解析出目的 MAC 地址后，给 <code>skb</code> 封装二层以太网头并发送，<strong>它先通过 <code>neigh_event_send()</code> 判断是否还需要 ARP 解析</strong>，如果不需要，就初始化硬件头缓存 <code>hh_cache</code>，然后调用 <code>dev_hard_header()</code> 把目的 MAC、源 MAC、协议类型等写入二层头，最后通过 <code>dev_queue_xmit()</code> 继续向下发送。</p>
+<p>上述<code>neigh_event_send</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> __always_inline <span class="type">int</span> <span class="title function_">neigh_event_send_probe</span><span class="params">(<span class="keyword">struct</span> neighbour *neigh,</span></span><br><span class="line"><span class="params">						  <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">						  <span class="type">const</span> <span class="type">bool</span> immediate_ok)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> now = jiffies;</span><br><span class="line">	<span class="comment">//更新最近使用的时间</span></span><br><span class="line">	<span class="keyword">if</span> (READ_ONCE(neigh-&gt;used) != now)</span><br><span class="line">		WRITE_ONCE(neigh-&gt;used, now);</span><br><span class="line">	<span class="comment">//如果可用，或者正在探测(当前可能不可靠)或者在观察期，就直接发，否则发送arp请求</span></span><br><span class="line">	<span class="keyword">if</span> (!(READ_ONCE(neigh-&gt;nud_state) &amp; (NUD_CONNECTED | NUD_DELAY | NUD_PROBE)))</span><br><span class="line">		<span class="keyword">return</span> __neigh_event_send(neigh, skb, immediate_ok);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> <span class="title function_">neigh_event_send</span><span class="params">(<span class="keyword">struct</span> neighbour *neigh, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span> neigh_event_send_probe(neigh, skb, <span class="literal">true</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>neigh_event_send</code>核心思想史在发送数据包前检查邻居表项当前是否还能直接使用，并决定是否需要触发 ARP探测。它首先更新邻居项最近使用时间 <code>used</code>，然后判断邻居状态：如果当前是 <code>NUD_CONNECTED</code>（已确认可达）、<code>NUD_DELAY</code>（观察期）或者 <code>NUD_PROBE</code>（正在探测），说明还有可用 MAC，可以直接继续发包并返回 0；否则说明邻居项已经不可用或未解析，于是调用 <code>__neigh_event_send()</code> 去触发 ARP 请求，同时可能把 skb 挂到邻居队列等待解析完成。</p>
+<p>上述<code>__neigh_event_send</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __neigh_event_send(<span class="keyword">struct</span> neighbour *neigh, <span class="keyword">struct</span> sk_buff *skb,</span><br><span class="line">		       <span class="type">const</span> <span class="type">bool</span> immediate_ok)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> rc;</span><br><span class="line">	<span class="type">bool</span> immediate_probe = <span class="literal">false</span>;</span><br><span class="line">	<span class="comment">//先加一个写锁</span></span><br><span class="line">	write_lock_bh(&amp;neigh-&gt;lock);</span><br><span class="line"></span><br><span class="line">	rc = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//如果已经可用/正在处理，直接返回 0</span></span><br><span class="line">	<span class="keyword">if</span> (neigh-&gt;nud_state &amp; (NUD_CONNECTED | NUD_DELAY | NUD_PROBE))</span><br><span class="line">		<span class="keyword">goto</span> out_unlock_bh;</span><br><span class="line">	<span class="comment">//已经dead了</span></span><br><span class="line">	<span class="keyword">if</span> (neigh-&gt;dead)</span><br><span class="line">				<span class="keyword">goto</span> out_dead;</span><br><span class="line">	<span class="comment">//第一次发包通常走这个分支</span></span><br><span class="line">	<span class="keyword">if</span> (!(neigh-&gt;nud_state &amp; (NUD_STALE | NUD_INCOMPLETE))) &#123;</span><br><span class="line">		<span class="comment">//是否允许发 ARP 广播探测或应用层探测</span></span><br><span class="line">		<span class="keyword">if</span> (NEIGH_VAR(neigh-&gt;parms, MCAST_PROBES) +</span><br><span class="line">		    NEIGH_VAR(neigh-&gt;parms, APP_PROBES)) &#123;</span><br><span class="line">			<span class="type">unsigned</span> <span class="type">long</span> next, now = jiffies;</span><br><span class="line">			<span class="comment">//设置探测次数,这里默认应该是设置为3</span></span><br><span class="line">			<span class="type">atomic_set</span>(&amp;neigh-&gt;probes,</span><br><span class="line">				   NEIGH_VAR(neigh-&gt;parms, UCAST_PROBES));</span><br><span class="line">			<span class="comment">//删除旧定时器</span></span><br><span class="line">			neigh_del_timer(neigh);</span><br><span class="line">			<span class="comment">//设置为NUD_INCOMPLETE</span></span><br><span class="line">			WRITE_ONCE(neigh-&gt;nud_state, NUD_INCOMPLETE);</span><br><span class="line">			<span class="comment">//记录当前时间</span></span><br><span class="line">			neigh-&gt;updated = now;</span><br><span class="line">			<span class="comment">//是否立即发，参数决定，工作队列貌似是不立即发</span></span><br><span class="line">			<span class="keyword">if</span> (!immediate_ok) &#123;</span><br><span class="line">				next = now + <span class="number">1</span>;<span class="comment">//把arp的发送动作交给timer</span></span><br><span class="line">			&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">				immediate_probe = <span class="literal">true</span>;</span><br><span class="line">				<span class="comment">//设置下一次重传时间</span></span><br><span class="line">				next = now + max(NEIGH_VAR(neigh-&gt;parms,</span><br><span class="line">							   RETRANS_TIME),</span><br><span class="line">						 HZ / <span class="number">100</span>);</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="comment">//注册 timer</span></span><br><span class="line">			neigh_add_timer(neigh, next);</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			<span class="comment">//几乎不会走这个吧，除非配置为0</span></span><br><span class="line">			WRITE_ONCE(neigh-&gt;nud_state, NUD_FAILED);</span><br><span class="line">			neigh-&gt;updated = jiffies;</span><br><span class="line">			write_unlock_bh(&amp;neigh-&gt;lock);</span><br><span class="line"></span><br><span class="line">			kfree_skb_reason(skb, SKB_DROP_REASON_NEIGH_FAILED);</span><br><span class="line">			<span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	<span class="comment">//有旧的mac的情况</span></span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (neigh-&gt;nud_state &amp; NUD_STALE) &#123;</span><br><span class="line">		neigh_dbg(<span class="number">2</span>, <span class="string">&quot;neigh %p is delayed\n&quot;</span>, neigh);</span><br><span class="line">		neigh_del_timer(neigh);				<span class="comment">//删除旧的定时器</span></span><br><span class="line">		WRITE_ONCE(neigh-&gt;nud_state, NUD_DELAY);<span class="comment">//这里进行状态转换，表示先观察一段时间</span></span><br><span class="line">		neigh-&gt;updated = jiffies;				<span class="comment">//更新时间戳，记录状态变化的时间</span></span><br><span class="line">		neigh_add_timer(neigh, jiffies +</span><br><span class="line">				NEIGH_VAR(neigh-&gt;parms, DELAY_PROBE_TIME)); <span class="comment">//重新挂一个 DELAY_PROBE_TIME 定时器</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//还没有解析出skb，把skb暂时存起来，等arp完成后在发送，如果队列满了就丢弃数据包</span></span><br><span class="line">	<span class="keyword">if</span> (neigh-&gt;nud_state == NUD_INCOMPLETE) &#123;</span><br><span class="line">		<span class="keyword">if</span> (skb) &#123;</span><br><span class="line">			<span class="comment">//队列满了就丢旧包</span></span><br><span class="line">			<span class="keyword">while</span> (neigh-&gt;arp_queue_len_bytes + skb-&gt;truesize &gt;</span><br><span class="line">			       NEIGH_VAR(neigh-&gt;parms, QUEUE_LEN_BYTES)) &#123;</span><br><span class="line">				<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">buff</span>;</span></span><br><span class="line">				<span class="comment">//从队列头部拿数据包</span></span><br><span class="line">				buff = __skb_dequeue(&amp;neigh-&gt;arp_queue);</span><br><span class="line">				<span class="keyword">if</span> (!buff)</span><br><span class="line">					<span class="keyword">break</span>;</span><br><span class="line">				neigh-&gt;arp_queue_len_bytes -= buff-&gt;truesize;</span><br><span class="line">				kfree_skb_reason(buff, SKB_DROP_REASON_NEIGH_QUEUEFULL);</span><br><span class="line">				NEIGH_CACHE_STAT_INC(neigh-&gt;tbl, unres_discards);</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="comment">//确保 dst 不被释放</span></span><br><span class="line">			skb_dst_force(skb);</span><br><span class="line">			<span class="comment">//数据包入队</span></span><br><span class="line">			__skb_queue_tail(&amp;neigh-&gt;arp_queue, skb);</span><br><span class="line">			neigh-&gt;arp_queue_len_bytes += skb-&gt;truesize;</span><br><span class="line">		&#125;</span><br><span class="line">		rc = <span class="number">1</span>; <span class="comment">//这个 skb 已经被邻居子系统接管了外面不会直接发送数据包了</span></span><br><span class="line">	&#125;</span><br><span class="line">out_unlock_bh:</span><br><span class="line">	<span class="comment">//是否立即探测</span></span><br><span class="line">	<span class="keyword">if</span> (immediate_probe)</span><br><span class="line">		neigh_probe(neigh);<span class="comment">//clone skb 后调用arp_solicit</span></span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		write_unlock(&amp;neigh-&gt;lock);</span><br><span class="line">	local_bh_enable();</span><br><span class="line">	trace_neigh_event_send_done(neigh, rc);</span><br><span class="line">	<span class="keyword">return</span> rc;</span><br><span class="line"></span><br><span class="line">out_dead:</span><br><span class="line">	<span class="keyword">if</span> (neigh-&gt;nud_state &amp; NUD_STALE)</span><br><span class="line">		<span class="keyword">goto</span> out_unlock_bh;</span><br><span class="line">	write_unlock_bh(&amp;neigh-&gt;lock);</span><br><span class="line">	kfree_skb_reason(skb, SKB_DROP_REASON_NEIGH_DEAD);</span><br><span class="line">	trace_neigh_event_send_dead(neigh, <span class="number">1</span>);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>__neigh_event_send()</code> 的作用可以理解成：发送数据包前发现“不知道对方 MAC 地址”或者“这个 MAC 可能已经不可靠”时，内核就在这里处理后续动作。第一次通信时，它会把邻居状态改成 <code>NUD_INCOMPLETE</code>，启动定时器并发送 ARP 请求，同时把当前要发送的数据包先缓存起来，等 ARP 回复到了再真正发出去；如果之前有旧 MAC，只是长时间没用了，那么不会立刻 ARP，而是先进入 <code>NUD_DELAY</code> 观察状态，继续尝试用旧 MAC 发包看看对端还有没有回应。整个函数本质上就是 Linux 邻居子系统里发 ARP、切状态、缓存数据包的核心逻辑。</p>
+<h3 id="neigh-table-init"><a href="#neigh-table-init" class="headerlink" title="neigh_table_init"></a>neigh_table_init</h3><p>回到<code>arp_init</code>中，介绍完<code>arp_tbl</code>后，会调用<code>neigh_table_init</code>将<code>arp_tbl</code>注册到邻居子系统中，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">neigh_table_init</span><span class="params">(<span class="type">int</span> index, <span class="keyword">struct</span> neigh_table *tbl)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> now = jiffies;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> phsize;</span><br><span class="line"></span><br><span class="line">	INIT_LIST_HEAD(&amp;tbl-&gt;parms_list);</span><br><span class="line">	INIT_LIST_HEAD(&amp;tbl-&gt;gc_list);		<span class="comment">//垃圾回收链表</span></span><br><span class="line">	INIT_LIST_HEAD(&amp;tbl-&gt;managed_list);	<span class="comment">//受管邻居链表，由外部进程管理</span></span><br><span class="line"></span><br><span class="line">	list_add(&amp;tbl-&gt;parms.<span class="built_in">list</span>, &amp;tbl-&gt;parms_list);<span class="comment">//挂到链表上</span></span><br><span class="line">	write_pnet(&amp;tbl-&gt;parms.net, &amp;init_net); <span class="comment">//设置命名空间</span></span><br><span class="line">	refcount_set(&amp;tbl-&gt;parms.refcnt, <span class="number">1</span>);</span><br><span class="line">	<span class="comment">//在默认30s的配置上随机抖动 15s</span></span><br><span class="line">	tbl-&gt;parms.reachable_time = </span><br><span class="line">			  neigh_rand_reach_time(NEIGH_VAR(&amp;tbl-&gt;parms, BASE_REACHABLE_TIME));</span><br><span class="line">	<span class="comment">//初始化发送队列长度</span></span><br><span class="line">	tbl-&gt;parms.qlen = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	tbl-&gt;stats = alloc_percpu(<span class="keyword">struct</span> neigh_statistics);</span><br><span class="line">	<span class="keyword">if</span> (!tbl-&gt;stats)</span><br><span class="line">		panic(<span class="string">&quot;cannot create neighbour cache statistics&quot;</span>);</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_PROC_FS</span></span><br><span class="line">	<span class="keyword">if</span> (!proc_create_seq_data(tbl-&gt;id, <span class="number">0</span>, init_net.proc_net_stat,</span><br><span class="line">			      &amp;neigh_stat_seq_ops, tbl))</span><br><span class="line">		panic(<span class="string">&quot;cannot create neighbour proc dir entry&quot;</span>);</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="comment">//分配并初始化一个邻居哈希表</span></span><br><span class="line">	RCU_INIT_POINTER(tbl-&gt;nht, neigh_hash_alloc(<span class="number">3</span>));</span><br><span class="line">	<span class="comment">//分配代理邻居哈希表</span></span><br><span class="line">	phsize = (PNEIGH_HASHMASK + <span class="number">1</span>) * <span class="keyword">sizeof</span>(<span class="keyword">struct</span> pneigh_entry *);</span><br><span class="line">	tbl-&gt;phash_buckets = kzalloc(phsize, GFP_KERNEL);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!tbl-&gt;nht || !tbl-&gt;phash_buckets)</span><br><span class="line">		panic(<span class="string">&quot;cannot allocate neighbour cache hashes&quot;</span>);</span><br><span class="line">	<span class="comment">//计算每个邻居条目使用到的大小</span></span><br><span class="line">	<span class="keyword">if</span> (!tbl-&gt;entry_size)</span><br><span class="line">		tbl-&gt;entry_size = ALIGN(offsetof(<span class="keyword">struct</span> neighbour, primary_key) +</span><br><span class="line">					tbl-&gt;key_len, NEIGH_PRIV_ALIGN);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		WARN_ON(tbl-&gt;entry_size % NEIGH_PRIV_ALIGN);</span><br><span class="line"></span><br><span class="line">	rwlock_init(&amp;tbl-&gt;lock);</span><br><span class="line">	<span class="comment">//工作队列，用于GC</span></span><br><span class="line">	INIT_DEFERRABLE_WORK(&amp;tbl-&gt;gc_work, neigh_periodic_work);</span><br><span class="line">	queue_delayed_work(system_power_efficient_wq, &amp;tbl-&gt;gc_work,</span><br><span class="line">			tbl-&gt;parms.reachable_time);</span><br><span class="line">	<span class="comment">//工作队列用于，探测mangedlist管理的表项</span></span><br><span class="line">	INIT_DEFERRABLE_WORK(&amp;tbl-&gt;managed_work, neigh_managed_work);</span><br><span class="line">	queue_delayed_work(system_power_efficient_wq, &amp;tbl-&gt;managed_work, <span class="number">0</span>);</span><br><span class="line">	<span class="comment">//设置代理arp的定时器</span></span><br><span class="line">	timer_setup(&amp;tbl-&gt;proxy_timer, neigh_proxy_process, <span class="number">0</span>);</span><br><span class="line">	skb_queue_head_init_class(&amp;tbl-&gt;proxy_queue,</span><br><span class="line">			&amp;neigh_table_proxy_queue_class);</span><br><span class="line"></span><br><span class="line">	tbl-&gt;last_flush = now;</span><br><span class="line">	tbl-&gt;last_rand	= now + tbl-&gt;parms.reachable_time * <span class="number">20</span>;</span><br><span class="line">	<span class="comment">//全局数组</span></span><br><span class="line">	neigh_tables[index] = tbl;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>neigh_table_init()</code> 先初始化各种链表、默认参数和引用计数，然后根据 <code>base_reachable_time</code> 算出带随机抖动的 <code>reachable_time</code>，接着分配邻居统计信息、普通邻居哈希表和代理邻居哈希表，再计算每个邻居项需要占用的大小；之后初始化表锁、GC 延迟工作队列、受管邻居探测工作队列、代理 ARP 定时器和代理报文队列，最后记录时间戳，并把这张表挂到全局 <code>neigh_tables[index]</code> 数组里。简单说，这个函数就是把邻居子系统需要用到的表结构、哈希桶、定时器、工作队列、GC机制、代理ARP队列等基础设施全部准备好。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/ARP/" rel="tag"># ARP</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/05/06/ARP/" rel="prev" title="ARP初始化（一）">
+      <i class="fa fa-chevron-left"></i> ARP初始化（一）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#arp-send-dst"><span class="nav-number">1.</span> <span class="nav-text">arp_send_dst</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#arp-create"><span class="nav-number">2.</span> <span class="nav-text">arp_create</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#neigh-resolve-output"><span class="nav-number">3.</span> <span class="nav-text">neigh_resolve_output</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#neigh-table-init"><span class="nav-number">4.</span> <span class="nav-text">neigh_table_init</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">122</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">29</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
