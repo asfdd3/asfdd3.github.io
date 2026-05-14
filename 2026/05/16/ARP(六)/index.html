@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="上述arp_ignore、arp_filter，arp_accept控制如下行为：    参数 取值 含义    arp_ignore 0 最宽松，只要目标 IP 是本机地址就回复    1 仅当目标 IP 配置在接收接口上时才回复    2 目标 IP 必须在接收接口上，且请求源 IP 与该接口同子网    3 不响应 scope host 类型地址    4~7 保留    8 永不回复 AR">
+<meta property="og:type" content="article">
+<meta property="og:title" content="ARP报文的接收与发送（三）">
+<meta property="og:url" content="http://example.com/2026/05/16/ARP(%E5%85%AD)/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="上述arp_ignore、arp_filter，arp_accept控制如下行为：    参数 取值 含义    arp_ignore 0 最宽松，只要目标 IP 是本机地址就回复    1 仅当目标 IP 配置在接收接口上时才回复    2 目标 IP 必须在接收接口上，且请求源 IP 与该接口同子网    3 不响应 scope host 类型地址    4~7 保留    8 永不回复 AR">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-05-16T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-05-13T13:33:32.816Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="ARP">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/05/16/ARP(%E5%85%AD)/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>ARP报文的接收与发送（三） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/05/16/ARP(%E5%85%AD)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          ARP报文的接收与发送（三）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-05-16 22:00:00" itemprop="dateCreated datePublished" datetime="2026-05-16T22:00:00+08:00">2026-05-16</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-05-13 21:33:32" itemprop="dateModified" datetime="2026-05-13T21:33:32+08:00">2026-05-13</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/05/16/ARP(%E5%85%AD)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/05/16/ARP(%E5%85%AD)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>上述<code>arp_ignore</code>、<code>arp_filter</code>，<code>arp_accept</code>控制如下行为：</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>取值</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>arp_ignore</code></td>
+<td>0</td>
+<td>最宽松，只要目标 IP 是本机地址就回复</td>
+</tr>
+<tr>
+<td></td>
+<td>1</td>
+<td>仅当目标 IP 配置在接收接口上时才回复</td>
+</tr>
+<tr>
+<td></td>
+<td>2</td>
+<td>目标 IP 必须在接收接口上，且请求源 IP 与该接口同子网</td>
+</tr>
+<tr>
+<td></td>
+<td>3</td>
+<td>不响应 scope host 类型地址</td>
+</tr>
+<tr>
+<td></td>
+<td>4~7</td>
+<td>保留</td>
+</tr>
+<tr>
+<td></td>
+<td>8</td>
+<td>永不回复 ARP</td>
+</tr>
+<tr>
+<td><code>arp_filter</code></td>
+<td>0</td>
+<td>不做路由过滤</td>
+</tr>
+<tr>
+<td></td>
+<td>1</td>
+<td>根据路由结果判断是否应从当前接口回复，避免 ARP Flux</td>
+</tr>
+<tr>
+<td><code>arp_accept</code></td>
+<td>0</td>
+<td>不接受 Gratuitous ARP，不创建新邻居项</td>
+</tr>
+<tr>
+<td></td>
+<td>1</td>
+<td>接受 Gratuitous ARP，并创建&#x2F;更新邻居项</td>
+</tr>
+<tr>
+<td></td>
+<td>2</td>
+<td>仅当 Gratuitous ARP 的源 IP 与接收接口同子网时才接受</td>
+</tr>
+</tbody></table>
+<p>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">arp_ignore</span><span class="params">(<span class="keyword">struct</span> in_device *in_dev, __be32 sip, __be32 tip)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> dev_net(in_dev-&gt;dev);</span><br><span class="line">    <span class="type">int</span> scope;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">switch</span> (IN_DEV_ARP_IGNORE(in_dev)) &#123;</span><br><span class="line">    <span class="comment">//最宽松的情况</span></span><br><span class="line">    <span class="keyword">case</span> <span class="number">0</span>: <span class="comment">/* Reply, the tip is already validated */</span></span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    <span class="comment">//目的ip在这个设备上</span></span><br><span class="line">    <span class="keyword">case</span> <span class="number">1</span>: <span class="comment">/* Reply only if tip is configured on the incoming interface */</span></span><br><span class="line">        sip = <span class="number">0</span>;</span><br><span class="line">        scope = RT_SCOPE_HOST;</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    <span class="comment">//同网段限制</span></span><br><span class="line">    <span class="keyword">case</span> <span class="number">2</span>: <span class="comment">/*</span></span><br><span class="line"><span class="comment">         * Reply only if tip is configured on the incoming interface</span></span><br><span class="line"><span class="comment">         * and is in same subnet as sip</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        scope = RT_SCOPE_HOST;</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    <span class="keyword">case</span> <span class="number">3</span>: <span class="comment">/* Do not reply for scope host addresses */</span></span><br><span class="line">        sip = <span class="number">0</span>;</span><br><span class="line">        scope = RT_SCOPE_LINK;</span><br><span class="line">        in_dev = <span class="literal">NULL</span>;</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    <span class="comment">//保留</span></span><br><span class="line">    <span class="keyword">case</span> <span class="number">4</span>: <span class="comment">/* Reserved */</span></span><br><span class="line">    <span class="keyword">case</span> <span class="number">5</span>:</span><br><span class="line">    <span class="keyword">case</span> <span class="number">6</span>:</span><br><span class="line">    <span class="keyword">case</span> <span class="number">7</span>:</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    <span class="comment">//不回复</span></span><br><span class="line">    <span class="keyword">case</span> <span class="number">8</span>: <span class="comment">/* Do not reply */</span></span><br><span class="line">        <span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">default</span>:</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> !inet_confirm_addr(net, in_dev, sip, tip, scope);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">arp_accept</span><span class="params">(<span class="keyword">struct</span> in_device *in_dev, __be32 sip)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> dev_net(in_dev-&gt;dev);</span><br><span class="line">    <span class="type">int</span> scope = RT_SCOPE_LINK;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">switch</span> (IN_DEV_ARP_ACCEPT(in_dev)) &#123;</span><br><span class="line">    <span class="keyword">case</span> <span class="number">0</span>: <span class="comment">/* Don&#x27;t create new entries from garp */</span><span class="comment">//不接受任何</span></span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">case</span> <span class="number">1</span>: <span class="comment">/* Create new entries from garp */</span> <span class="comment">//完全接受</span></span><br><span class="line">        <span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">case</span> <span class="number">2</span>: <span class="comment">/* Create a neighbor in the arp table only if sip</span></span><br><span class="line"><span class="comment">         * is in the same subnet as an address configured</span></span><br><span class="line"><span class="comment">         * on the interface that received the garp message</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="comment">//同一子网可以接受</span></span><br><span class="line">        <span class="keyword">return</span> !!inet_confirm_addr(net, in_dev, sip, <span class="number">0</span>, scope);</span><br><span class="line">    <span class="keyword">default</span>:</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>arp_is_garp</code>用于判断是否为免费ARP报文，具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">bool</span> <span class="title function_">arp_is_garp</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> net_device *dev,</span></span><br><span class="line"><span class="params">            <span class="type">int</span> *addr_type, __be16 ar_op,</span></span><br><span class="line"><span class="params">            __be32 sip, __be32 tip,</span></span><br><span class="line"><span class="params">            <span class="type">unsigned</span> <span class="type">char</span> *sha, <span class="type">unsigned</span> <span class="type">char</span> *tha)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="comment">//ip地址必须相同</span></span><br><span class="line">    <span class="type">bool</span> is_garp = tip == sip;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Gratuitous ARP _replies_ also require target hwaddr to be</span></span><br><span class="line"><span class="comment">     * the same as source.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="keyword">if</span> (is_garp &amp;&amp; ar_op == htons(ARPOP_REPLY))<span class="comment">//是否是应答包</span></span><br><span class="line">        is_garp =</span><br><span class="line">            <span class="comment">/* IPv4 over IEEE 1394 doesn&#x27;t provide target</span></span><br><span class="line"><span class="comment">             * hardware address field in its ARP payload.</span></span><br><span class="line"><span class="comment">             */</span></span><br><span class="line">            tha &amp;&amp;</span><br><span class="line">            !<span class="built_in">memcmp</span>(tha, sha, dev-&gt;addr_len); <span class="comment">//标 MAC 地址 tha 必须等于源 MAC 地址 sha。</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">//源ip地址必须是单播地址</span></span><br><span class="line">    <span class="keyword">if</span> (is_garp) &#123;</span><br><span class="line">        *addr_type = inet_addr_type_dev_table(net, dev, sip);</span><br><span class="line">        <span class="keyword">if</span> (*addr_type != RTN_UNICAST)</span><br><span class="line">            is_garp = <span class="literal">false</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> is_garp;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>arp_is_garp()</code> 用来判断当前收到的 ARP 包是不是 Gratuitous ARP（免费 ARP）。它首先要求源 IP 和目标 IP 相同，因为免费 ARP 本质上是在主动广播“这个 IP 是我的”。如果是 ARP Reply，还要求源 MAC 和目标 MAC 也一致，防止误判普通 ARP 应答。最后再检查这个 IP 是否属于合法单播地址，只有满足这些条件，内核才会把它当作 Gratuitous ARP 处理。</p>
+<p>回到<code>arp_process</code>中，<code>neigh_update</code> （注意neigh_event_ns也是封装了<code>neigh_update</code>）用于更新邻居表项的 MAC 地址、NUD 状态和时间戳等信息，在收到 ARP Reply、可学习的 ARP Request时被调用。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br></pre></td><td class="code"><pre><span class="line"> <span class="comment">//add del update都会调用</span></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> __neigh_update(<span class="keyword">struct</span> neighbour *neigh, <span class="type">const</span> u8 *lladdr,</span><br><span class="line">              u8 new, u32 flags, u32 nlmsg_pid,</span><br><span class="line">              <span class="keyword">struct</span> netlink_ext_ack *extack)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="type">bool</span> gc_update = <span class="literal">false</span>, managed_update = <span class="literal">false</span>;</span><br><span class="line">    <span class="type">int</span> update_isrouter = <span class="number">0</span>;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span>;</span></span><br><span class="line">    <span class="type">int</span> err, notify = <span class="number">0</span>;</span><br><span class="line">    u8 old;</span><br><span class="line">    <span class="comment">//trace point</span></span><br><span class="line">    trace_neigh_update(neigh, lladdr, new, flags, nlmsg_pid);</span><br><span class="line"></span><br><span class="line">    write_lock_bh(&amp;neigh-&gt;lock);</span><br><span class="line"></span><br><span class="line">    dev    = neigh-&gt;dev;        </span><br><span class="line">    old    = neigh-&gt;nud_state;<span class="comment">//记录邻居表项原来的状态</span></span><br><span class="line">    err    = -EPERM;</span><br><span class="line">    <span class="comment">//已经dead了 ，比如网口已经down了?</span></span><br><span class="line">    <span class="keyword">if</span> (neigh-&gt;dead) &#123;</span><br><span class="line">        NL_SET_ERR_MSG(extack, <span class="string">&quot;Neighbor entry is now dead&quot;</span>);</span><br><span class="line">        new = old;</span><br><span class="line">        <span class="keyword">goto</span> out;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (!(flags &amp; NEIGH_UPDATE_F_ADMIN) &amp;&amp;  <span class="comment">//如果不是管理员，相当于是人工配置的</span></span><br><span class="line">        (old &amp; (NUD_NOARP | NUD_PERMANENT))) <span class="comment">//不需要arp | 管理员手动添加的静态ARP</span></span><br><span class="line">        <span class="keyword">goto</span> out;</span><br><span class="line">    <span class="comment">//根据传入的flags，更新邻居条目内部的flag</span></span><br><span class="line">    neigh_update_flags(neigh, flags, &amp;notify, &amp;gc_update, &amp;managed_update);</span><br><span class="line">    <span class="keyword">if</span> (flags &amp; (NEIGH_UPDATE_F_USE | NEIGH_UPDATE_F_MANAGED)) &#123; <span class="comment">//貌似只有用户配置才有这个标志</span></span><br><span class="line">        new = old &amp; ~NUD_PERMANENT;</span><br><span class="line">        WRITE_ONCE(neigh-&gt;nud_state, new);</span><br><span class="line">        err = <span class="number">0</span>;</span><br><span class="line">        <span class="keyword">goto</span> out;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//判断邻居条目是否有效，无效会进入这个分支,注意这里取决于传入的参数，通常不会进入</span></span><br><span class="line">    <span class="keyword">if</span> (!(new &amp; NUD_VALID)) &#123;</span><br><span class="line">        neigh_del_timer(neigh);</span><br><span class="line">        <span class="keyword">if</span> (old &amp; NUD_CONNECTED)<span class="comment">//原本是可用的</span></span><br><span class="line">            neigh_suspect(neigh);<span class="comment">//重新设置output</span></span><br><span class="line">        WRITE_ONCE(neigh-&gt;nud_state, new);<span class="comment">//更新状态</span></span><br><span class="line">        err = <span class="number">0</span>;</span><br><span class="line">        notify = old &amp; NUD_VALID; <span class="comment">//决定是否需要通知用户空间</span></span><br><span class="line">        <span class="keyword">if</span> ((old &amp; (NUD_INCOMPLETE | NUD_PROBE)) &amp;&amp; <span class="comment">//从等待状态变为失败</span></span><br><span class="line">            (new &amp; NUD_FAILED)) &#123;</span><br><span class="line">            neigh_invalidate(neigh);<span class="comment">//清空发送队列中的数据包</span></span><br><span class="line">            notify = <span class="number">1</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">goto</span> out;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Compare new lladdr with cached one */</span></span><br><span class="line">    <span class="keyword">if</span> (!dev-&gt;addr_len) &#123; <span class="comment">//没有mac地址的情况</span></span><br><span class="line">        <span class="comment">/* First case: device needs no address. */</span></span><br><span class="line">        lladdr = neigh-&gt;ha;</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (lladdr) &#123; <span class="comment">//通常情况</span></span><br><span class="line">        <span class="comment">/* The second case: if something is already cached</span></span><br><span class="line"><span class="comment">           and a new address is proposed:</span></span><br><span class="line"><span class="comment">           - compare new &amp; old</span></span><br><span class="line"><span class="comment">           - if they are different, check override flag</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="keyword">if</span> ((old &amp; NUD_VALID) &amp;&amp; <span class="comment">//当前条目有效</span></span><br><span class="line">            !<span class="built_in">memcmp</span>(lladdr, neigh-&gt;ha, dev-&gt;addr_len)) <span class="comment">//新MAC == 旧MAC</span></span><br><span class="line">            lladdr = neigh-&gt;ha; <span class="comment">//重指</span></span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">/* No address is supplied; if we know something,</span></span><br><span class="line"><span class="comment">           use it, otherwise discard the request.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="comment">//没有传入地址的情况，比如说arp_invalidate </span></span><br><span class="line">        err = -EINVAL;</span><br><span class="line">        <span class="keyword">if</span> (!(old &amp; NUD_VALID)) &#123;</span><br><span class="line">            NL_SET_ERR_MSG(extack, <span class="string">&quot;No link layer address given&quot;</span>);</span><br><span class="line">            <span class="keyword">goto</span> out;</span><br><span class="line">        &#125;</span><br><span class="line">        lladdr = neigh-&gt;ha;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Update confirmed timestamp for neighbour entry after we</span></span><br><span class="line"><span class="comment">     * received ARP packet even if it doesn&#x27;t change IP to MAC binding.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="keyword">if</span> (new &amp; NUD_CONNECTED)</span><br><span class="line">        neigh-&gt;confirmed = jiffies;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* If entry was valid and address is not changed,</span></span><br><span class="line"><span class="comment">       do not change entry state, if new one is STALE.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    err = <span class="number">0</span>;</span><br><span class="line">    update_isrouter = flags &amp; NEIGH_UPDATE_F_OVERRIDE_ISROUTER; <span class="comment">//用户配置才有这个标志位</span></span><br><span class="line">    <span class="keyword">if</span> (old &amp; NUD_VALID) &#123;<span class="comment">//当前条目有效</span></span><br><span class="line">        <span class="comment">//MAC不同！！！且没有OVERRIDE标志</span></span><br><span class="line">        <span class="keyword">if</span> (lladdr != neigh-&gt;ha &amp;&amp; !(flags &amp; NEIGH_UPDATE_F_OVERRIDE)) &#123;</span><br><span class="line">            update_isrouter = <span class="number">0</span>;</span><br><span class="line">            <span class="keyword">if</span> ((flags &amp; NEIGH_UPDATE_F_WEAK_OVERRIDE) &amp;&amp;</span><br><span class="line">                (old &amp; NUD_CONNECTED)) &#123;</span><br><span class="line">                lladdr = neigh-&gt;ha; <span class="comment">//// 使用旧MAC</span></span><br><span class="line">                new = NUD_STALE;    <span class="comment">//// 降级为STALE</span></span><br><span class="line">            &#125; <span class="keyword">else</span></span><br><span class="line">                <span class="keyword">goto</span> out;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;<span class="comment">//MAC相同，或者有OVERRIDE标志</span></span><br><span class="line">            <span class="keyword">if</span> (lladdr == neigh-&gt;ha &amp;&amp; new == NUD_STALE &amp;&amp; <span class="comment">//第二个条件在arp_process中requset传进来会是1</span></span><br><span class="line">                !(flags &amp; NEIGH_UPDATE_F_ADMIN)) <span class="comment">//这一行大概率的情况下是1</span></span><br><span class="line">                new = old; <span class="comment">//保持原来的抓给你太</span></span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Update timestamp only once we know we will make a change to the</span></span><br><span class="line"><span class="comment">     * neighbour entry. Otherwise we risk to move the locktime window with</span></span><br><span class="line"><span class="comment">     * noop updates and ignore relevant ARP updates.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="comment">//如果状态或者mac地址存在变化就更新时间戳</span></span><br><span class="line">    <span class="keyword">if</span> (new != old || lladdr != neigh-&gt;ha)</span><br><span class="line">        neigh-&gt;updated = jiffies;</span><br><span class="line">    <span class="comment">//状态改变了</span></span><br><span class="line">    <span class="keyword">if</span> (new != old) &#123;</span><br><span class="line">        neigh_del_timer(neigh); <span class="comment">//删除旧定时器</span></span><br><span class="line">        <span class="keyword">if</span> (new &amp; NUD_PROBE)<span class="comment">//如果是probe状态</span></span><br><span class="line">            <span class="type">atomic_set</span>(&amp;neigh-&gt;probes, <span class="number">0</span>);<span class="comment">//重置探测计数器</span></span><br><span class="line">        <span class="keyword">if</span> (new &amp; NUD_IN_TIMER)  <span class="comment">//如果新状态需要定时器，就启动一个定时器</span></span><br><span class="line">            neigh_add_timer(neigh, (jiffies +</span><br><span class="line">                        ((new &amp; NUD_REACHABLE) ?</span><br><span class="line">                         neigh-&gt;parms-&gt;reachable_time :</span><br><span class="line">                         <span class="number">0</span>)));</span><br><span class="line">        WRITE_ONCE(neigh-&gt;nud_state, new); <span class="comment">//设置新的状态</span></span><br><span class="line">        notify = <span class="number">1</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//加锁后更新mac地址</span></span><br><span class="line">    <span class="keyword">if</span> (lladdr != neigh-&gt;ha) &#123;</span><br><span class="line">        write_seqlock(&amp;neigh-&gt;ha_lock);</span><br><span class="line">        <span class="built_in">memcpy</span>(&amp;neigh-&gt;ha, lladdr, dev-&gt;addr_len);</span><br><span class="line">        write_sequnlock(&amp;neigh-&gt;ha_lock);</span><br><span class="line">        <span class="comment">//走快速路路经的条件之一就是在这设置的</span></span><br><span class="line">        </span><br><span class="line">        neigh_update_hhs(neigh);</span><br><span class="line">        <span class="keyword">if</span> (!(new &amp; NUD_CONNECTED))</span><br><span class="line">            neigh-&gt;confirmed = jiffies -</span><br><span class="line">                      (NEIGH_VAR(neigh-&gt;parms, BASE_REACHABLE_TIME) &lt;&lt; <span class="number">1</span>);</span><br><span class="line">        notify = <span class="number">1</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (new == old)<span class="comment">//状态没变</span></span><br><span class="line">        <span class="keyword">goto</span> out;</span><br><span class="line">    <span class="keyword">if</span> (new &amp; NUD_CONNECTED)<span class="comment">//进入连接状态</span></span><br><span class="line">        neigh_connect(neigh);</span><br><span class="line">    <span class="keyword">else</span></span><br><span class="line">        neigh_suspect(neigh);<span class="comment">//同上都是设置output回调</span></span><br><span class="line">    <span class="keyword">if</span> (!(old &amp; NUD_VALID)) &#123;<span class="comment">//旧状态无效时</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span>;</span></span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Again: avoid dead loop if something went wrong */</span></span><br><span class="line">        <span class="comment">//如果当前的状态是有效的</span></span><br><span class="line">        <span class="keyword">while</span> (neigh-&gt;nud_state &amp; NUD_VALID &amp;&amp;</span><br><span class="line">               (skb = __skb_dequeue(&amp;neigh-&gt;arp_queue)) != <span class="literal">NULL</span>) &#123;</span><br><span class="line">            <span class="class"><span class="keyword">struct</span> <span class="title">dst_entry</span> *<span class="title">dst</span> =</span> skb_dst(skb);</span><br><span class="line">            <span class="class"><span class="keyword">struct</span> <span class="title">neighbour</span> *<span class="title">n2</span>, *<span class="title">n1</span> =</span> neigh;</span><br><span class="line">            write_unlock_bh(&amp;neigh-&gt;lock);</span><br><span class="line"></span><br><span class="line">            rcu_read_lock();</span><br><span class="line"></span><br><span class="line">            <span class="comment">/* Why not just use &#x27;neigh&#x27; as-is?  The problem is that</span></span><br><span class="line"><span class="comment">             * things such as shaper, eql, and sch_teql can end up</span></span><br><span class="line"><span class="comment">             * using alternative, different, neigh objects to output</span></span><br><span class="line"><span class="comment">             * the packet in the output path.  So what we need to do</span></span><br><span class="line"><span class="comment">             * here is re-lookup the top-level neigh in the path so</span></span><br><span class="line"><span class="comment">             * we can reinject the packet there.</span></span><br><span class="line"><span class="comment">             */</span></span><br><span class="line">            n2 = <span class="literal">NULL</span>;</span><br><span class="line">            <span class="comment">//这里重新查找邻居表项 为什么？因为这里的dev可能变了找到就不是原来那个邻居表项了！</span></span><br><span class="line">            <span class="keyword">if</span> (dst &amp;&amp; dst-&gt;obsolete != DST_OBSOLETE_DEAD) &#123;</span><br><span class="line">                n2 = dst_neigh_lookup_skb(dst, skb);</span><br><span class="line">                <span class="keyword">if</span> (n2)</span><br><span class="line">                    n1 = n2;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">//发送数据包</span></span><br><span class="line">            READ_ONCE(n1-&gt;output)(n1, skb);</span><br><span class="line">            <span class="keyword">if</span> (n2)</span><br><span class="line">                neigh_release(n2);</span><br><span class="line">            rcu_read_unlock();</span><br><span class="line"></span><br><span class="line">            write_lock_bh(&amp;neigh-&gt;lock);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">//这里为什么还要清空队列？？</span></span><br><span class="line">        __skb_queue_purge(&amp;neigh-&gt;arp_queue);</span><br><span class="line">        neigh-&gt;arp_queue_len_bytes = <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line">out:</span><br><span class="line">    <span class="keyword">if</span> (update_isrouter) <span class="comment">//通常不会进入吧</span></span><br><span class="line">        neigh_update_is_router(neigh, flags, &amp;notify);</span><br><span class="line">    write_unlock_bh(&amp;neigh-&gt;lock);</span><br><span class="line">    <span class="keyword">if</span> (((new ^ old) &amp; NUD_PERMANENT) || gc_update) <span class="comment">//NUD_PERMANENT 这个标志是否发生了变化，</span></span><br><span class="line">        neigh_update_gc_list(neigh);</span><br><span class="line">    <span class="keyword">if</span> (managed_update)<span class="comment">//和上面正好是相反的，比如通过ip命令配置</span></span><br><span class="line">        neigh_update_managed_list(neigh);</span><br><span class="line">    <span class="keyword">if</span> (notify)</span><br><span class="line">        <span class="comment">//调用通知链和通知用户</span></span><br><span class="line">        neigh_update_notify(neigh, nlmsg_pid);</span><br><span class="line">    trace_neigh_update_done(neigh, err);</span><br><span class="line">    <span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>__neigh_update()</code> 是 Linux 邻居子系统中的核心更新函数，主要负责把 ARP 学习到的信息真正同步到邻居表项中。它通常在收到 ARP Reply、可学习的 ARP Request，或者数据发送过程中确认邻居可达时被调用。函数进入后会先检查当前邻居项是否允许更新，比如永久邻居项是否允许覆盖、当前状态是否允许修改 MAC 地址等，然后比较新的 MAC 地址与原来的 <code>ha</code> 是否发生变化，如果发生变化会更新硬件地址缓存，并重新构建对应的二层头缓存 <code>hh_cache</code>。随后函数会根据传入的 NUD 状态更新邻居状态机，例如从 <code>NUD_INCOMPLETE</code> 进入 <code>NUD_REACHABLE</code>、从 <code>REACHABLE</code> 退化到 <code>STALE</code>，同时刷新 <code>confirmed</code>、<code>updated</code> 等时间戳。若邻居从不可达变为可达，还会把之前因为 ARP 未解析而挂在 <code>arp_queue</code> 队列中的 skb 重新发送出去；如果状态变成失败，则可能清理等待队列并触发错误处理。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/ARP/" rel="tag"># ARP</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/05/14/ARP(%E4%BA%94)/" rel="prev" title="ARP报文的接收与发送（二）">
+      <i class="fa fa-chevron-left"></i> ARP报文的接收与发送（二）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">126</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">29</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
