@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="1. VFIO 要解决什么问题VFIO 可以理解为 Linux 内核提供的一套“安全设备直通框架”。它的目标是把真实硬件设备暴露给用户态程序使用，同时又尽量保证系统内存不会被设备随意访问。 在传统内核驱动模型中，硬件设备通常由内核驱动控制。比如网卡由内核网卡驱动接管，磁盘控制器由块设备驱动接管，GPU 或加速卡也有各自的内核驱动。用户态程序如果想使用这些设备，一般需要通过内核提供的系统调用、字符设">
+<meta property="og:type" content="article">
+<meta property="og:title" content="VFIO 原理">
+<meta property="og:url" content="http://example.com/2026/05/19/VFIO(%E4%B8%80)/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="1. VFIO 要解决什么问题VFIO 可以理解为 Linux 内核提供的一套“安全设备直通框架”。它的目标是把真实硬件设备暴露给用户态程序使用，同时又尽量保证系统内存不会被设备随意访问。 在传统内核驱动模型中，硬件设备通常由内核驱动控制。比如网卡由内核网卡驱动接管，磁盘控制器由块设备驱动接管，GPU 或加速卡也有各自的内核驱动。用户态程序如果想使用这些设备，一般需要通过内核提供的系统调用、字符设">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-05-19T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-05-18T13:14:45.724Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="VFIO">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/05/19/VFIO(%E4%B8%80)/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>VFIO 原理 | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/05/19/VFIO(%E4%B8%80)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          VFIO 原理
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-05-19 22:00:00" itemprop="dateCreated datePublished" datetime="2026-05-19T22:00:00+08:00">2026-05-19</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-05-18 21:14:45" itemprop="dateModified" datetime="2026-05-18T21:14:45+08:00">2026-05-18</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/VFIO/" itemprop="url" rel="index"><span itemprop="name">VFIO</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/05/19/VFIO(%E4%B8%80)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/05/19/VFIO(%E4%B8%80)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="1-VFIO-要解决什么问题"><a href="#1-VFIO-要解决什么问题" class="headerlink" title="1. VFIO 要解决什么问题"></a>1. VFIO 要解决什么问题</h2><p>VFIO 可以理解为 Linux 内核提供的一套“安全设备直通框架”。它的目标是把真实硬件设备暴露给用户态程序使用，同时又尽量保证系统内存不会被设备随意访问。</p>
+<p>在传统内核驱动模型中，硬件设备通常由内核驱动控制。比如网卡由内核网卡驱动接管，磁盘控制器由块设备驱动接管，GPU 或加速卡也有各自的内核驱动。用户态程序如果想使用这些设备，一般需要通过内核提供的系统调用、字符设备、网络协议栈或者其他内核接口间接访问。</p>
+<p>但是在一些高性能场景下，这种方式会带来额外开销。比如虚拟机设备直通、高性能网络转发、用户态驱动、加速卡访问等场景，希望用户态程序能够尽可能直接地操作硬件设备。这样可以减少内核协议栈或虚拟化层带来的中间开销，提高 I&#x2F;O 性能。</p>
+<p>VFIO 的作用就是在“用户态直接访问设备”和“系统安全隔离”之间做一个平衡：</p>
+<ul>
+<li>用户态程序可以拿到设备对应的文件描述符；</li>
+<li>用户态程序可以通过 <code>ioctl()</code> 查询设备信息；</li>
+<li>用户态程序可以通过 <code>mmap()</code> 映射设备 BAR 空间；</li>
+<li>用户态程序可以配置 DMA 映射，让设备可以访问指定的用户态内存；</li>
+<li>用户态程序可以通过 eventfd 等机制接收设备中断；</li>
+<li>内核通过 IOMMU 约束设备 DMA 访问范围，避免设备随意读写系统内存。</li>
+</ul>
+<p>一句话说，VFIO 不是单纯地“把设备交给用户态”，而是在 IOMMU 保护下，把设备安全地交给用户态程序或虚拟机使用。</p>
+<h2 id="2-VFIO-的典型使用场景"><a href="#2-VFIO-的典型使用场景" class="headerlink" title="2. VFIO 的典型使用场景"></a>2. VFIO 的典型使用场景</h2><p>VFIO 最常见的使用场景是虚拟机设备直通，也就是 passthrough。</p>
+<p>例如一台物理服务器上有一块 PCIe 网卡，宿主机可以把这块网卡从原来的内核驱动解绑，然后绑定到 <code>vfio-pci</code> 驱动。之后 QEMU&#x2F;KVM 这类虚拟机进程就可以通过 VFIO 获取这个设备的访问权限，并把它直通给虚拟机。</p>
+<p>从虚拟机内部看，这块设备就像插在虚拟机里一样。虚拟机可以加载自己的设备驱动，比如加载网卡驱动，并直接操作这个 PCI 设备。这样虚拟机的数据收发可以绕过传统的虚拟网卡模拟路径，获得更低延迟和更高带宽。</p>
+<p>除了虚拟机直通，VFIO 也可以用于用户态驱动。比如某些高性能计算程序、用户态网络程序、加速卡控制程序，希望在用户态直接操作设备寄存器和 DMA 队列，也可以使用 VFIO。相比早期的 UIO 方式，VFIO 最大的优势是引入了 IOMMU 隔离和更完整的中断、DMA、设备 region 管理能力。</p>
+<h2 id="3-为什么-VFIO-必须依赖-IOMMU"><a href="#3-为什么-VFIO-必须依赖-IOMMU" class="headerlink" title="3. 为什么 VFIO 必须依赖 IOMMU"></a>3. 为什么 VFIO 必须依赖 IOMMU</h2><p>设备直接访问内存最危险的地方在于 DMA。</p>
+<p>CPU 访问内存时会经过 MMU，进程只能访问自己的虚拟地址空间。但是硬件设备做 DMA 时，如果没有额外限制，设备可能直接访问物理内存。一旦用户态程序可以控制设备 DMA 地址，而系统又没有隔离机制，那么这个设备理论上就可能读写任意物理内存，这会破坏整个系统安全。</p>
+<p>IOMMU 的作用类似于设备侧的 MMU。它负责把设备看到的 DMA 地址转换成真实物理地址，并且可以限制设备只能访问被允许的内存范围。</p>
+<p>在 VFIO 中，用户态程序并不是随便给设备一个物理地址，而是先通过 VFIO 接口建立 DMA 映射：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">dma_map.vaddr = mmap(<span class="number">0</span>, <span class="number">1024</span> * <span class="number">1024</span>, PROT_READ | PROT_WRITE,</span><br><span class="line">                     MAP_PRIVATE | MAP_ANONYMOUS, <span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line">dma_map.size = <span class="number">1024</span> * <span class="number">1024</span>;</span><br><span class="line">dma_map.iova = <span class="number">0</span>;</span><br><span class="line">dma_map.flags = VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE;</span><br><span class="line"></span><br><span class="line">ioctl(container, VFIO_IOMMU_MAP_DMA, &amp;dma_map);</span><br></pre></td></tr></table></figure>
+
+<p>这里的含义是：用户态申请了一段虚拟内存，然后告诉 VFIO，把这段用户态内存映射到设备视角下的 IOVA 地址。之后设备进行 DMA 时，访问的是 IOVA，而 IOMMU 会把这个 IOVA 翻译到对应的真实物理页。</p>
+<p>所以 VFIO 的 DMA 安全性主要来自两点：</p>
+<ol>
+<li>设备不能直接访问任意物理地址；</li>
+<li>设备只能访问用户态显式映射给它的内存范围。</li>
+</ol>
+<p>这也是 VFIO 比 UIO 更适合设备直通和用户态驱动的重要原因。</p>
+<h2 id="4-VFIO-的三个核心对象：Container、Group、Device"><a href="#4-VFIO-的三个核心对象：Container、Group、Device" class="headerlink" title="4. VFIO 的三个核心对象：Container、Group、Device"></a>4. VFIO 的三个核心对象：Container、Group、Device</h2><p>VFIO 里最重要的三个概念是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">Container</span><br><span class="line">   └── Group</span><br><span class="line">          └── Device</span><br></pre></td></tr></table></figure>
+
+<p>它们分别表示不同层次的管理对象。</p>
+<h3 id="4-1-Device：真正要操作的硬件设备"><a href="#4-1-Device：真正要操作的硬件设备" class="headerlink" title="4.1 Device：真正要操作的硬件设备"></a>4.1 Device：真正要操作的硬件设备</h3><p>Device 就是用户态最终要访问的硬件设备，比如一个 PCI 网卡、GPU、NVMe 控制器或者其他 PCIe 设备。</p>
+<p>设备本身会提供几类资源：</p>
+<ul>
+<li>配置空间；</li>
+<li>BAR 空间；</li>
+<li>中断；</li>
+<li>DMA 能力；</li>
+<li>设备复位能力；</li>
+<li>其他设备私有操作。</li>
+</ul>
+<p>通过 VFIO，用户态可以拿到一个 device fd。拿到这个 fd 后，用户态就可以对设备执行 <code>VFIO_DEVICE_GET_INFO</code>、<code>VFIO_DEVICE_GET_REGION_INFO</code>、<code>VFIO_DEVICE_GET_IRQ_INFO</code>、<code>VFIO_DEVICE_RESET</code> 等操作。</p>
+<p>也就是说，真正操作硬件设备时，最终落到的是 device fd 上。</p>
+<h3 id="4-2-Group：VFIO-的安全隔离单位"><a href="#4-2-Group：VFIO-的安全隔离单位" class="headerlink" title="4.2 Group：VFIO 的安全隔离单位"></a>4.2 Group：VFIO 的安全隔离单位</h3><p>VFIO 不是以单个设备作为最小安全单位，而是以 IOMMU Group 作为最小安全单位。</p>
+<p>这是因为硬件隔离粒度不一定能做到单设备级别。比如：</p>
+<ul>
+<li>一个多功能 PCI 设备的多个 function 之间可能存在内部通道；</li>
+<li>某些 PCIe bridge 不支持 ACS，导致桥后设备之间的访问不一定经过 IOMMU；</li>
+<li>PCIe-to-PCI bridge 后面的多个设备在 IOMMU 看来可能无法精确区分；</li>
+<li>某些平台的 IOMMU 拓扑本身只能以更粗粒度隔离设备。</li>
+</ul>
+<p>因此，内核会把“不能彼此安全隔离”的设备放到同一个 IOMMU Group 里。</p>
+<p>VFIO 要求：如果用户态想使用某个 Group，那么这个 Group 里的所有设备都必须处于安全可控状态。通常要求这些设备都绑定到 VFIO 驱动，或者至少没有被宿主机普通驱动占用。否则 VFIO 会认为这个 Group 不可用。</p>
+<p>这就是为什么有时你只想直通一个 PCI 设备，却发现同一个 IOMMU Group 里还有其他设备也必须处理。因为 VFIO 的安全边界不是你想直通的那个单独设备，而是整个 IOMMU Group。</p>
+<h3 id="4-3-Container：承载-IOMMU-上下文的对象"><a href="#4-3-Container：承载-IOMMU-上下文的对象" class="headerlink" title="4.3 Container：承载 IOMMU 上下文的对象"></a>4.3 Container：承载 IOMMU 上下文的对象</h3><p>Container 是 VFIO 中用来承载 IOMMU 上下文的对象。用户态通过打开 <code>/dev/vfio/vfio</code> 创建一个 container：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">container = open(<span class="string">&quot;/dev/vfio/vfio&quot;</span>, O_RDWR);</span><br></pre></td></tr></table></figure>
+
+<p>Container 本身一开始没有太多能力。只有把 Group 添加到 Container 之后，用户态才能进一步设置 IOMMU 模型、建立 DMA 映射、查询 IOMMU 信息。</p>
+<p>一个 Container 可以包含一个或多个 Group。多个 Group 放到同一个 Container 里的好处是，它们可以共享同一套 IOMMU 地址空间和 DMA 映射关系。这样用户态只需要维护一套 IOVA 到用户内存的映射，不需要给每个 Group 单独维护一份。</p>
+<p>可以这样理解：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">Container：管理一套 DMA 地址空间</span><br><span class="line">Group：安全隔离单位</span><br><span class="line">Device：真正被用户态操作的设备</span><br></pre></td></tr></table></figure>
+
+<p>用户态访问 VFIO 设备的大致顺序就是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">打开 /dev/vfio/vfio 创建 container</span><br><span class="line">        ↓</span><br><span class="line">打开 /dev/vfio/$GROUP 获取 group fd</span><br><span class="line">        ↓</span><br><span class="line">把 group 放进 container</span><br><span class="line">        ↓</span><br><span class="line">给 container 设置 IOMMU 模型</span><br><span class="line">        ↓</span><br><span class="line">在 container 上建立 DMA 映射</span><br><span class="line">        ↓</span><br><span class="line">通过 group 获取 device fd</span><br><span class="line">        ↓</span><br><span class="line">通过 device fd 操作设备 region、中断、复位等资源</span><br></pre></td></tr></table></figure>
+
+<h2 id="5-VFIO-设备直通的准备过程"><a href="#5-VFIO-设备直通的准备过程" class="headerlink" title="5. VFIO 设备直通的准备过程"></a>5. VFIO 设备直通的准备过程</h2><p>假设用户想访问 PCI 设备 <code>0000:06:0d.0</code>，第一步通常是查看它属于哪个 IOMMU Group：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">readlink</span> /sys/bus/pci/devices/0000:06:0d.0/iommu_group</span><br></pre></td></tr></table></figure>
+
+<p>如果输出类似：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">../../../../kernel/iommu_groups/26</span><br></pre></td></tr></table></figure>
+
+<p>说明这个设备属于 IOMMU Group 26。</p>
+<p>然后加载 <code>vfio-pci</code>：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">modprobe vfio-pci</span><br></pre></td></tr></table></figure>
+
+<p>接下来需要把设备从原来的宿主机驱动上解绑，并绑定到 <code>vfio-pci</code>：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">echo</span> 0000:06:0d.0 &gt; /sys/bus/pci/devices/0000:06:0d.0/driver/unbind</span><br><span class="line"><span class="built_in">echo</span> 1102 0002 &gt; /sys/bus/pci/drivers/vfio-pci/new_id</span><br></pre></td></tr></table></figure>
+
+<p>其中 <code>1102 0002</code> 是设备的 vendor ID 和 device ID，可以通过 <code>lspci -n -s 0000:06:0d.0</code> 查看。</p>
+<p>还需要检查同一个 IOMMU Group 里是否存在其他设备：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">ls</span> -l /sys/bus/pci/devices/0000:06:0d.0/iommu_group/devices</span><br></pre></td></tr></table></figure>
+
+<p>如果同一个 Group 里还有其他设备，并且这些设备仍然被宿主机驱动占用，那么这个 Group 可能无法被 VFIO 安全使用。用户需要根据实际情况解绑或绑定这些设备。</p>
+<p>当 Group 准备完成后，会出现类似：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">/dev/vfio/26</span><br></pre></td></tr></table></figure>
+
+<p>这个字符设备就是 VFIO Group 对应的访问入口。</p>
+<p>如果希望普通用户访问这个 Group，可以修改权限：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">chown</span> user:user /dev/vfio/26</span><br></pre></td></tr></table></figure>
+
+<h2 id="6-用户态访问-VFIO-的完整流程"><a href="#6-用户态访问-VFIO-的完整流程" class="headerlink" title="6. 用户态访问 VFIO 的完整流程"></a>6. 用户态访问 VFIO 的完整流程</h2><p>VFIO 的典型用户态流程可以分成七步。</p>
+<h3 id="6-1-打开-Container"><a href="#6-1-打开-Container" class="headerlink" title="6.1 打开 Container"></a>6.1 打开 Container</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">container = open(<span class="string">&quot;/dev/vfio/vfio&quot;</span>, O_RDWR);</span><br></pre></td></tr></table></figure>
+
+<p>这一步创建了一个 VFIO container。可以把它看作用户态程序后续管理 DMA 地址空间的总入口。</p>
+<h3 id="6-2-检查-VFIO-API-版本"><a href="#6-2-检查-VFIO-API-版本" class="headerlink" title="6.2 检查 VFIO API 版本"></a>6.2 检查 VFIO API 版本</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ioctl(container, VFIO_GET_API_VERSION);</span><br></pre></td></tr></table></figure>
+
+<p>用户态程序需要确认当前内核 VFIO API 版本是否符合预期。如果版本不匹配，说明用户态程序和内核接口可能不兼容。</p>
+<h3 id="6-3-检查需要的-IOMMU-能力"><a href="#6-3-检查需要的-IOMMU-能力" class="headerlink" title="6.3 检查需要的 IOMMU 能力"></a>6.3 检查需要的 IOMMU 能力</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ioctl(container, VFIO_CHECK_EXTENSION, VFIO_TYPE1_IOMMU);</span><br></pre></td></tr></table></figure>
+
+<p>这一步用于确认当前系统是否支持用户态程序需要的 IOMMU 后端能力。只有支持对应能力，后续才能启用 IOMMU 并建立 DMA 映射。</p>
+<h3 id="6-4-打开-Group"><a href="#6-4-打开-Group" class="headerlink" title="6.4 打开 Group"></a>6.4 打开 Group</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">group = open(<span class="string">&quot;/dev/vfio/26&quot;</span>, O_RDWR);</span><br></pre></td></tr></table></figure>
+
+<p>这里打开的是某个具体的 VFIO Group。这个 Group 对应一个 IOMMU Group，里面可能包含一个或多个设备。</p>
+<h3 id="6-5-检查-Group-是否可用"><a href="#6-5-检查-Group-是否可用" class="headerlink" title="6.5 检查 Group 是否可用"></a>6.5 检查 Group 是否可用</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">ioctl(group, VFIO_GROUP_GET_STATUS, &amp;group_status);</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> (!(group_status.flags &amp; VFIO_GROUP_FLAGS_VIABLE)) &#123;</span><br><span class="line">    <span class="comment">/* Group is not viable */</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>VFIO_GROUP_FLAGS_VIABLE</code> 表示这个 Group 当前是否可用。简单说，就是这个 Group 是否已经处于 VFIO 可以安全接管的状态。</p>
+<p>如果同一个 Group 里还有设备被宿主机普通驱动占用，通常这个 Group 就不是 viable 状态。</p>
+<h3 id="6-6-把-Group-加入-Container"><a href="#6-6-把-Group-加入-Container" class="headerlink" title="6.6 把 Group 加入 Container"></a>6.6 把 Group 加入 Container</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ioctl(group, VFIO_GROUP_SET_CONTAINER, &amp;container);</span><br></pre></td></tr></table></figure>
+
+<p>这一步把 Group 和 Container 绑定起来。绑定之后，这个 Group 里的设备就归属于这个 Container 管理。</p>
+<h3 id="6-7-启用-IOMMU-模型"><a href="#6-7-启用-IOMMU-模型" class="headerlink" title="6.7 启用 IOMMU 模型"></a>6.7 启用 IOMMU 模型</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ioctl(container, VFIO_SET_IOMMU, VFIO_TYPE1_IOMMU);</span><br></pre></td></tr></table></figure>
+
+<p>设置完成后，Container 上的 DMA 映射接口才真正可用。</p>
+<h3 id="6-8-建立-DMA-映射"><a href="#6-8-建立-DMA-映射" class="headerlink" title="6.8 建立 DMA 映射"></a>6.8 建立 DMA 映射</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">dma_map.vaddr = mmap(<span class="number">0</span>, <span class="number">1024</span> * <span class="number">1024</span>, PROT_READ | PROT_WRITE,</span><br><span class="line">                     MAP_PRIVATE | MAP_ANONYMOUS, <span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line">dma_map.size = <span class="number">1024</span> * <span class="number">1024</span>;</span><br><span class="line">dma_map.iova = <span class="number">0</span>;</span><br><span class="line">dma_map.flags = VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE;</span><br><span class="line"></span><br><span class="line">ioctl(container, VFIO_IOMMU_MAP_DMA, &amp;dma_map);</span><br></pre></td></tr></table></figure>
+
+<p>这里的核心含义是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">用户态虚拟地址 vaddr</span><br><span class="line">        ↓</span><br><span class="line">VFIO pin 住对应用户页并建立映射</span><br><span class="line">        ↓</span><br><span class="line">IOMMU 建立 IOVA 到物理页的转换关系</span><br><span class="line">        ↓</span><br><span class="line">设备通过 IOVA 访问这段内存</span><br></pre></td></tr></table></figure>
+
+<p>注意，<code>iova</code> 是设备视角下使用的 DMA 地址，不是进程自己的代码段地址，也不是用户态虚拟地址。它属于设备 DMA 地址空间，由用户态程序选择并通过 VFIO 注册到 IOMMU。</p>
+<h3 id="6-9-获取-Device-fd"><a href="#6-9-获取-Device-fd" class="headerlink" title="6.9 获取 Device fd"></a>6.9 获取 Device fd</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">device = ioctl(group, VFIO_GROUP_GET_DEVICE_FD, <span class="string">&quot;0000:06:0d.0&quot;</span>);</span><br></pre></td></tr></table></figure>
+
+<p>这一步从 Group 中获取某个具体设备的 fd。之后用户态程序就可以通过这个 fd 查询和操作设备资源。</p>
+<h2 id="7-Device-fd-上可以做什么"><a href="#7-Device-fd-上可以做什么" class="headerlink" title="7. Device fd 上可以做什么"></a>7. Device fd 上可以做什么</h2><p>拿到 device fd 后，用户态程序可以做几类事情。</p>
+<h3 id="7-1-查询设备基本信息"><a href="#7-1-查询设备基本信息" class="headerlink" title="7.1 查询设备基本信息"></a>7.1 查询设备基本信息</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ioctl(device, VFIO_DEVICE_GET_INFO, &amp;device_info);</span><br></pre></td></tr></table></figure>
+
+<p>这个接口会返回设备支持的 region 数量、中断数量、设备能力标志等信息。</p>
+<h3 id="7-2-查询设备-Region"><a href="#7-2-查询设备-Region" class="headerlink" title="7.2 查询设备 Region"></a>7.2 查询设备 Region</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; device_info.num_regions; i++) &#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">vfio_region_info</span> <span class="title">reg</span> =</span> &#123; .argsz = <span class="keyword">sizeof</span>(reg) &#125;;</span><br><span class="line"></span><br><span class="line">    reg.index = i;</span><br><span class="line">    ioctl(device, VFIO_DEVICE_GET_REGION_INFO, &amp;reg);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Region 可以理解为设备暴露给用户态的可访问区域。对于 PCI 设备来说，常见 region 包括：</p>
+<ul>
+<li>PCI 配置空间；</li>
+<li>BAR0；</li>
+<li>BAR1；</li>
+<li>其他 BAR；</li>
+<li>设备特定区域。</li>
+</ul>
+<p>用户态可以根据 region 信息决定如何访问这些区域。某些 region 可以通过 <code>read/write</code> 访问，某些 region 可以通过 <code>mmap()</code> 映射到用户态地址空间。</p>
+<p>如果是 PCI BAR 空间，用户态 mmap 之后，就可以像访问内存一样访问设备寄存器：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">用户态虚拟地址</span><br><span class="line">        ↓</span><br><span class="line">mmap 映射</span><br><span class="line">        ↓</span><br><span class="line">设备 BAR 空间</span><br><span class="line">        ↓</span><br><span class="line">读写设备寄存器</span><br></pre></td></tr></table></figure>
+
+<p>这也是用户态驱动能够直接操作设备寄存器的关键。</p>
+<h3 id="7-3-查询和配置中断"><a href="#7-3-查询和配置中断" class="headerlink" title="7.3 查询和配置中断"></a>7.3 查询和配置中断</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; device_info.num_irqs; i++) &#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">vfio_irq_info</span> <span class="title">irq</span> =</span> &#123; .argsz = <span class="keyword">sizeof</span>(irq) &#125;;</span><br><span class="line"></span><br><span class="line">    irq.index = i;</span><br><span class="line">    ioctl(device, VFIO_DEVICE_GET_IRQ_INFO, &amp;irq);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>设备中断不能直接像内核驱动那样注册硬中断处理函数。用户态通常通过 eventfd 和 VFIO 中断接口配合使用。</p>
+<p>大致思路是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">设备产生中断</span><br><span class="line">        ↓</span><br><span class="line">VFIO 在内核中处理中断</span><br><span class="line">        ↓</span><br><span class="line">触发用户态注册的 eventfd</span><br><span class="line">        ↓</span><br><span class="line">用户态 poll/epoll/eventfd_read 感知中断事件</span><br></pre></td></tr></table></figure>
+
+<p>这样用户态程序就可以在不直接运行硬中断处理函数的情况下，接收设备中断通知。</p>
+<h3 id="7-4-复位设备"><a href="#7-4-复位设备" class="headerlink" title="7.4 复位设备"></a>7.4 复位设备</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ioctl(device, VFIO_DEVICE_RESET);</span><br></pre></td></tr></table></figure>
+
+<p>设备复位通常用于初始化阶段，确保设备处于一个可预期状态。对于直通设备来说，复位尤其重要，因为设备可能之前被宿主机驱动使用过，也可能残留旧状态。</p>
+<h2 id="8-VFIO-和虚拟机设备直通的关系"><a href="#8-VFIO-和虚拟机设备直通的关系" class="headerlink" title="8. VFIO 和虚拟机设备直通的关系"></a>8. VFIO 和虚拟机设备直通的关系</h2><p>当你在宿主机上创建虚拟机，并把某个 PCI 设备 passthrough 给虚拟机时，底层通常就是 VFIO 在工作。</p>
+<p>以 QEMU&#x2F;KVM 为例，用户配置设备直通后，QEMU 进程会通过 VFIO：</p>
+<ol>
+<li>打开 <code>/dev/vfio/vfio</code> 创建 container；</li>
+<li>打开 <code>/dev/vfio/$GROUP</code> 获取 group fd；</li>
+<li>检查 Group 是否 viable；</li>
+<li>把 Group 加入 Container；</li>
+<li>设置 IOMMU；</li>
+<li>获取 device fd；</li>
+<li>mmap 设备 BAR；</li>
+<li>配置中断；</li>
+<li>把设备资源呈现给虚拟机；</li>
+<li>虚拟机里的驱动像操作真实硬件一样操作这个设备。</li>
+</ol>
+<p>所以，从宿主机视角看，QEMU 进程就是一个用户态设备驱动。从虚拟机视角看，设备就像真的插在虚拟机里。</p>
+<p>这也是 VFIO 文档中说的关键点：设备直通会把虚拟机进程变成一个用户态驱动。它的收益是更低延迟、更高带宽，以及虚拟机内部可以直接使用裸机设备驱动。</p>
+<h2 id="9-VFIO-和-UIO-的区别"><a href="#9-VFIO-和-UIO-的区别" class="headerlink" title="9. VFIO 和 UIO 的区别"></a>9. VFIO 和 UIO 的区别</h2><p>UIO 也可以把设备部分能力暴露给用户态，但 UIO 的安全和功能都比较有限。</p>
+<p>VFIO 相比 UIO 的主要优势是：</p>
+<table>
+<thead>
+<tr>
+<th>对比点</th>
+<th>UIO</th>
+<th>VFIO</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>DMA 安全隔离</td>
+<td>较弱，缺少完整 IOMMU 管理</td>
+<td>依赖 IOMMU，安全性更强</td>
+</tr>
+<tr>
+<td>PCI 配置空间访问</td>
+<td>能力有限</td>
+<td>支持更完整的设备访问模型</td>
+</tr>
+<tr>
+<td>中断支持</td>
+<td>相对简单</td>
+<td>支持更完整的中断描述和 eventfd 通知</td>
+</tr>
+<tr>
+<td>设备直通</td>
+<td>不适合复杂虚拟化场景</td>
+<td>是 KVM&#x2F;QEMU 设备直通的核心机制</td>
+</tr>
+<tr>
+<td>安全边界</td>
+<td>主要依赖权限控制</td>
+<td>以 IOMMU Group 作为隔离单位</td>
+</tr>
+<tr>
+<td>用户态驱动能力</td>
+<td>基础</td>
+<td>更完整、更规范</td>
+</tr>
+</tbody></table>
+<p>所以，如果只是简单实验设备寄存器访问，UIO 可能够用；但如果涉及 DMA、虚拟机直通、高性能用户态驱动，VFIO 更合适。</p>
+<h2 id="10-从-fd-的角度理解-VFIO"><a href="#10-从-fd-的角度理解-VFIO" class="headerlink" title="10. 从 fd 的角度理解 VFIO"></a>10. 从 fd 的角度理解 VFIO</h2><p>VFIO 很适合从文件描述符的角度理解。</p>
+<h3 id="10-1-Container-fd"><a href="#10-1-Container-fd" class="headerlink" title="10.1 Container fd"></a>10.1 Container fd</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">container = open(<span class="string">&quot;/dev/vfio/vfio&quot;</span>, O_RDWR);</span><br></pre></td></tr></table></figure>
+
+<p>这个 fd 代表一个 VFIO container，也就是一套 DMA&#x2F;IOMMU 管理上下文。</p>
+<p>它主要负责：</p>
+<ul>
+<li>查询 VFIO API 版本；</li>
+<li>检查 IOMMU 能力；</li>
+<li>启用 IOMMU；</li>
+<li>建立和解除 DMA 映射。</li>
+</ul>
+<h3 id="10-2-Group-fd"><a href="#10-2-Group-fd" class="headerlink" title="10.2 Group fd"></a>10.2 Group fd</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">group = open(<span class="string">&quot;/dev/vfio/26&quot;</span>, O_RDWR);</span><br></pre></td></tr></table></figure>
+
+<p>这个 fd 代表一个 VFIO Group。</p>
+<p>它主要负责：</p>
+<ul>
+<li>查询 Group 是否 viable；</li>
+<li>把 Group 加入 Container；</li>
+<li>从 Group 中获取具体 Device fd。</li>
+</ul>
+<h3 id="10-3-Device-fd"><a href="#10-3-Device-fd" class="headerlink" title="10.3 Device fd"></a>10.3 Device fd</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">device = ioctl(group, VFIO_GROUP_GET_DEVICE_FD, <span class="string">&quot;0000:06:0d.0&quot;</span>);</span><br></pre></td></tr></table></figure>
+
+<p>这个 fd 代表一个具体设备。</p>
+<p>它主要负责：</p>
+<ul>
+<li>查询设备信息；</li>
+<li>查询 region；</li>
+<li>访问设备 region；</li>
+<li>配置中断；</li>
+<li>复位设备；</li>
+<li>执行设备私有 ioctl。</li>
+</ul>
+<p>可以总结为：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">container fd：管 DMA 地址空间</span><br><span class="line">group fd：管隔离单位</span><br><span class="line">device fd：管具体硬件设备</span><br></pre></td></tr></table></figure>
+
+<h2 id="11-VFIO-bus-driver-API"><a href="#11-VFIO-bus-driver-API" class="headerlink" title="11. VFIO bus driver API"></a>11. VFIO bus driver API</h2><p>VFIO 不只是给用户态提供接口，也给具体设备驱动提供一组注册接口。比如 <code>vfio-pci</code> 这种 VFIO bus driver，会把 PCI 设备包装成 VFIO core 能识别的 <code>struct vfio_device</code>。</p>
+<p>常见注册接口包括：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">vfio_register_group_dev</span><span class="params">(<span class="keyword">struct</span> vfio_device *device)</span>;</span><br><span class="line"><span class="type">int</span> <span class="title function_">vfio_register_emulated_iommu_dev</span><span class="params">(<span class="keyword">struct</span> vfio_device *device)</span>;</span><br><span class="line"><span class="type">void</span> <span class="title function_">vfio_unregister_group_dev</span><span class="params">(<span class="keyword">struct</span> vfio_device *device)</span>;</span><br></pre></td></tr></table></figure>
+
+<p>具体 VFIO 设备驱动一般会把 <code>struct vfio_device</code> 嵌入自己的私有结构中，然后通过 <code>container_of()</code> 从 <code>vfio_device</code> 找回自己的私有数据。</p>
+<p>VFIO 设备驱动需要提供一组类似 file operations 的回调：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">vfio_device_ops</span> &#123;</span></span><br><span class="line">    <span class="type">char</span>    *name;</span><br><span class="line">    <span class="type">int</span>     (*init)(<span class="keyword">struct</span> vfio_device *vdev);</span><br><span class="line">    <span class="type">void</span>    (*release)(<span class="keyword">struct</span> vfio_device *vdev);</span><br><span class="line">    <span class="type">int</span>     (*open_device)(<span class="keyword">struct</span> vfio_device *vdev);</span><br><span class="line">    <span class="type">void</span>    (*close_device)(<span class="keyword">struct</span> vfio_device *vdev);</span><br><span class="line">    <span class="type">ssize_t</span> (*read)(<span class="keyword">struct</span> vfio_device *vdev, <span class="type">char</span> __user *buf,</span><br><span class="line">                    <span class="type">size_t</span> count, <span class="type">loff_t</span> *ppos);</span><br><span class="line">    <span class="type">ssize_t</span> (*write)(<span class="keyword">struct</span> vfio_device *vdev, <span class="type">const</span> <span class="type">char</span> __user *buf,</span><br><span class="line">                     <span class="type">size_t</span> count, <span class="type">loff_t</span> *size);</span><br><span class="line">    <span class="type">long</span>    (*ioctl)(<span class="keyword">struct</span> vfio_device *vdev, <span class="type">unsigned</span> <span class="type">int</span> cmd,</span><br><span class="line">                     <span class="type">unsigned</span> <span class="type">long</span> arg);</span><br><span class="line">    <span class="type">int</span>     (*mmap)(<span class="keyword">struct</span> vfio_device *vdev,</span><br><span class="line">                    <span class="keyword">struct</span> vm_area_struct *vma);</span><br><span class="line">    <span class="type">void</span>    (*request)(<span class="keyword">struct</span> vfio_device *vdev, <span class="type">unsigned</span> <span class="type">int</span> count);</span><br><span class="line">    <span class="type">int</span>     (*match)(<span class="keyword">struct</span> vfio_device *vdev, <span class="type">char</span> *buf);</span><br><span class="line">    <span class="type">void</span>    (*dma_unmap)(<span class="keyword">struct</span> vfio_device *vdev,</span><br><span class="line">                         u64 iova, u64 length);</span><br><span class="line">    <span class="type">int</span>     (*device_feature)(<span class="keyword">struct</span> vfio_device *device, u32 flags,</span><br><span class="line">                              <span class="type">void</span> __user *arg, <span class="type">size_t</span> argsz);</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>这些回调的含义大致如下。</p>
+<h3 id="11-1-init-release"><a href="#11-1-init-release" class="headerlink" title="11.1 init &#x2F; release"></a>11.1 init &#x2F; release</h3><p><code>init</code> 和 <code>release</code> 分别在 VFIO device 初始化和释放时调用。驱动可以在这里初始化自己的私有状态，或者释放设备相关资源。</p>
+<h3 id="11-2-open-device-close-device"><a href="#11-2-open-device-close-device" class="headerlink" title="11.2 open_device &#x2F; close_device"></a>11.2 open_device &#x2F; close_device</h3><p><code>open_device</code> 在用户态第一次获取 device fd 时调用。比如用户态通过 <code>VFIO_GROUP_GET_DEVICE_FD</code> 获取设备 fd 时，如果这是该设备当前会话中的第一次打开，VFIO core 会调用设备驱动的 <code>open_device</code>。</p>
+<p><code>close_device</code> 则在用户态关闭设备 fd 后执行，用于释放会话相关资源。</p>
+<h3 id="11-3-read-write-mmap"><a href="#11-3-read-write-mmap" class="headerlink" title="11.3 read &#x2F; write &#x2F; mmap"></a>11.3 read &#x2F; write &#x2F; mmap</h3><p>这些回调用于实现设备 region 的访问。</p>
+<p>如果用户态通过 <code>read()</code> 或 <code>write()</code> 访问某个设备 region，最终可能会进入驱动的 <code>read/write</code> 回调。</p>
+<p>如果用户态通过 <code>mmap()</code> 映射设备 region，比如映射 PCI BAR 空间，则会进入 <code>mmap</code> 回调。</p>
+<h3 id="11-4-ioctl"><a href="#11-4-ioctl" class="headerlink" title="11.4 ioctl"></a>11.4 ioctl</h3><p><code>ioctl</code> 用于处理设备相关控制命令。VFIO core 会处理通用命令，而某些设备相关命令会透传给具体设备驱动。</p>
+<h3 id="11-5-request"><a href="#11-5-request" class="headerlink" title="11.5 request"></a>11.5 request</h3><p><code>request</code> 通常用于设备即将被 unregister、解绑或需要用户态释放设备时通知用户态。比如宿主机希望回收设备，VFIO 可以通过 request 机制通知当前使用设备的用户态进程。</p>
+<h3 id="11-6-dma-unmap"><a href="#11-6-dma-unmap" class="headerlink" title="11.6 dma_unmap"></a>11.6 dma_unmap</h3><p>当某段 IOVA 被解除映射时，如果驱动使用了 VFIO 页固定相关接口，就需要通过 <code>dma_unmap</code> 回调释放或同步对应资源。</p>
+<p>这个回调需要能处理比较早期的调用场景，也就是即使设备还没有被用户态打开，也要能安全处理。</p>
+<h3 id="11-7-match"><a href="#11-7-match" class="headerlink" title="11.7 match"></a>11.7 match</h3><p><code>match</code> 用于根据用户态传入的设备名字匹配具体设备。例如用户态通过：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ioctl(group, VFIO_GROUP_GET_DEVICE_FD, <span class="string">&quot;0000:06:0d.0&quot;</span>);</span><br></pre></td></tr></table></figure>
+
+<p>获取设备 fd 时，VFIO core 需要在 Group 里找到名字匹配的设备，这类逻辑就和 <code>match</code> 回调有关。</p>
+<h2 id="12-用一个完整例子串起来"><a href="#12-用一个完整例子串起来" class="headerlink" title="12. 用一个完整例子串起来"></a>12. 用一个完整例子串起来</h2><p>假设我们要把 PCI 设备 <code>0000:06:0d.0</code> 交给用户态程序使用。</p>
+<h3 id="12-1-宿主机准备阶段"><a href="#12-1-宿主机准备阶段" class="headerlink" title="12.1 宿主机准备阶段"></a>12.1 宿主机准备阶段</h3><p>先查看设备所属 Group：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">readlink</span> /sys/bus/pci/devices/0000:06:0d.0/iommu_group</span><br></pre></td></tr></table></figure>
+
+<p>假设结果是 Group 26。</p>
+<p>加载 VFIO PCI 驱动：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">modprobe vfio-pci</span><br></pre></td></tr></table></figure>
+
+<p>解绑原驱动并绑定到 VFIO：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">echo</span> 0000:06:0d.0 &gt; /sys/bus/pci/devices/0000:06:0d.0/driver/unbind</span><br><span class="line"><span class="built_in">echo</span> 1102 0002 &gt; /sys/bus/pci/drivers/vfio-pci/new_id</span><br></pre></td></tr></table></figure>
+
+<p>检查 Group 内设备：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">ls</span> -l /sys/bus/pci/devices/0000:06:0d.0/iommu_group/devices</span><br></pre></td></tr></table></figure>
+
+<p>如果 Group 可用，就会有：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">/dev/vfio/26</span><br></pre></td></tr></table></figure>
+
+<h3 id="12-2-用户态程序访问阶段"><a href="#12-2-用户态程序访问阶段" class="headerlink" title="12.2 用户态程序访问阶段"></a>12.2 用户态程序访问阶段</h3><p>用户态程序打开 container：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">container = open(<span class="string">&quot;/dev/vfio/vfio&quot;</span>, O_RDWR);</span><br></pre></td></tr></table></figure>
+
+<p>打开 group：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">group = open(<span class="string">&quot;/dev/vfio/26&quot;</span>, O_RDWR);</span><br></pre></td></tr></table></figure>
+
+<p>检查 group：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ioctl(group, VFIO_GROUP_GET_STATUS, &amp;group_status);</span><br></pre></td></tr></table></figure>
+
+<p>把 group 放进 container：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ioctl(group, VFIO_GROUP_SET_CONTAINER, &amp;container);</span><br></pre></td></tr></table></figure>
+
+<p>启用 IOMMU：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ioctl(container, VFIO_SET_IOMMU, VFIO_TYPE1_IOMMU);</span><br></pre></td></tr></table></figure>
+
+<p>建立 DMA 映射：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ioctl(container, VFIO_IOMMU_MAP_DMA, &amp;dma_map);</span><br></pre></td></tr></table></figure>
+
+<p>获取 device fd：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">device = ioctl(group, VFIO_GROUP_GET_DEVICE_FD, <span class="string">&quot;0000:06:0d.0&quot;</span>);</span><br></pre></td></tr></table></figure>
+
+<p>查询设备 region：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ioctl(device, VFIO_DEVICE_GET_REGION_INFO, &amp;reg);</span><br></pre></td></tr></table></figure>
+
+<p>映射 BAR 或读写 region：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">mmap(...);</span><br><span class="line">read(device, ...);</span><br><span class="line">write(device, ...);</span><br></pre></td></tr></table></figure>
+
+<p>配置中断：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">ioctl(device, VFIO_DEVICE_GET_IRQ_INFO, &amp;irq);</span><br><span class="line">ioctl(device, VFIO_DEVICE_SET_IRQS, ...);</span><br></pre></td></tr></table></figure>
+
+<p>复位设备：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ioctl(device, VFIO_DEVICE_RESET);</span><br></pre></td></tr></table></figure>
+
+<p>至此，用户态程序就拥有了一个受 VFIO&#x2F;IOMMU 管控的硬件访问通道。</p>
+<h2 id="13-总结"><a href="#13-总结" class="headerlink" title="13. 总结"></a>13. 总结</h2><p>VFIO 的核心思想是：把设备直接访问能力交给用户态，但不放弃内核对安全边界的控制。</p>
+<p>它通过 IOMMU Group 保证设备隔离边界，通过 Container 管理 DMA 地址空间，通过 Device fd 暴露具体设备能力。用户态程序拿到设备 fd 后，可以访问设备 region、配置中断、建立 DMA 映射，从而实现高性能设备直通或用户态驱动。</p>
+<p>对于虚拟机 passthrough 来说，VFIO 是宿主机把真实 PCI 设备安全交给 QEMU&#x2F;KVM 的关键机制。对于用户态驱动来说，VFIO 提供了比 UIO 更完整、更安全的设备访问模型。</p>
+<p>可以用一句话概括整个流程：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">VFIO 让用户态程序在 IOMMU 的保护下，像驱动一样直接操作硬件设备。</span><br></pre></td></tr></table></figure>
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/VFIO/" rel="tag"># VFIO</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/05/16/ARP(%E5%85%AD)/" rel="prev" title="ARP报文的接收与发送（三）">
+      <i class="fa fa-chevron-left"></i> ARP报文的接收与发送（三）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-VFIO-%E8%A6%81%E8%A7%A3%E5%86%B3%E4%BB%80%E4%B9%88%E9%97%AE%E9%A2%98"><span class="nav-number">1.</span> <span class="nav-text">1. VFIO 要解决什么问题</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-VFIO-%E7%9A%84%E5%85%B8%E5%9E%8B%E4%BD%BF%E7%94%A8%E5%9C%BA%E6%99%AF"><span class="nav-number">2.</span> <span class="nav-text">2. VFIO 的典型使用场景</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-%E4%B8%BA%E4%BB%80%E4%B9%88-VFIO-%E5%BF%85%E9%A1%BB%E4%BE%9D%E8%B5%96-IOMMU"><span class="nav-number">3.</span> <span class="nav-text">3. 为什么 VFIO 必须依赖 IOMMU</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-VFIO-%E7%9A%84%E4%B8%89%E4%B8%AA%E6%A0%B8%E5%BF%83%E5%AF%B9%E8%B1%A1%EF%BC%9AContainer%E3%80%81Group%E3%80%81Device"><span class="nav-number">4.</span> <span class="nav-text">4. VFIO 的三个核心对象：Container、Group、Device</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#4-1-Device%EF%BC%9A%E7%9C%9F%E6%AD%A3%E8%A6%81%E6%93%8D%E4%BD%9C%E7%9A%84%E7%A1%AC%E4%BB%B6%E8%AE%BE%E5%A4%87"><span class="nav-number">4.1.</span> <span class="nav-text">4.1 Device：真正要操作的硬件设备</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-2-Group%EF%BC%9AVFIO-%E7%9A%84%E5%AE%89%E5%85%A8%E9%9A%94%E7%A6%BB%E5%8D%95%E4%BD%8D"><span class="nav-number">4.2.</span> <span class="nav-text">4.2 Group：VFIO 的安全隔离单位</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-3-Container%EF%BC%9A%E6%89%BF%E8%BD%BD-IOMMU-%E4%B8%8A%E4%B8%8B%E6%96%87%E7%9A%84%E5%AF%B9%E8%B1%A1"><span class="nav-number">4.3.</span> <span class="nav-text">4.3 Container：承载 IOMMU 上下文的对象</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-VFIO-%E8%AE%BE%E5%A4%87%E7%9B%B4%E9%80%9A%E7%9A%84%E5%87%86%E5%A4%87%E8%BF%87%E7%A8%8B"><span class="nav-number">5.</span> <span class="nav-text">5. VFIO 设备直通的准备过程</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-%E7%94%A8%E6%88%B7%E6%80%81%E8%AE%BF%E9%97%AE-VFIO-%E7%9A%84%E5%AE%8C%E6%95%B4%E6%B5%81%E7%A8%8B"><span class="nav-number">6.</span> <span class="nav-text">6. 用户态访问 VFIO 的完整流程</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#6-1-%E6%89%93%E5%BC%80-Container"><span class="nav-number">6.1.</span> <span class="nav-text">6.1 打开 Container</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#6-2-%E6%A3%80%E6%9F%A5-VFIO-API-%E7%89%88%E6%9C%AC"><span class="nav-number">6.2.</span> <span class="nav-text">6.2 检查 VFIO API 版本</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#6-3-%E6%A3%80%E6%9F%A5%E9%9C%80%E8%A6%81%E7%9A%84-IOMMU-%E8%83%BD%E5%8A%9B"><span class="nav-number">6.3.</span> <span class="nav-text">6.3 检查需要的 IOMMU 能力</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#6-4-%E6%89%93%E5%BC%80-Group"><span class="nav-number">6.4.</span> <span class="nav-text">6.4 打开 Group</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#6-5-%E6%A3%80%E6%9F%A5-Group-%E6%98%AF%E5%90%A6%E5%8F%AF%E7%94%A8"><span class="nav-number">6.5.</span> <span class="nav-text">6.5 检查 Group 是否可用</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#6-6-%E6%8A%8A-Group-%E5%8A%A0%E5%85%A5-Container"><span class="nav-number">6.6.</span> <span class="nav-text">6.6 把 Group 加入 Container</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#6-7-%E5%90%AF%E7%94%A8-IOMMU-%E6%A8%A1%E5%9E%8B"><span class="nav-number">6.7.</span> <span class="nav-text">6.7 启用 IOMMU 模型</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#6-8-%E5%BB%BA%E7%AB%8B-DMA-%E6%98%A0%E5%B0%84"><span class="nav-number">6.8.</span> <span class="nav-text">6.8 建立 DMA 映射</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#6-9-%E8%8E%B7%E5%8F%96-Device-fd"><span class="nav-number">6.9.</span> <span class="nav-text">6.9 获取 Device fd</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#7-Device-fd-%E4%B8%8A%E5%8F%AF%E4%BB%A5%E5%81%9A%E4%BB%80%E4%B9%88"><span class="nav-number">7.</span> <span class="nav-text">7. Device fd 上可以做什么</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#7-1-%E6%9F%A5%E8%AF%A2%E8%AE%BE%E5%A4%87%E5%9F%BA%E6%9C%AC%E4%BF%A1%E6%81%AF"><span class="nav-number">7.1.</span> <span class="nav-text">7.1 查询设备基本信息</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#7-2-%E6%9F%A5%E8%AF%A2%E8%AE%BE%E5%A4%87-Region"><span class="nav-number">7.2.</span> <span class="nav-text">7.2 查询设备 Region</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#7-3-%E6%9F%A5%E8%AF%A2%E5%92%8C%E9%85%8D%E7%BD%AE%E4%B8%AD%E6%96%AD"><span class="nav-number">7.3.</span> <span class="nav-text">7.3 查询和配置中断</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#7-4-%E5%A4%8D%E4%BD%8D%E8%AE%BE%E5%A4%87"><span class="nav-number">7.4.</span> <span class="nav-text">7.4 复位设备</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#8-VFIO-%E5%92%8C%E8%99%9A%E6%8B%9F%E6%9C%BA%E8%AE%BE%E5%A4%87%E7%9B%B4%E9%80%9A%E7%9A%84%E5%85%B3%E7%B3%BB"><span class="nav-number">8.</span> <span class="nav-text">8. VFIO 和虚拟机设备直通的关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#9-VFIO-%E5%92%8C-UIO-%E7%9A%84%E5%8C%BA%E5%88%AB"><span class="nav-number">9.</span> <span class="nav-text">9. VFIO 和 UIO 的区别</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#10-%E4%BB%8E-fd-%E7%9A%84%E8%A7%92%E5%BA%A6%E7%90%86%E8%A7%A3-VFIO"><span class="nav-number">10.</span> <span class="nav-text">10. 从 fd 的角度理解 VFIO</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#10-1-Container-fd"><span class="nav-number">10.1.</span> <span class="nav-text">10.1 Container fd</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#10-2-Group-fd"><span class="nav-number">10.2.</span> <span class="nav-text">10.2 Group fd</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#10-3-Device-fd"><span class="nav-number">10.3.</span> <span class="nav-text">10.3 Device fd</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#11-VFIO-bus-driver-API"><span class="nav-number">11.</span> <span class="nav-text">11. VFIO bus driver API</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#11-1-init-release"><span class="nav-number">11.1.</span> <span class="nav-text">11.1 init &#x2F; release</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#11-2-open-device-close-device"><span class="nav-number">11.2.</span> <span class="nav-text">11.2 open_device &#x2F; close_device</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#11-3-read-write-mmap"><span class="nav-number">11.3.</span> <span class="nav-text">11.3 read &#x2F; write &#x2F; mmap</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#11-4-ioctl"><span class="nav-number">11.4.</span> <span class="nav-text">11.4 ioctl</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#11-5-request"><span class="nav-number">11.5.</span> <span class="nav-text">11.5 request</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#11-6-dma-unmap"><span class="nav-number">11.6.</span> <span class="nav-text">11.6 dma_unmap</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#11-7-match"><span class="nav-number">11.7.</span> <span class="nav-text">11.7 match</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#12-%E7%94%A8%E4%B8%80%E4%B8%AA%E5%AE%8C%E6%95%B4%E4%BE%8B%E5%AD%90%E4%B8%B2%E8%B5%B7%E6%9D%A5"><span class="nav-number">12.</span> <span class="nav-text">12. 用一个完整例子串起来</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#12-1-%E5%AE%BF%E4%B8%BB%E6%9C%BA%E5%87%86%E5%A4%87%E9%98%B6%E6%AE%B5"><span class="nav-number">12.1.</span> <span class="nav-text">12.1 宿主机准备阶段</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#12-2-%E7%94%A8%E6%88%B7%E6%80%81%E7%A8%8B%E5%BA%8F%E8%AE%BF%E9%97%AE%E9%98%B6%E6%AE%B5"><span class="nav-number">12.2.</span> <span class="nav-text">12.2 用户态程序访问阶段</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#13-%E6%80%BB%E7%BB%93"><span class="nav-number">13.</span> <span class="nav-text">13. 总结</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">127</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">30</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
