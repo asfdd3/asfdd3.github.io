@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="前面我们知道，VFIO 在用户态主要是通过 &#x2F;dev&#x2F;vfio&#x2F;vfio 和 &#x2F;dev&#x2F;vfio&#x2F;&lt;group_id&gt; 这类文件对外提供接口。用户程序通过 open() 拿到 fd，再通过 ioctl() 完成 container、group、device 之间的关联，最后实现设备直通、DMA 映射以及 BAR 空间访问。 vfio_init() 是 VFIO core 模块加载时的初">
+<meta property="og:type" content="article">
+<meta property="og:title" content="VFIO框架初始化">
+<meta property="og:url" content="http://example.com/2026/05/21/VFIO(%E4%BA%8C)/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="前面我们知道，VFIO 在用户态主要是通过 &#x2F;dev&#x2F;vfio&#x2F;vfio 和 &#x2F;dev&#x2F;vfio&#x2F;&lt;group_id&gt; 这类文件对外提供接口。用户程序通过 open() 拿到 fd，再通过 ioctl() 完成 container、group、device 之间的关联，最后实现设备直通、DMA 映射以及 BAR 空间访问。 vfio_init() 是 VFIO core 模块加载时的初">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-05-21T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-05-21T12:23:42.569Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="VFIO">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/05/21/VFIO(%E4%BA%8C)/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>VFIO框架初始化 | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/05/21/VFIO(%E4%BA%8C)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          VFIO框架初始化
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-05-21 22:00:00 / 修改时间：20:23:42" itemprop="dateCreated datePublished" datetime="2026-05-21T22:00:00+08:00">2026-05-21</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/VFIO/" itemprop="url" rel="index"><span itemprop="name">VFIO</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/05/21/VFIO(%E4%BA%8C)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/05/21/VFIO(%E4%BA%8C)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>前面我们知道，VFIO 在用户态主要是通过 <code>/dev/vfio/vfio</code> 和 <code>/dev/vfio/&lt;group_id&gt;</code> 这类文件对外提供接口。用户程序通过 <code>open()</code> 拿到 <code>fd</code>，再通过 <code>ioctl()</code> 完成 container、group、device 之间的关联，最后实现设备直通、DMA 映射以及 BAR 空间访问。</p>
+<p><code>vfio_init()</code> 是 VFIO core 模块加载时的初始化入口。这个函数本身不会直接操作某个 PCI 设备，也不会建立 DMA 映射，而是先初始化 VFIO core 运行需要的基础设施。</p>
+<p>因此，本文就从 <code>vfio_init()</code> 这个函数开始，沿着它的初始化顺序，分析 VFIO 在模块加载阶段到底创建了哪些对象，以及这些对象如何为后面的设备直通流程做准备。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment"> * Module/class support</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> __init <span class="title function_">vfio_init</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> ret;</span><br><span class="line">	<span class="comment">// 初始化ID 分配器，后续每注册一个设备都从这里分配 vfio_init_device</span></span><br><span class="line">	ida_init(&amp;vfio.device_ida);</span><br><span class="line">	<span class="comment">//负责初始化 VFIO 的 group 管理结构</span></span><br><span class="line">	ret = vfio_group_init();</span><br><span class="line">	<span class="keyword">if</span> (ret)</span><br><span class="line">		<span class="keyword">return</span> ret;</span><br><span class="line">	<span class="comment">//创建一个名为 vfio-irqfd-cleanup 的单线程工作队列</span></span><br><span class="line">	ret = vfio_virqfd_init();</span><br><span class="line">	<span class="keyword">if</span> (ret)</span><br><span class="line">		<span class="keyword">goto</span> err_virqfd;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* /sys/class/vfio-dev/vfioX */</span></span><br><span class="line">	<span class="comment">//创建一个设备类</span></span><br><span class="line">	vfio.device_class = class_create(<span class="string">&quot;vfio-dev&quot;</span>);</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR(vfio.device_class)) &#123;</span><br><span class="line">		ret = PTR_ERR(vfio.device_class);</span><br><span class="line">		<span class="keyword">goto</span> err_dev_class;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//新的VFIO接口注册一个字符设备取决于是否启用了CONFIG_VFIO_DEVICE_CDEV</span></span><br><span class="line">	ret = vfio_cdev_init(vfio.device_class);</span><br><span class="line">	<span class="keyword">if</span> (ret)</span><br><span class="line">		<span class="keyword">goto</span> err_alloc_dev_chrdev;</span><br><span class="line"></span><br><span class="line">	pr_info(DRIVER_DESC <span class="string">&quot; version: &quot;</span> DRIVER_VERSION <span class="string">&quot;\n&quot;</span>);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">err_alloc_dev_chrdev:</span><br><span class="line">	class_destroy(vfio.device_class);</span><br><span class="line">	vfio.device_class = <span class="literal">NULL</span>;</span><br><span class="line">err_dev_class:</span><br><span class="line">	vfio_virqfd_exit();</span><br><span class="line">err_virqfd:</span><br><span class="line">	vfio_group_cleanup();</span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这段 <code>vfio_init()</code> 是 VFIO core 模块加载时的初始化入口，它的作用不是直接操作某个 PCI 设备，也不是建立 DMA 映射，而是先把 VFIO 框架运行所需的基础设施搭起来。函数一开始通过 <code>ida_init(&amp;vfio.device_ida)</code> 初始化一个 ID 分配器，后续每注册一个 VFIO device 时，都可以从这里分配一个唯一的设备编号，比如用于生成 <code>vfioX</code> 这类设备名。接着调用 <code>vfio_group_init()</code> 初始化 VFIO group 相关的管理逻辑，因为 VFIO 仍然以 IOMMU group 作为重要的隔离和管理边界；然后调用 <code>vfio_virqfd_init()</code> 初始化 <code>irqfd</code> 相关的清理工作队列，用于处理 VFIO 中断事件通知相关的异步清理任务。之后通过 <code>class_create(&quot;vfio-dev&quot;)</code> 创建一个名为 <code>vfio-dev</code> 的设备类，对应后续 <code>sysfs</code> 中的 <code>/sys/class/vfio-dev/vfioX</code>，也就是说每个 VFIO device 都可以作为一个独立设备挂到这个 class 下面。</p>
+<p>上诉<code>vfio_group_init</code>主要负责初始化传统 VFIO group&#x2F;container 接口具体实现如下所示:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __init <span class="title function_">vfio_group_init</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> ret;</span><br><span class="line">	<span class="comment">//初始化group编号分配器 后续vfio_group_alloc从这里拿</span></span><br><span class="line">	ida_init(&amp;vfio.group_ida);</span><br><span class="line">	mutex_init(&amp;vfio.group_lock);</span><br><span class="line">	<span class="comment">//挂所有已经创建的组</span></span><br><span class="line">	INIT_LIST_HEAD(&amp;vfio.group_list);</span><br><span class="line"></span><br><span class="line">	<span class="comment">//关键，初始化了container</span></span><br><span class="line">	ret = vfio_container_init();</span><br><span class="line">	<span class="keyword">if</span> (ret)</span><br><span class="line">		<span class="keyword">return</span> ret;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* /dev/vfio/$GROUP */</span></span><br><span class="line">	<span class="comment">//创建vfio class以后每创建一个group，都会创建一个device，这个device就是类被就是vfio</span></span><br><span class="line">	vfio.class = class_create(<span class="string">&quot;vfio&quot;</span>);</span><br><span class="line">	<span class="keyword">if</span> (IS_ERR(vfio.class)) &#123;</span><br><span class="line">		ret = PTR_ERR(vfio.class);</span><br><span class="line">		<span class="keyword">goto</span> err_group_class;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//设置回调 设备节点的路径，创建group的时候用到</span></span><br><span class="line">	vfio.class-&gt;devnode = vfio_devnode;</span><br><span class="line">	<span class="comment">//申请group字符设备号的范围，后面申请group的时候使用</span></span><br><span class="line">	ret = alloc_chrdev_region(&amp;vfio.group_devt, <span class="number">0</span>, MINORMASK + <span class="number">1</span>, <span class="string">&quot;vfio&quot;</span>);</span><br><span class="line">	<span class="keyword">if</span> (ret)</span><br><span class="line">		<span class="keyword">goto</span> err_alloc_chrdev;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">err_alloc_chrdev:</span><br><span class="line">	class_destroy(vfio.class);</span><br><span class="line">	vfio.class = <span class="literal">NULL</span>;</span><br><span class="line">err_group_class:</span><br><span class="line">	vfio_container_cleanup();</span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>vfio_group_init()</code> 先初始化 VFIO group 的全局管理结构，然后调用 <code>vfio_container_init()</code> 初始化传统 container 入口，最后创建 <code>vfio</code> class 并申请 group 字符设备号，为后续 <code>/dev/vfio/vfio</code> 和 <code>/dev/vfio/&lt;group_id&gt;</code> 这套接口做准备。</p>
+<p>上述<code>vfio_container_init</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __init <span class="title function_">vfio_container_init</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> ret;</span><br><span class="line">	<span class="comment">//初始化iommu驱动的链表</span></span><br><span class="line">	mutex_init(&amp;vfio.iommu_drivers_lock);</span><br><span class="line">	INIT_LIST_HEAD(&amp;vfio.iommu_drivers_list);</span><br><span class="line">	<span class="comment">//这里注册了一个字符设备</span></span><br><span class="line">	ret = misc_register(&amp;vfio_dev);</span><br><span class="line">	<span class="keyword">if</span> (ret) &#123;</span><br><span class="line">		pr_err(<span class="string">&quot;vfio: misc device register failed\n&quot;</span>);</span><br><span class="line">		<span class="keyword">return</span> ret;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (IS_ENABLED(CONFIG_VFIO_NOIOMMU)) &#123;</span><br><span class="line">		ret = vfio_register_iommu_driver(&amp;vfio_noiommu_ops);</span><br><span class="line">		<span class="keyword">if</span> (ret)</span><br><span class="line">			<span class="keyword">goto</span> err_misc;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">err_misc:</span><br><span class="line">	misc_deregister(&amp;vfio_dev);</span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>vfio_container_init()</code> 主要负责初始化 <strong>VFIO legacy container 入口</strong>。它先初始化 <code>vfio.iommu_drivers_lock</code> 和 <code>vfio.iommu_drivers_list</code>，用来管理后续注册进 VFIO 的 IOMMU 后端驱动，比如 type1 IOMMU；然后通过 <code>misc_register(&amp;vfio_dev)</code> 注册一个 <code>misc</code> 字符设备，这一步会创建传统 VFIO 的 container 入口，也就是用户态常用的 <code>/dev/vfio/vfio</code>。后续用户程序 <code>open(&quot;/dev/vfio/vfio&quot;)</code> 拿到的就是 container <code>fd</code>，再通过这个 <code>fd</code> 执行 <code>VFIO_SET_IOMMU</code> 等 <code>ioctl</code>。</p>
+<p><code>vfio_dev</code> 是 VFIO legacy container 接口对应的 <strong><code>misc</code> 字符设备描述对象</strong>，具体定义如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="class"><span class="keyword">struct</span> <span class="title">miscdevice</span> <span class="title">vfio_dev</span> =</span> &#123;</span><br><span class="line">	.minor = VFIO_MINOR,</span><br><span class="line">	.name = <span class="string">&quot;vfio&quot;</span>, <span class="comment">//设备名字</span></span><br><span class="line">	.fops = &amp;vfio_fops, <span class="comment">//ops</span></span><br><span class="line">	.nodename = <span class="string">&quot;vfio/vfio&quot;</span>, <span class="comment">//设备节点路径</span></span><br><span class="line">	.mode = S_IRUGO | S_IWUGO,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>用户态执行：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">int container_fd = open(&quot;/dev/vfio/vfio&quot;, O_RDWR);</span><br></pre></td></tr></table></figure>
+
+<p>最终就会进入 <code>vfio_dev.fops</code>，也就是：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">file_operations</span> <span class="title">vfio_fops</span> =</span> &#123;</span><br><span class="line">	.owner		= THIS_MODULE,</span><br><span class="line">	.open		= vfio_fops_open, <span class="comment">//申请一个container</span></span><br><span class="line">	.release	= vfio_fops_release,</span><br><span class="line">	.unlocked_ioctl	= vfio_fops_unl_ioctl, <span class="comment">//关键，设置iommu的后端，查询版本信息，以及DMA map</span></span><br><span class="line">	.compat_ioctl	= compat_ptr_ioctl,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>里最关键的是 <code>open</code> 和 <code>unlocked_ioctl</code> 两个回调。用户态打开 <code>/dev/vfio/vfio</code> 时，会触发 <code>vfio_fops_open()</code>内核会为这次打开分配一个 <code>struct vfio_container</code>，并挂到 <code>file-&gt;private_data</code> 上，所以这个 <code>fd</code> 后面就代表一个 container。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">vfio_fops_open</span><span class="params">(<span class="keyword">struct</span> inode *inode, <span class="keyword">struct</span> file *filep)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfio_container</span> *<span class="title">container</span>;</span></span><br><span class="line"></span><br><span class="line">	container = kzalloc(<span class="keyword">sizeof</span>(*container), GFP_KERNEL_ACCOUNT);</span><br><span class="line">	<span class="keyword">if</span> (!container)</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line"></span><br><span class="line">	INIT_LIST_HEAD(&amp;container-&gt;group_list);</span><br><span class="line">	init_rwsem(&amp;container-&gt;group_lock);</span><br><span class="line">	kref_init(&amp;container-&gt;kref);</span><br><span class="line"></span><br><span class="line">	filep-&gt;private_data = container;<span class="comment">//关联这个file</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>用户态后续对这个 <code>fd</code> 调用 <code>ioctl</code> 时，会进入 <code>vfio_fops_unl_ioctl()</code>，比如查询 VFIO 版本、检查 IOMMU 类型、设置 IOMMU 后端，以及执行 <code>DMA map/unmap</code>。具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">long</span> <span class="title function_">vfio_fops_unl_ioctl</span><span class="params">(<span class="keyword">struct</span> file *filep,</span></span><br><span class="line"><span class="params">				<span class="type">unsigned</span> <span class="type">int</span> cmd, <span class="type">unsigned</span> <span class="type">long</span> arg)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfio_container</span> *<span class="title">container</span> =</span> filep-&gt;private_data;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfio_iommu_driver</span> *<span class="title">driver</span>;</span></span><br><span class="line">	<span class="type">void</span> *data;</span><br><span class="line">	<span class="type">long</span> ret = -EINVAL;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!container)</span><br><span class="line">		<span class="keyword">return</span> ret;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">switch</span> (cmd) &#123;</span><br><span class="line">	<span class="keyword">case</span> VFIO_GET_API_VERSION:</span><br><span class="line">		ret = VFIO_API_VERSION;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> VFIO_CHECK_EXTENSION:</span><br><span class="line">		ret = vfio_container_ioctl_check_extension(container, arg);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> VFIO_SET_IOMMU:</span><br><span class="line">		<span class="comment">//给当前VFIO container 设置一个iommu后端</span></span><br><span class="line">		ret = vfio_ioctl_set_iommu(container, arg);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="comment">//其他 ioctl 转发给已经绑定的 IOMMU 后端处理，比如说dma映射</span></span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		driver = container-&gt;iommu_driver;</span><br><span class="line">		data = container-&gt;iommu_data;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (driver) <span class="comment">/* passthrough all unrecognized ioctls */</span></span><br><span class="line">			ret = driver-&gt;ops-&gt;ioctl(data, cmd, arg);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p> <code>vfio_fops_unl_ioctl()</code> 是 <strong><code>/dev/vfio/vfio</code> 这个 container <code>fd</code> 的 <code>ioctl</code> 总入口</strong>。用户态对 <code>container_fd</code> 调用 <code>ioctl()</code> 时，都会先进入这个函数。然后根据 <code>cmd</code> 区分不同操作：如果是 <code>VFIO_GET_API_VERSION</code>，就直接返回 VFIO API 版本；如果是 <code>VFIO_CHECK_EXTENSION</code>，就检查当前 container 是否支持某种能力，比如是否支持 <code>VFIO_TYPE1_IOMMU</code>；如果是 <code>VFIO_SET_IOMMU</code>，就调用 <code>vfio_ioctl_set_iommu()</code> 给当前 container 绑定一个具体的 IOMMU 后端。剩下那些 VFIO core 不认识的 <code>ioctl</code>，会走 <code>default</code> 分支，转发给当前 container 已经绑定的 IOMMU driver 处理，比如 <code>DMA</code> <code>map</code> 这类操作。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">container fd ioctl</span><br><span class="line">        |</span><br><span class="line">        v</span><br><span class="line">vfio_fops_unl_ioctl()</span><br><span class="line">        |</span><br><span class="line">        +-- VFIO_GET_API_VERSION      查询 VFIO 版本</span><br><span class="line">        |</span><br><span class="line">        +-- VFIO_CHECK_EXTENSION      检查支持哪些能力/IOMMU 类型</span><br><span class="line">        |</span><br><span class="line">        +-- VFIO_SET_IOMMU            给 container 设置 IOMMU 后端</span><br><span class="line">        |</span><br><span class="line">        +-- 其他 ioctl                转发给已绑定的 IOMMU backend</span><br></pre></td></tr></table></figure>
+
+<p>重点是 <strong><code>VFIO_SET_IOMMU</code> 这个 case</strong>为它决定了当前 <code>container</code> 后面使用哪个 <strong>IOMMU 后端驱动</strong>，比如常见的 <code>VFIO_TYPE1_IOMMU</code>它完成 container 和具体 IOMMU 后端的绑定，具体实现如下所示:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">long</span> <span class="title function_">vfio_ioctl_set_iommu</span><span class="params">(<span class="keyword">struct</span> vfio_container *container,</span></span><br><span class="line"><span class="params">				 <span class="type">unsigned</span> <span class="type">long</span> arg)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfio_iommu_driver</span> *<span class="title">driver</span>;</span></span><br><span class="line">	<span class="type">long</span> ret = -ENODEV;</span><br><span class="line"></span><br><span class="line">	down_write(&amp;container-&gt;group_lock);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * The container is designed to be an unprivileged interface while</span></span><br><span class="line"><span class="comment">	 * the group can be assigned to specific users.  Therefore, only by</span></span><br><span class="line"><span class="comment">	 * adding a group to a container does the user get the privilege of</span></span><br><span class="line"><span class="comment">	 * enabling the iommu, which may allocate finite resources.  There</span></span><br><span class="line"><span class="comment">	 * is no unset_iommu, but by removing all the groups from a container,</span></span><br><span class="line"><span class="comment">	 * the container is deprivileged and returns to an unset state.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//container中必须已经有group，如果没有就不能设置IOMMU  || 不能重复设置iommu</span></span><br><span class="line">	<span class="keyword">if</span> (list_empty(&amp;container-&gt;group_list) || container-&gt;iommu_driver) &#123;</span><br><span class="line">		up_write(&amp;container-&gt;group_lock);</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	mutex_lock(&amp;vfio.iommu_drivers_lock);</span><br><span class="line">	<span class="comment">//这里遍历所有已经注册的iommu驱动</span></span><br><span class="line">	list_for_each_entry(driver, &amp;vfio.iommu_drivers_list, vfio_next) &#123;</span><br><span class="line">		<span class="type">void</span> *data;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (!vfio_iommu_driver_allowed(container, driver))</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		<span class="comment">//防止这个iommu模块被卸载</span></span><br><span class="line">		<span class="keyword">if</span> (!try_module_get(driver-&gt;ops-&gt;owner))</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/*</span></span><br><span class="line"><span class="comment">		 * The arg magic for SET_IOMMU is the same as CHECK_EXTENSION,</span></span><br><span class="line"><span class="comment">		 * so test which iommu driver reported support for this</span></span><br><span class="line"><span class="comment">		 * extension and call open on them.  We also pass them the</span></span><br><span class="line"><span class="comment">		 * magic, allowing a single driver to support multiple</span></span><br><span class="line"><span class="comment">		 * interfaces if they&#x27;d like.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//判断是不是用户要的驱动 比如type1</span></span><br><span class="line">		<span class="keyword">if</span> (driver-&gt;ops-&gt;ioctl(<span class="literal">NULL</span>, VFIO_CHECK_EXTENSION, arg) &lt;= <span class="number">0</span>) &#123;</span><br><span class="line">			module_put(driver-&gt;ops-&gt;owner);</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//open IOMMU 后端 vfio_iommu_type1_open ,这里的data就是vfio_iommu</span></span><br><span class="line">		data = driver-&gt;ops-&gt;open(arg);</span><br><span class="line">		<span class="keyword">if</span> (IS_ERR(data)) &#123;</span><br><span class="line">			ret = PTR_ERR(data);</span><br><span class="line">			module_put(driver-&gt;ops-&gt;owner);</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//把 container 里的 groups attach 到这个 IOMMU 后端</span></span><br><span class="line">		<span class="comment">//注意这里就是调用iommu后端的attach</span></span><br><span class="line">		ret = __vfio_container_attach_groups(container, driver, data);</span><br><span class="line">		<span class="keyword">if</span> (ret) &#123;</span><br><span class="line">			driver-&gt;ops-&gt;release(data);</span><br><span class="line">			module_put(driver-&gt;ops-&gt;owner);</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//把 driver 和 data 保存到 container</span></span><br><span class="line">		container-&gt;iommu_driver = driver;</span><br><span class="line">		container-&gt;iommu_data = data;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	mutex_unlock(&amp;vfio.iommu_drivers_lock);</span><br><span class="line">	up_write(&amp;container-&gt;group_lock);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>vfio_ioctl_set_iommu()</code> 的作用就是 <strong>给当前 container 绑定一个 IOMMU 后端</strong>。它先检查 container 里必须已经有 group，并且还没有设置过 IOMMU；然后遍历 VFIO 已注册的 IOMMU driver，找到支持用户传入类型的后端，比如 <code>VFIO_TYPE1_IOMMU</code>。找到后调用 <code>driver-&gt;ops-&gt;open(arg)</code> 创建后端私有数据，再通过 <code>__vfio_container_attach_groups()</code> 把 container 里已有的 group attach 到这个 IOMMU 后端。最后把 <code>driver</code> 和 <code>data</code> 保存到 <code>container-&gt;iommu_driver</code>、<code>container-&gt;iommu_data</code> 中，后续 <code>DMA map/unmap</code> 等 <code>ioctl</code> 就可以转发给这个后端处理。重点就是：<strong>选择 IOMMU 后端、open 后端、attach group、保存到 container</strong>。</p>
+<p><strong>注意：这里遍历的 IOMMU 后端不是临时创建的，而是在对应 IOMMU backend 模块初始化时提前注册到 VFIO core 里的。</strong></p>
+<p><strong>比如 type1 IOMMU 后端一般会在自己的模块初始化函数里调用：</strong></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">vfio_register_iommu_driver(&amp;vfio_iommu_driver_ops_type1);</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">type1 模块初始化</span><br><span class="line">    |</span><br><span class="line">    v</span><br><span class="line"><span class="title function_">vfio_register_iommu_driver</span><span class="params">()</span></span><br><span class="line">    |</span><br><span class="line">    v</span><br><span class="line">挂到 vfio.iommu_drivers_list</span><br><span class="line">    |</span><br><span class="line">    v</span><br><span class="line">VFIO_SET_IOMMU 时遍历这个链表</span><br><span class="line">    |</span><br><span class="line">    v</span><br><span class="line">找到匹配的 IOMMU 后端并绑定到 container</span><br></pre></td></tr></table></figure>
+
+<p><strong>上述代码的重点除了调用后端<code>iommu后端</code>的<code>open</code>回调之外，还需要调用<code>__vfio_container_attach_groups()</code> 把 container 里已有的 group attach 到这个 IOMMU 后端</strong>，具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* hold write lock on container-&gt;group_lock */</span></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> __vfio_container_attach_groups(<span class="keyword">struct</span> vfio_container *container,</span><br><span class="line">					  <span class="keyword">struct</span> vfio_iommu_driver *driver,</span><br><span class="line">					  <span class="type">void</span> *data)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfio_group</span> *<span class="title">group</span>;</span></span><br><span class="line">	<span class="type">int</span> ret = -ENODEV;</span><br><span class="line">	<span class="comment">//遍历 container 中所有 group</span></span><br><span class="line">	list_for_each_entry(group, &amp;container-&gt;group_list, container_next) &#123;</span><br><span class="line">		<span class="comment">//对每个 group 调用 IOMMU 后端的 attach_group</span></span><br><span class="line">		ret = driver-&gt;ops-&gt;attach_group(data, group-&gt;iommu_group,</span><br><span class="line">						group-&gt;type);</span><br><span class="line">		<span class="keyword">if</span> (ret)</span><br><span class="line">			<span class="keyword">goto</span> unwind;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line"></span><br><span class="line">unwind:</span><br><span class="line">	list_for_each_entry_continue_reverse(group, &amp;container-&gt;group_list,</span><br><span class="line">					     container_next) &#123;</span><br><span class="line">		driver-&gt;ops-&gt;detach_group(data, group-&gt;iommu_group);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p> <code>__vfio_container_attach_groups()</code> 的作用就是：<strong>把当前 container 里已经加入的所有 group，逐个 attach 到刚刚选中的 IOMMU 后端上</strong>。它会遍历 <code>container-&gt;group_list</code>，对每个 <code>vfio_group</code> 调用后端驱动的 <code>attach_group()</code>，把 <code>group-&gt;iommu_group</code> 交给 IOMMU backend 管理。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/VFIO/" rel="tag"># VFIO</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/05/19/VFIO(%E4%B8%80)/" rel="prev" title="VFIO 原理">
+      <i class="fa fa-chevron-left"></i> VFIO 原理
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">128</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">30</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

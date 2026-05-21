@@ -193,6 +193,111 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/22/GRO/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2026/04/22/GRO/" class="post-title-link" itemprop="url">GRO（一）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-04-22 22:00:00" itemprop="dateCreated datePublished" datetime="2026-04-22T22:00:00+08:00">2026-04-22</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-04-21 23:48:40" itemprop="dateModified" datetime="2026-04-21T23:48:40+08:00">2026-04-21</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/04/22/GRO/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/04/22/GRO/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="引言"><a href="#引言" class="headerlink" title="引言"></a>引言</h2><p>在内核协议栈中，性能是一个核心问题：<strong>如何减少每个数据包带来的处理开销</strong>。相比发送路径中的 TSO&#x2F;GSO，接收路径同样存在类似的问题——网卡不断上报大量小包，而协议栈却需要逐个处理，无疑增加了CPU的使用率。当大量数据包涌入系统时，即使带宽没有打满，CPU 也可能因为频繁进入协议栈而被拖垮。为优化上述问题，协议栈引入了GRO（Generic Receive Offload），把多个连续的包合并成一个大包，减少协议栈处理次数。</p>
+<p>GRO的入口是<code>napi_gro_receive</code>（<strong>网卡驱动上送数据包的接口</strong>），在推送数据包给协议栈之前，会在当前一个轮次的<code>napi</code>中尝试合并数据包，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">gro_result_t</span> <span class="title function_">napi_gro_receive</span><span class="params">(<span class="keyword">struct</span> napi_struct *napi, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">gro_result_t</span> ret;</span><br><span class="line">	<span class="comment">//busypoll用到</span></span><br><span class="line">	skb_mark_napi_id(skb, napi);</span><br><span class="line">	trace_napi_gro_receive_entry(skb);</span><br><span class="line">	<span class="comment">//初始化gro用到的字段</span></span><br><span class="line">	skb_gro_reset_offset(skb, <span class="number">0</span>);</span><br><span class="line">	<span class="comment">//先调用dev_gro_receive尝试合包</span></span><br><span class="line">	ret = napi_skb_finish(napi, skb, dev_gro_receive(napi, skb));</span><br><span class="line">	trace_napi_gro_receive_exit(ret);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong><code>napi_gro_receive()</code> 是 GRO 的入口函数，它给新收到的 <code>skb</code> 做基础初始化，然后调用 <code>dev_gro_receive()</code> 尝试与已有包合并，最后由 <code>napi_skb_finish()</code> 决定是继续缓存、合并，还是直接上送协议栈。</strong></p>
+<p><code>dev_gro_receive</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">enum</span> gro_result </span><br><span class="line"><span class="title function_">dev_gro_receive</span><span class="params">(<span class="keyword">struct</span> napi_struct *napi, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	u32 bucket = skb_get_hash_raw(skb) &amp; (GRO_HASH_BUCKETS - <span class="number">1</span>);<span class="comment">//找到桶，这里的hash是硬件带上来的</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">gro_list</span> *<span class="title">gro_list</span> =</span> &amp;napi-&gt;gro_hash[bucket];</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">list_head</span> *<span class="title">head</span> =</span> &amp;offload_base;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">packet_offload</span> *<span class="title">ptype</span>;</span></span><br><span class="line">	__be16 type = skb-&gt;protocol;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">pp</span> =</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="class"><span class="keyword">enum</span> <span class="title">gro_result</span> <span class="title">ret</span>;</span></span><br><span class="line">	<span class="type">int</span> same_flow;</span><br><span class="line">	<span class="comment">//是否没开启gro</span></span><br><span class="line">	<span class="keyword">if</span> (netif_elide_gro(skb-&gt;dev))</span><br><span class="line">		<span class="keyword">goto</span> normal;</span><br><span class="line">	<span class="comment">//先标记是否是同流</span></span><br><span class="line">	gro_list_prepare(&amp;gro_list-&gt;<span class="built_in">list</span>, skb);</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	list_for_each_entry_rcu(ptype, head, <span class="built_in">list</span>) &#123;</span><br><span class="line">		<span class="keyword">if</span> (ptype-&gt;type == type &amp;&amp; ptype-&gt;callbacks.gro_receive)</span><br><span class="line">			<span class="keyword">goto</span> found_ptype;</span><br><span class="line">	&#125;</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line">	<span class="keyword">goto</span> normal;</span><br><span class="line"></span><br><span class="line">found_ptype:</span><br><span class="line">	skb_set_network_header(skb, skb_gro_offset(skb));</span><br><span class="line">	skb_reset_mac_len(skb);</span><br><span class="line">	BUILD_BUG_ON(sizeof_field(<span class="keyword">struct</span> napi_gro_cb, zeroed) != <span class="keyword">sizeof</span>(u32));</span><br><span class="line">	BUILD_BUG_ON(!IS_ALIGNED(offsetof(<span class="keyword">struct</span> napi_gro_cb, zeroed),</span><br><span class="line">					<span class="keyword">sizeof</span>(u32))); <span class="comment">/* Avoid slow unaligned acc */</span></span><br><span class="line">	*(u32 *)&amp;NAPI_GRO_CB(skb)-&gt;zeroed = <span class="number">0</span>;</span><br><span class="line">	NAPI_GRO_CB(skb)-&gt;flush = skb_has_frag_list(skb);<span class="comment">//带fraglist 默认不能聚合</span></span><br><span class="line">	NAPI_GRO_CB(skb)-&gt;is_atomic = <span class="number">1</span>; <span class="comment">//原子包</span></span><br><span class="line">	NAPI_GRO_CB(skb)-&gt;count = <span class="number">1</span>;  <span class="comment">//一个段</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(skb_is_gso(skb))) &#123; <span class="comment">//几乎不可能吧</span></span><br><span class="line">		NAPI_GRO_CB(skb)-&gt;count = skb_shinfo(skb)-&gt;gso_segs;</span><br><span class="line">		<span class="comment">/* Only support TCP and non DODGY users. */</span></span><br><span class="line">		<span class="keyword">if</span> (!skb_is_gso_tcp(skb) ||</span><br><span class="line">		    (skb_shinfo(skb)-&gt;gso_type &amp; SKB_GSO_DODGY))</span><br><span class="line">			NAPI_GRO_CB(skb)-&gt;flush = <span class="number">1</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Setup for GRO checksum validation */</span></span><br><span class="line">	<span class="comment">//初始化checksum状态</span></span><br><span class="line">	<span class="keyword">switch</span> (skb-&gt;ip_summed) &#123;</span><br><span class="line">	<span class="keyword">case</span> CHECKSUM_COMPLETE:</span><br><span class="line">		NAPI_GRO_CB(skb)-&gt;csum = skb-&gt;csum;</span><br><span class="line">		NAPI_GRO_CB(skb)-&gt;csum_valid = <span class="number">1</span>;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> CHECKSUM_UNNECESSARY:</span><br><span class="line">		NAPI_GRO_CB(skb)-&gt;csum_cnt = skb-&gt;csum_level + <span class="number">1</span>;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//调用上层的groreceive， 在当前的buckt中尝试和旧的skb合并</span></span><br><span class="line">	pp = INDIRECT_CALL_INET(ptype-&gt;callbacks.gro_receive,</span><br><span class="line">				ipv6_gro_receive, inet_gro_receive,</span><br><span class="line">				&amp;gro_list-&gt;<span class="built_in">list</span>, skb);</span><br><span class="line"></span><br><span class="line">	rcu_read_unlock();</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (PTR_ERR(pp) == -EINPROGRESS) &#123;</span><br><span class="line">		ret = GRO_CONSUMED;</span><br><span class="line">		<span class="keyword">goto</span> ok;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	same_flow = NAPI_GRO_CB(skb)-&gt;same_flow;</span><br><span class="line">	<span class="comment">//合并成功，根据free设置返回值</span></span><br><span class="line">	ret = NAPI_GRO_CB(skb)-&gt;<span class="built_in">free</span> ? GRO_MERGED_FREE : GRO_MERGED;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (pp) &#123;</span><br><span class="line">		<span class="comment">//pp表示的是一个旧的skb</span></span><br><span class="line">		skb_list_del_init(pp);</span><br><span class="line">		napi_gro_complete(napi, pp);</span><br><span class="line">		gro_list-&gt;count--;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//合并到了某个skb中</span></span><br><span class="line">	<span class="keyword">if</span> (same_flow)</span><br><span class="line">		<span class="keyword">goto</span> ok;</span><br><span class="line">	<span class="comment">//不是same flow 不能聚合</span></span><br><span class="line">	<span class="keyword">if</span> (NAPI_GRO_CB(skb)-&gt;flush)</span><br><span class="line">		<span class="keyword">goto</span> normal;</span><br><span class="line">	<span class="comment">//超过 gro skb的数量，先flush最老的一个，否则就更新</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(gro_list-&gt;count &gt;= MAX_GRO_SKBS))</span><br><span class="line">		gro_flush_oldest(napi, &amp;gro_list-&gt;<span class="built_in">list</span>);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		gro_list-&gt;count++;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Must be called before setting NAPI_GRO_CB(skb)-&gt;&#123;age|last&#125; */</span></span><br><span class="line">	gro_try_pull_from_frag0(skb);</span><br><span class="line">	NAPI_GRO_CB(skb)-&gt;age = jiffies;</span><br><span class="line">	NAPI_GRO_CB(skb)-&gt;last = skb;</span><br><span class="line">	<span class="keyword">if</span> (!skb_is_gso(skb))</span><br><span class="line">		skb_shinfo(skb)-&gt;gso_size = skb_gro_len(skb);</span><br><span class="line">	<span class="comment">//比如当前skb是第一个 就挂到链表上</span></span><br><span class="line">	list_add(&amp;skb-&gt;<span class="built_in">list</span>, &amp;gro_list-&gt;<span class="built_in">list</span>);</span><br><span class="line">	ret = GRO_HELD;</span><br><span class="line">ok:</span><br><span class="line">	<span class="keyword">if</span> (gro_list-&gt;count) &#123;</span><br><span class="line">		<span class="keyword">if</span> (!test_bit(bucket, &amp;napi-&gt;gro_bitmask))</span><br><span class="line">			__set_bit(bucket, &amp;napi-&gt;gro_bitmask);</span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (test_bit(bucket, &amp;napi-&gt;gro_bitmask)) &#123;</span><br><span class="line">		__clear_bit(bucket, &amp;napi-&gt;gro_bitmask);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line"></span><br><span class="line">normal:</span><br><span class="line">	ret = GRO_NORMAL;</span><br><span class="line">	gro_try_pull_from_frag0(skb);</span><br><span class="line">	<span class="keyword">goto</span> ok;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p> <code>dev_gro_receive</code> 首先判断当前设备是否开启 GRO，如果没开就直接走 normal 路径上送；如果开启了，就先根据 <code>skb</code> 的 <code>hash</code> 找到当前 CPU 上对应的 GRO bucket，并通过 <code>gro_list_prepare()</code> 先把这个 <code>skb</code> 和桶里已有包做一轮是否同流的预标记，然后按协议类型找到对应的 <code>gro_receive</code> 回调（比如 <code>inet_gro_receive</code>、<code>tcp_gro_receive</code>）去真正尝试和桶里的旧 <code>skb</code> 合并；在这个过程中会初始化当前 <code>skb</code> 的 GRO 控制信息，比如 <code>flush</code>、<code>is_atomic</code>、<code>count</code> 和 <code>checksum</code> 状态，<strong>如果回调返回了 <code>pp</code>，说明某个旧 <code>skb</code> 已经聚合完成，需要从链表摘下并调用 <code>napi_gro_complete()</code> 上送</strong>；如果当前 <code>skb</code> 最终仍然属于同流并成功并入已有包，就直接结束；如果不是同流、但又不需要立刻 flush，就把当前 <code>skb</code> 作为这个 bucket 里的一个新 <code>GRO</code> 流挂到链表上，等待后续同流包继续合并；如果既不能合并又不适合继续缓存，就走 <code>normal</code> 路径直接上送协议栈。</p>
+<p>上述<code>gro_list_prepare</code>首先基于链路层进行一轮标记，被标记的数据包可以直接调过后续数据包是否是同一条流的逻辑，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">gro_list_prepare</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> list_head *head,</span></span><br><span class="line"><span class="params">			     <span class="type">const</span> <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> maclen = skb-&gt;dev-&gt;hard_header_len;</span><br><span class="line">	u32 hash = skb_get_hash_raw(skb);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">p</span>;</span></span><br><span class="line">	<span class="comment">//遍历桶的里面的每个skb</span></span><br><span class="line">	list_for_each_entry(p, head, <span class="built_in">list</span>) &#123;</span><br><span class="line">		<span class="type">unsigned</span> <span class="type">long</span> diffs;</span><br><span class="line">		<span class="comment">//flush清零</span></span><br><span class="line">		NAPI_GRO_CB(p)-&gt;flush = <span class="number">0</span>;</span><br><span class="line">		<span class="comment">//hash不同 肯定不是同流</span></span><br><span class="line">		<span class="keyword">if</span> (hash != skb_get_hash_raw(p)) &#123;</span><br><span class="line">			NAPI_GRO_CB(p)-&gt;same_flow = <span class="number">0</span>;</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//设备是否相同，vlan是否相同 比较 MAC header</span></span><br><span class="line">		diffs = (<span class="type">unsigned</span> <span class="type">long</span>)p-&gt;dev ^ (<span class="type">unsigned</span> <span class="type">long</span>)skb-&gt;dev;</span><br><span class="line">		diffs |= p-&gt;vlan_all ^ skb-&gt;vlan_all;</span><br><span class="line">		diffs |= skb_metadata_differs(p, skb);</span><br><span class="line">		<span class="keyword">if</span> (maclen == ETH_HLEN)</span><br><span class="line">			diffs |= compare_ether_header(skb_mac_header(p),</span><br><span class="line">						      skb_mac_header(skb));</span><br><span class="line">		<span class="keyword">else</span> <span class="keyword">if</span> (!diffs)</span><br><span class="line">			diffs = <span class="built_in">memcmp</span>(skb_mac_header(p),</span><br><span class="line">				       skb_mac_header(skb),</span><br><span class="line">				       maclen);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* in most common scenarions &#x27;slow_gro&#x27; is 0</span></span><br><span class="line"><span class="comment">		 * otherwise we are already on some slower paths</span></span><br><span class="line"><span class="comment">		 * either skip all the infrequent tests altogether or</span></span><br><span class="line"><span class="comment">		 * avoid trying too hard to skip each of them individually</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//slow_gro 情况下再做一轮比较，这个数据包有路由会进入这个分支</span></span><br><span class="line">		<span class="keyword">if</span> (!diffs &amp;&amp; unlikely(skb-&gt;slow_gro | p-&gt;slow_gro)) &#123;</span><br><span class="line">			diffs |= p-&gt;sk != skb-&gt;sk;</span><br><span class="line">			diffs |= skb_metadata_dst_cmp(p, skb);</span><br><span class="line">			diffs |= skb_get_nfct(p) ^ skb_get_nfct(skb);</span><br><span class="line"></span><br><span class="line">			diffs |= gro_list_prepare_tc_ext(skb, p, diffs);</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		NAPI_GRO_CB(p)-&gt;same_flow = !diffs;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2026/04/22/GRO/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/20/dev_queue_xmit%20(%E4%BA%8C)/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1114,108 +1219,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2026/03/24/%E8%B7%AF%E7%94%B1(%E4%BA%8C)/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2026/03/24/%E8%B7%AF%E7%94%B1(%E4%BA%8C)/" class="post-title-link" itemprop="url">路由相关数据结构</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2026-03-24 22:00:00" itemprop="dateCreated datePublished" datetime="2026-03-24T22:00:00+08:00">2026-03-24</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2026-03-23 23:02:08" itemprop="dateModified" datetime="2026-03-23T23:02:08+08:00">2026-03-23</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2026/03/24/%E8%B7%AF%E7%94%B1(%E4%BA%8C)/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2026/03/24/%E8%B7%AF%E7%94%B1(%E4%BA%8C)/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="引言"><a href="#引言" class="headerlink" title="引言"></a>引言</h2><p>在 Linux 6.6 内核中，路由子系统不再依赖早期的缓存机制，而是以  <code>fib_trie</code> 前缀树为核心，实现高效的路由查找。整个子系统围绕“从策略到前缀匹配，再到下一跳决策”这一主线展开：入口由策略路由规则（<code>fib_rule</code>）决定查询路径，路由表（<code>fib_table</code>）承载具体数据，内部通过压缩前缀树（<code>fib_trie</code> &#x2F; <code>key_vector</code>）完成最长前缀匹配；同一前缀下的多条路由以 <code>fib_alias</code> 链表组织，并通过 <code>fib_info</code> 进行去重和共享，最终由 <code>fib_nh</code> 描述下一跳信息，生成 <code>rtable</code> 作为查找结果供协议栈使用。相关的关键数据结构如下：</p>
-<h2 id="fib-table"><a href="#fib-table" class="headerlink" title="fib_table"></a><code>fib_table</code></h2><p><code>fib_table</code> 从逻辑上看，对应用户空间中的一张路由表，但在实现上，它本质是“路由表入口 + 前缀树的封装”，具体结构如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">fib_table</span> &#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">hlist_node</span>	<span class="title">tb_hlist</span>;</span>   <span class="comment">//挂到全局hash表中，初始化时创建的全局hash表</span></span><br><span class="line">	u32			tb_id;				<span class="comment">//标识是哪一个路由表</span></span><br><span class="line">	<span class="type">int</span>			tb_num_default;		<span class="comment">//如果是插入了一个默认路由就++</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rcu_head</span>		<span class="title">rcu</span>;</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> 		*tb_data;	<span class="comment">//指向真正的路由</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span>		__data[];	<span class="comment">//柔性数组</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
-
-<h2 id="key-vector"><a href="#key-vector" class="headerlink" title="key_vector"></a><code>key_vector</code></h2><p><code>key_vector</code> 是前缀树中的核心节点结构，用于表示一个前缀匹配状态。在查找过程中，内核从根节点开始，根据 <code>pos</code> 和 <code>bits</code> 从目标 IP 地址中取出相应的位作为索引。当节点为中间节点时，通过 <code>tnode</code> 指向下一层子节点；当节点为叶子节点时，通过 <code>leaf</code> 挂载 <code>fib_alias</code> 链表，从而关联具体的路由信息。具体字段如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//可能是中间节点，也可能是叶子节点</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">key_vector</span> &#123;</span></span><br><span class="line">	t_key key;				<span class="comment">//表示当前节点的前缀，例如192.168.0.0</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span> pos;		<span class="comment">/* 2log(KEYLENGTH) bits needed */</span> <span class="comment">//从从哪一位开始匹配</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span> bits;		<span class="comment">/* 2log(KEYLENGTH) bits needed */</span> <span class="comment">//本层用几位做分支</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span> slen;		<span class="comment">//前缀长度</span></span><br><span class="line">	<span class="class"><span class="keyword">union</span> &#123;</span></span><br><span class="line">		<span class="comment">/* This list pointer if valid if (pos | bits) == 0 (LEAF) */</span></span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">hlist_head</span> <span class="title">leaf</span>;</span>  <span class="comment">//叶子节点 里面就是fiblias</span></span><br><span class="line">		<span class="comment">/* This array is valid if (pos | bits) &gt; 0 (TNODE) */</span></span><br><span class="line">		DECLARE_FLEX_ARRAY(<span class="keyword">struct</span> key_vector __rcu *, tnode); <span class="comment">//中间节点</span></span><br><span class="line">	&#125;;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<h2 id="fib-alias"><a href="#fib-alias" class="headerlink" title="fib_alias"></a><code>fib_alias</code></h2><p><code>fib_alias</code> <strong>表示某一前缀节点下的具体路由项</strong>，在查找过程中，内核通过 <code>key_vector</code> 定位到匹配的前缀节点后，会在其 <code>leaf</code> 链表中遍历多个 <code>fib_alias</code>，每个 <code>fib_alias</code> 对应一条候选路由，并通过 <code>fib_info</code> 关联具体的下一跳信息。因此，<strong><code>fib_alias</code> 的作用是承载同一前缀下的多条路由。</strong></p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2026/03/24/%E8%B7%AF%E7%94%B1(%E4%BA%8C)/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1285,7 +1288,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">127</span>
+          <span class="site-state-item-count">128</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
