@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="VFIO 的 Type1 IOMMU 后端，也就是用户态程序通过 VFIO 把设备直通给虚拟机&#x2F;DPDK 这类程序时，用来管理 IOVA → 物理页 PFN 映射关系的那一层。它不是普通网卡驱动，也不是 vfio-pci 设备驱动，而是 VFIO container 选择 IOMMU 后端后真正负责 DMA 映射、解除映射、pin 用户页、attach group、dirty page">
+<meta property="og:type" content="article">
+<meta property="og:title" content="vfio_iommu_type1（一）">
+<meta property="og:url" content="http://example.com/2026/05/24/VFIO%EF%BC%88%E4%B8%89%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="VFIO 的 Type1 IOMMU 后端，也就是用户态程序通过 VFIO 把设备直通给虚拟机&#x2F;DPDK 这类程序时，用来管理 IOVA → 物理页 PFN 映射关系的那一层。它不是普通网卡驱动，也不是 vfio-pci 设备驱动，而是 VFIO container 选择 IOMMU 后端后真正负责 DMA 映射、解除映射、pin 用户页、attach group、dirty page">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-05-24T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-05-24T13:32:54.473Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="VFIO">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/05/24/VFIO%EF%BC%88%E4%B8%89%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>vfio_iommu_type1（一） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/05/24/VFIO%EF%BC%88%E4%B8%89%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          vfio_iommu_type1（一）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-05-24 22:00:00 / 修改时间：21:32:54" itemprop="dateCreated datePublished" datetime="2026-05-24T22:00:00+08:00">2026-05-24</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/VFIO/" itemprop="url" rel="index"><span itemprop="name">VFIO</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/05/24/VFIO%EF%BC%88%E4%B8%89%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/05/24/VFIO%EF%BC%88%E4%B8%89%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p> <strong>VFIO 的 Type1 IOMMU 后端</strong>，也就是用户态程序通过 VFIO 把设备直通给虚拟机&#x2F;DPDK 这类程序时，用来管理 <strong>IOVA → 物理页 PFN</strong> 映射关系的那一层。它不是普通网卡驱动，也不是 vfio-pci 设备驱动，而是 VFIO container 选择 IOMMU 后端后真正负责 <strong>DMA 映射、解除映射、pin 用户页、attach group、dirty page tracking</strong> 的核心代码。</p>
+<p>在分析 <code>vfio_iommu_type1</code> 的具体流程之前，需要先把几个核心数据结构捋清楚。因为这份代码本质上不是在驱动某一个具体 PCI 设备，而是在 VFIO container 这一层维护 <strong>IOMMU domain、IOMMU group、用户态 DMA 映射、IOVA 可用范围、pin 住的物理页</strong> 之间的关系。</p>
+<p>简单来说，这几个结构体的关系大概是这样：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line">struct vfio_iommu</span><br><span class="line">    |</span><br><span class="line">    +-- domain_list</span><br><span class="line">    |       |</span><br><span class="line">    |       +-- struct vfio_domain</span><br><span class="line">    |               |</span><br><span class="line">    |               +-- struct iommu_domain</span><br><span class="line">    |               +-- group_list</span><br><span class="line">    |                       |</span><br><span class="line">    |                       +-- struct vfio_iommu_group</span><br><span class="line">    |</span><br><span class="line">    +-- dma_list</span><br><span class="line">    |       |</span><br><span class="line">    |       +-- struct vfio_dma</span><br><span class="line">    |               |</span><br><span class="line">    |               +-- pfn_list</span><br><span class="line">    |                       |</span><br><span class="line">    |                       +-- struct vfio_pfn</span><br><span class="line">    |</span><br><span class="line">    +-- iova_list</span><br><span class="line">            |</span><br><span class="line">            +-- struct vfio_iova</span><br></pre></td></tr></table></figure>
+
+<p>其中最核心的是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">vfio_iommu  表示一个 container 对应的 Type1 IOMMU 后端</span><br><span class="line">vfio_domain 表示一个 IOMMU 地址空间</span><br><span class="line">vfio_dma    表示用户态注册的一段 DMA 映射</span><br><span class="line">vfio_pfn    表示某个 IOVA 对应的被 pin 住的物理页</span><br><span class="line">vfio_iova   表示当前允许使用的 IOVA 地址范围</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="1-struct-vfio-iommu"><a href="#1-struct-vfio-iommu" class="headerlink" title="1. struct vfio_iommu"></a>1. <code>struct vfio_iommu</code></h2><p><code>struct vfio_iommu</code> 是这份代码里最核心的结构体，可以把它理解成 <strong>一个 VFIO container 对应的 Type1 IOMMU 私有数据</strong>。</p>
+<p>当用户态对 container 执行 <code>VFIO_SET_IOMMU</code>，选择 Type1 IOMMU 后端时，内核会创建一个 <code>vfio_iommu</code> 对象。后续这个 container 下 attach 进来的 group、用户态 map 进来的 DMA 区间、IOMMU domain、dirty page tracking 等信息，都会挂在这个结构体下面。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">vfio_iommu</span> &#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">list_head</span>	<span class="title">domain_list</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">list_head</span>	<span class="title">iova_list</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">mutex</span>		<span class="title">lock</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rb_root</span>		<span class="title">dma_list</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">list_head</span>	<span class="title">device_list</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">mutex</span>		<span class="title">device_list_lock</span>;</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span>		dma_avail;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span>		vaddr_invalid_count;</span><br><span class="line">	<span class="type">uint64_t</span>		pgsize_bitmap;</span><br><span class="line">	<span class="type">uint64_t</span>		num_non_pinned_groups;</span><br><span class="line">	<span class="type">bool</span>			v2;</span><br><span class="line">	<span class="type">bool</span>			nesting;</span><br><span class="line">	<span class="type">bool</span>			dirty_page_tracking;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">list_head</span>	<span class="title">emulated_iommu_groups</span>;</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>这个结构体可以分成几类来看。</p>
+<p>第一类是 <strong>domain 管理相关字段</strong>：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">list_head</span> <span class="title">domain_list</span>;</span></span><br></pre></td></tr></table></figure>
+
+<p><code>domain_list</code> 里面挂的是 <code>struct vfio_domain</code>。每个 <code>vfio_domain</code> 里面又封装了一个真正的 <code>struct iommu_domain</code>。当 VFIO group attach 到 container 时，就会创建或者复用一个 IOMMU domain，然后挂到这个链表上。</p>
+<p>可以理解成：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">container</span><br><span class="line">    |</span><br><span class="line">    v</span><br><span class="line">vfio_iommu</span><br><span class="line">    |</span><br><span class="line">    v</span><br><span class="line">domain_list</span><br><span class="line">    |</span><br><span class="line">    v</span><br><span class="line">vfio_domain</span><br><span class="line">    |</span><br><span class="line">    v</span><br><span class="line">iommu_domain</span><br></pre></td></tr></table></figure>
+
+<p>第二类是 <strong>DMA 映射管理相关字段</strong>：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">rb_root</span> <span class="title">dma_list</span>;</span></span><br><span class="line"><span class="type">unsigned</span> <span class="type">int</span> dma_avail;</span><br></pre></td></tr></table></figure>
+
+<p><code>dma_list</code> 是一棵红黑树，里面挂的是一个个 <code>struct vfio_dma</code>。每个 <code>vfio_dma</code> 表示用户态通过 <code>VFIO_IOMMU_MAP_DMA</code> 注册进来的一段 DMA 映射区间。</p>
+<p>为什么这里用红黑树？因为用户态可能 map 很多段 IOVA 区间，内核需要快速判断：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">这段 IOVA 是否已经被映射？</span><br><span class="line">这次 map 是否和已有区间重叠？</span><br><span class="line">unmap 时应该找到哪一个 vfio_dma？</span><br></pre></td></tr></table></figure>
+
+<p>所以 <code>dma_list</code> 本质上就是当前 container 已经建立的 DMA 映射表。</p>
+<p>第三类是 <strong>IOVA 可用范围管理</strong>：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">list_head</span> <span class="title">iova_list</span>;</span></span><br></pre></td></tr></table></figure>
+
+<p><code>iova_list</code> 记录当前 container 允许用户使用的 IOVA 地址范围。这个范围不是用户随便定的，它需要综合 IOMMU domain 的 aperture 以及设备 reserved region。</p>
+<p>也就是说，用户态传入的 <code>map-&gt;iova</code> 必须落在 <code>iova_list</code> 允许的范围内，否则不能建立 DMA 映射。</p>
+<p>第四类是 <strong>页大小和 dirty tracking 相关字段</strong>：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">uint64_t</span> pgsize_bitmap;</span><br><span class="line"><span class="type">bool</span> dirty_page_tracking;</span><br></pre></td></tr></table></figure>
+
+<p><code>pgsize_bitmap</code> 表示当前所有 IOMMU domain 共同支持的页大小。因为一个 container 里可能有多个 domain，所以最终能使用的页大小必须是它们的交集。</p>
+<p><code>dirty_page_tracking</code> 表示当前是否开启脏页追踪。这个主要服务于虚拟机热迁移场景，用来记录哪些页被设备 DMA 写脏了。</p>
+<p>所以 <code>vfio_iommu</code> 可以总结成一句话：</p>
+<blockquote>
+<p><code>vfio_iommu</code> 是 Type1 IOMMU 后端的总控结构，它把 container 下的 domain、group、DMA 映射、IOVA 范围、dirty bitmap 等状态统一管理起来。</p>
+</blockquote>
+<hr>
+<h2 id="2-struct-vfio-domain"><a href="#2-struct-vfio-domain" class="headerlink" title="2. struct vfio_domain"></a>2. <code>struct vfio_domain</code></h2><p><code>struct vfio_domain</code> 是对 Linux IOMMU 子系统中 <code>struct iommu_domain</code> 的一层封装。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">vfio_domain</span> &#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">iommu_domain</span>	*<span class="title">domain</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">list_head</span>	<span class="title">next</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">list_head</span>	<span class="title">group_list</span>;</span></span><br><span class="line">	<span class="type">bool</span>			fgsp : <span class="number">1</span>;</span><br><span class="line">	<span class="type">bool</span>			enforce_cache_coherency : <span class="number">1</span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>这里最重要的是两个字段：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">iommu_domain</span> *<span class="title">domain</span>;</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">list_head</span> <span class="title">group_list</span>;</span></span><br></pre></td></tr></table></figure>
+
+<p><code>domain</code> 指向真正的 IOMMU domain。这个 domain 可以理解成 <strong>IOMMU 页表地址空间</strong>。</p>
+<p>设备 attach 到这个 domain 后，设备发起 DMA 访问时，IOMMU 就会根据这个 domain 里的页表做地址翻译：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">设备 DMA 使用的 IOVA</span><br><span class="line">        |</span><br><span class="line">        v</span><br><span class="line">IOMMU domain 页表</span><br><span class="line">        |</span><br><span class="line">        v</span><br><span class="line">Host 物理地址</span><br></pre></td></tr></table></figure>
+
+<p><code>group_list</code> 记录 attach 到这个 domain 上的 VFIO group。也就是说，一个 <code>vfio_domain</code> 下面可能挂着一个或多个 <code>vfio_iommu_group</code>。</p>
+<p>关系大概是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">vfio_domain</span><br><span class="line">    |</span><br><span class="line">    +-- iommu_domain</span><br><span class="line">    |</span><br><span class="line">    +-- group_list</span><br><span class="line">            |</span><br><span class="line">            +-- vfio_iommu_group</span><br><span class="line">            +-- vfio_iommu_group</span><br></pre></td></tr></table></figure>
+
+<p>这里要注意：</p>
+<blockquote>
+<p><code>vfio_domain</code> 不是用户态显式创建的，而是在 group attach 到 container 的过程中，由 Type1 IOMMU 后端根据实际情况分配或者复用的。</p>
+</blockquote>
+<p>它的作用主要有三个：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1. 保存真正的 iommu_domain</span><br><span class="line">2. 管理 attach 到这个 domain 的 group</span><br><span class="line">3. 在 map/unmap 时作为 iommu_map/iommu_unmap 的目标</span><br></pre></td></tr></table></figure>
+
+<p>所以后面用户态执行 <code>VFIO_IOMMU_MAP_DMA</code> 时，并不是只在 <code>vfio_dma</code> 里记一条记录，还要遍历 <code>vfio_iommu-&gt;domain_list</code>，对每个 domain 调用 <code>iommu_map()</code>，把 IOVA 到物理页的映射真正写进 IOMMU 页表。</p>
+<hr>
+<h2 id="3-struct-vfio-dma"><a href="#3-struct-vfio-dma" class="headerlink" title="3. struct vfio_dma"></a>3. <code>struct vfio_dma</code></h2><p><code>struct vfio_dma</code> 是这份代码里另一个非常关键的数据结构。它表示用户态注册的一段 DMA 映射。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">vfio_dma</span> &#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rb_node</span>		<span class="title">node</span>;</span></span><br><span class="line">	<span class="type">dma_addr_t</span>		iova;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span>		vaddr;</span><br><span class="line">	<span class="type">size_t</span>			size;</span><br><span class="line">	<span class="type">int</span>			prot;</span><br><span class="line">	<span class="type">bool</span>			iommu_mapped;</span><br><span class="line">	<span class="type">bool</span>			lock_cap;</span><br><span class="line">	<span class="type">bool</span>			vaddr_invalid;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">task_struct</span>	*<span class="title">task</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rb_root</span>		<span class="title">pfn_list</span>;</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span>		*bitmap;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">mm_struct</span>	*<span class="title">mm</span>;</span></span><br><span class="line">	<span class="type">size_t</span>			locked_vm;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>用户态调用 <code>VFIO_IOMMU_MAP_DMA</code> 时，会传入类似这样的信息：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">vaddr = 用户态虚拟地址</span><br><span class="line">iova  = 希望设备看到的 DMA 地址</span><br><span class="line">size  = 映射大小</span><br><span class="line">flags = 允许设备读 / 写</span><br></pre></td></tr></table></figure>
+
+<p>内核会根据这些参数创建一个 <code>vfio_dma</code>。</p>
+<p>它表达的关系是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">用户态虚拟地址 vaddr</span><br><span class="line">        |</span><br><span class="line">        | pin_user_pages_remote()</span><br><span class="line">        v</span><br><span class="line">Host 物理页 PFN</span><br><span class="line">        |</span><br><span class="line">        | iommu_map()</span><br><span class="line">        v</span><br><span class="line">设备可见的 IOVA</span><br></pre></td></tr></table></figure>
+
+<p>其中几个字段非常重要。</p>
+<h3 id="iova"><a href="#iova" class="headerlink" title="iova"></a><code>iova</code></h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">dma_addr_t</span> iova;</span><br></pre></td></tr></table></figure>
+
+<p>这是设备 DMA 时使用的地址，也就是设备眼里的地址。</p>
+<p>设备并不知道用户态虚拟地址 <code>vaddr</code>，它只知道 IOVA。比如用户态可以告诉 VFIO：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">把我这段用户态内存映射到 IOVA 0x100000000</span><br></pre></td></tr></table></figure>
+
+<p>之后设备 DMA 到 <code>0x100000000</code>，IOMMU 就会把它翻译到实际的 host 物理页。</p>
+<h3 id="vaddr"><a href="#vaddr" class="headerlink" title="vaddr"></a><code>vaddr</code></h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">unsigned</span> <span class="type">long</span> vaddr;</span><br></pre></td></tr></table></figure>
+
+<p>这是用户进程的虚拟地址。VFIO 需要根据这个地址找到对应的物理页，然后 pin 住。</p>
+<p>所以 <code>vaddr</code> 是给内核查用户页表用的，不是给设备用的。</p>
+<h3 id="size"><a href="#size" class="headerlink" title="size"></a><code>size</code></h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">size_t</span> size;</span><br></pre></td></tr></table></figure>
+
+<p>表示这段 DMA 映射的大小。</p>
+<p>注意，<code>vfio_dma</code> 在插入红黑树时可能先以 size 为 0 的方式插入，然后在 pin&#x2F;map 成功后逐步增长。这么做是为了在映射过程中也能保持状态可追踪，出错时可以回滚。</p>
+<h3 id="prot"><a href="#prot" class="headerlink" title="prot"></a><code>prot</code></h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> prot;</span><br></pre></td></tr></table></figure>
+
+<p>表示 IOMMU 权限，主要是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">IOMMU_READ</span><br><span class="line">IOMMU_WRITE</span><br></pre></td></tr></table></figure>
+
+<p>这里的读写方向要站在 <strong>设备视角</strong> 理解：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">IOMMU_READ   设备可以读这段内存</span><br><span class="line">IOMMU_WRITE  设备可以写这段内存</span><br></pre></td></tr></table></figure>
+
+<h3 id="iommu-mapped"><a href="#iommu-mapped" class="headerlink" title="iommu_mapped"></a><code>iommu_mapped</code></h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">bool</span> iommu_mapped;</span><br></pre></td></tr></table></figure>
+
+<p>表示这段 <code>vfio_dma</code> 是否已经真正映射进 IOMMU 页表。</p>
+<p>有些场景下，container 里还没有真实 IOMMU domain，此时 <code>vfio_dma</code> 可能只是先记录下来，还没有真正调用 <code>iommu_map()</code>。</p>
+<p>等后面 group attach 进来，有了 domain，再通过 replay 把已有的 DMA 映射同步到新的 domain 中。</p>
+<h3 id="task-和-mm"><a href="#task-和-mm" class="headerlink" title="task 和 mm"></a><code>task</code> 和 <code>mm</code></h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">task_struct</span> *<span class="title">task</span>;</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">mm_struct</span> *<span class="title">mm</span>;</span></span><br></pre></td></tr></table></figure>
+
+<p>这两个字段用于记录这段 DMA 映射属于哪个进程地址空间。</p>
+<p>因为 VFIO pin 用户页时需要做 locked memory 统计，也就是检查用户有没有超过 <code>RLIMIT_MEMLOCK</code>。所以它需要保存对应的 task 和 mm。</p>
+<h3 id="pfn-list"><a href="#pfn-list" class="headerlink" title="pfn_list"></a><code>pfn_list</code></h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">rb_root</span> <span class="title">pfn_list</span>;</span></span><br></pre></td></tr></table></figure>
+
+<p>这个红黑树用于记录外部 pin 的页。比如 mdev 或 emulated IOMMU 场景下，设备驱动可能通过 VFIO 的 pin_pages 接口单独 pin 某些 IOVA 对应的页，这些页就会记录到 <code>pfn_list</code> 中。</p>
+<h3 id="bitmap"><a href="#bitmap" class="headerlink" title="bitmap"></a><code>bitmap</code></h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">unsigned</span> <span class="type">long</span> *bitmap;</span><br></pre></td></tr></table></figure>
+
+<p>这个是 dirty page tracking 用的 bitmap。</p>
+<p>当开启脏页追踪后，每个 <code>vfio_dma</code> 会分配一个 bitmap，用来记录这段 DMA 区间内哪些页被认为是 dirty。</p>
+<p>所以 <code>vfio_dma</code> 可以总结成一句话：</p>
+<blockquote>
+<p><code>vfio_dma</code> 表示用户态注册的一段 DMA 区间，它把用户虚拟地址、设备 IOVA、映射大小、访问权限、pin 页信息和 dirty bitmap 绑定在一起。</p>
+</blockquote>
+<hr>
+<h2 id="4-struct-vfio-iommu-group"><a href="#4-struct-vfio-iommu-group" class="headerlink" title="4. struct vfio_iommu_group"></a>4. <code>struct vfio_iommu_group</code></h2><p>这个结构体是 Type1 IOMMU 后端里对 <code>struct iommu_group</code> 的封装。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">vfio_iommu_group</span> &#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">iommu_group</span>	*<span class="title">iommu_group</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">list_head</span>	<span class="title">next</span>;</span></span><br><span class="line">	<span class="type">bool</span>			pinned_page_dirty_scope;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>核心字段是：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">iommu_group</span> *<span class="title">iommu_group</span>;</span></span><br></pre></td></tr></table></figure>
+
+<p><code>iommu_group</code> 是 VFIO 里非常重要的隔离单位。一个 group 里的设备必须一起交给同一个安全域管理，不能一个给虚拟机，一个留在宿主机随便用，否则可能因为 DMA 隔离边界不完整导致安全问题。</p>
+<p><strong>在 Type1 IOMMU 代码里，group attach 进来后，会被挂到某个 <code>vfio_domain-&gt;group_list</code> 上。</strong></p>
+<p>关系是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">vfio_iommu</span><br><span class="line">    |</span><br><span class="line">    v</span><br><span class="line">vfio_domain</span><br><span class="line">    |</span><br><span class="line">    v</span><br><span class="line">group_list</span><br><span class="line">    |</span><br><span class="line">    v</span><br><span class="line">vfio_iommu_group</span><br><span class="line">    |</span><br><span class="line">    v</span><br><span class="line">iommu_group</span><br></pre></td></tr></table></figure>
+
+<p>它本身不负责 DMA 映射，主要负责表达：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">哪个 iommu_group 已经 attach 到哪个 vfio_domain 上</span><br></pre></td></tr></table></figure>
+
+<p><code>pinned_page_dirty_scope</code> 这个字段和 dirty page tracking 有关，用来标记这个 group 的 pinned page dirty 范围是否已经被纳入统计。</p>
+<p>简单理解即可：</p>
+<blockquote>
+<p><code>vfio_iommu_group</code> 是 Type1 后端记录 group attach 状态的结构，它把 VFIO group 和具体的 IOMMU domain 关联起来。</p>
+</blockquote>
+<hr>
+<h2 id="5-struct-vfio-iova"><a href="#5-struct-vfio-iova" class="headerlink" title="5. struct vfio_iova"></a>5. <code>struct vfio_iova</code></h2><p><code>struct vfio_iova</code> 用来记录当前允许使用的 IOVA 地址范围。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">vfio_iova</span> &#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">list_head</span>	<span class="title">list</span>;</span></span><br><span class="line">	<span class="type">dma_addr_t</span>		start;</span><br><span class="line">	<span class="type">dma_addr_t</span>		end;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>它很简单，就是一个地址区间：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">[start, end]</span><br></pre></td></tr></table></figure>
+
+<p>但它的作用很重要。</p>
+<p>用户态传入的 IOVA 不是想用哪里就用哪里。VFIO 需要确认这段 IOVA：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1. 落在 IOMMU domain 支持的 aperture 范围内</span><br><span class="line">2. 没有落到 reserved region 中</span><br><span class="line">3. 不和已有 DMA 映射冲突</span><br></pre></td></tr></table></figure>
+
+<p>所以 Type1 IOMMU 会维护一个 <code>iova_list</code>，里面记录当前可用的 IOVA 区间。</p>
+<p>例如：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">iova_list:</span><br><span class="line">    [0x00000000, 0x0009ffff]</span><br><span class="line">    [0x00100000, 0x7fffffff]</span><br><span class="line">    [0x100000000, 0xffffffffff]</span><br></pre></td></tr></table></figure>
+
+<p>当用户态执行 <code>VFIO_IOMMU_MAP_DMA</code> 时，代码会检查：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">map-&gt;iova ~ map-&gt;iova + map-&gt;size - 1</span><br></pre></td></tr></table></figure>
+
+<p>是否完整落在某个可用区间中。</p>
+<p>所以 <code>vfio_iova</code> 可以总结成一句话：</p>
+<blockquote>
+<p><code>vfio_iova</code> 记录 Type1 IOMMU 当前允许用户建立 DMA 映射的 IOVA 地址窗口。</p>
+</blockquote>
+<hr>
+<h2 id="6-struct-vfio-pfn"><a href="#6-struct-vfio-pfn" class="headerlink" title="6. struct vfio_pfn"></a>6. <code>struct vfio_pfn</code></h2><p><code>struct vfio_pfn</code> 用来记录某个 IOVA 对应的 host PFN。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">vfio_pfn</span> &#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">rb_node</span>		<span class="title">node</span>;</span></span><br><span class="line">	<span class="type">dma_addr_t</span>		iova;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span>		pfn;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span>		ref_count;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>它主要服务于外部 pin pages 的场景。</p>
+<p>字段含义很直接：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">iova       设备侧地址</span><br><span class="line">pfn        host 物理页号</span><br><span class="line">ref_count 这个页被引用的次数</span><br></pre></td></tr></table></figure>
+
+<p>为什么需要 <code>ref_count</code>？</p>
+<p>因为同一个 IOVA 对应的页面可能被重复 pin。为了避免重复 pin&#x2F;unpin 造成状态混乱，需要通过引用计数管理生命周期。</p>
+<p>大概逻辑是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">第一次 pin 某个 IOVA:</span><br><span class="line">    创建 vfio_pfn</span><br><span class="line">    ref_count = 1</span><br><span class="line"></span><br><span class="line">再次 pin 同一个 IOVA:</span><br><span class="line">    找到已有 vfio_pfn</span><br><span class="line">    ref_count++</span><br><span class="line"></span><br><span class="line">unpin:</span><br><span class="line">    ref_count--</span><br><span class="line"></span><br><span class="line">ref_count 变成 0:</span><br><span class="line">    put_pfn()</span><br><span class="line">    从 pfn_list 删除</span><br></pre></td></tr></table></figure>
+
+<p>所以 <code>vfio_pfn</code> 可以总结成：</p>
+<blockquote>
+<p><code>vfio_pfn</code> 是对单个被 pin 住页面的记录，用来维护 IOVA 到 PFN 的关系以及引用计数。</p>
+</blockquote>
+<hr>
+<h2 id="7-struct-vfio-batch"><a href="#7-struct-vfio-batch" class="headerlink" title="7. struct vfio_batch"></a>7. <code>struct vfio_batch</code></h2><p><code>struct vfio_batch</code> 是 pin 用户页时的批处理辅助结构。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">vfio_batch</span> &#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">page</span>		**<span class="title">pages</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">page</span>		*<span class="title">fallback_page</span>;</span></span><br><span class="line">	<span class="type">int</span>			capacity;</span><br><span class="line">	<span class="type">int</span>			size;</span><br><span class="line">	<span class="type">int</span>			offset;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>它的作用不是表达 VFIO 的核心关系，而是为了优化 pin 页过程。</p>
+<p>因为 DMA 映射可能很大，比如几百 MB 或几个 GB。如果每次只 pin 一页，效率很低。因此代码会尽量批量获取一组 page：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">一次 pin 多个连续页</span><br><span class="line">然后尽量合并成较大的连续 PFN 区间</span><br><span class="line">再调用 iommu_map()</span><br></pre></td></tr></table></figure>
+
+<p>如果无法分配批量数组，就退化成一次处理一页。</p>
+<p>所以它主要是一个性能优化结构：</p>
+<blockquote>
+<p><code>vfio_batch</code> 用于批量 pin 用户页，减少逐页处理带来的开销，同时也方便后续尽量按连续 PFN 区间进行 IOMMU 映射。</p>
+</blockquote>
+<hr>
+<h2 id="8-struct-vfio-regions"><a href="#8-struct-vfio-regions" class="headerlink" title="8. struct vfio_regions"></a>8. <code>struct vfio_regions</code></h2><p><code>struct vfio_regions</code> 主要用于 unmap 时暂存已经从 IOMMU 里解除映射、但还没 unpin 的区域。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">vfio_regions</span> &#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">list_head</span> <span class="title">list</span>;</span></span><br><span class="line">	<span class="type">dma_addr_t</span> iova;</span><br><span class="line">	<span class="type">phys_addr_t</span> phys;</span><br><span class="line">	<span class="type">size_t</span> len;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>为什么需要它？</p>
+<p>因为解除 DMA 映射时，正确顺序应该是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">1. 先 iommu_unmap()</span><br><span class="line">2. 再 IOTLB sync，确保设备不能再通过旧 TLB 访问</span><br><span class="line">3. 最后 unpin 用户页</span><br></pre></td></tr></table></figure>
+
+<p>如果一边 unmap 一边马上 unpin，可能会有 IOTLB 还没 flush 完的风险。</p>
+<p>所以代码会先把已经 unmap 的区间记录到 <code>vfio_regions</code> 链表里，等 <code>iommu_iotlb_sync()</code> 完成之后，再统一 unpin。</p>
+<p>可以理解成：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">vfio_regions = “已经从 IOMMU 页表删除，等待 IOTLB sync 后释放 pin 的区域”</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="9-这些结构体之间的完整关系"><a href="#9-这些结构体之间的完整关系" class="headerlink" title="9. 这些结构体之间的完整关系"></a>9. 这些结构体之间的完整关系</h2><p>把上面的结构体串起来，就是下面这张图：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line">vfio_iommu</span><br><span class="line">    |</span><br><span class="line">    +-- domain_list</span><br><span class="line">    |       |</span><br><span class="line">    |       +-- vfio_domain</span><br><span class="line">    |               |</span><br><span class="line">    |               +-- iommu_domain</span><br><span class="line">    |               |</span><br><span class="line">    |               +-- group_list</span><br><span class="line">    |                       |</span><br><span class="line">    |                       +-- vfio_iommu_group</span><br><span class="line">    |                               |</span><br><span class="line">    |                               +-- iommu_group</span><br><span class="line">    |</span><br><span class="line">    +-- dma_list</span><br><span class="line">    |       |</span><br><span class="line">    |       +-- vfio_dma</span><br><span class="line">    |               |</span><br><span class="line">    |               +-- iova</span><br><span class="line">    |               +-- vaddr</span><br><span class="line">    |               +-- size</span><br><span class="line">    |               +-- prot</span><br><span class="line">    |               +-- mm / task</span><br><span class="line">    |               +-- pfn_list</span><br><span class="line">    |               |       |</span><br><span class="line">    |               |       +-- vfio_pfn</span><br><span class="line">    |               |</span><br><span class="line">    |               +-- dirty bitmap</span><br><span class="line">    |</span><br><span class="line">    +-- iova_list</span><br><span class="line">            |</span><br><span class="line">            +-- vfio_iova</span><br></pre></td></tr></table></figure>
+
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/VFIO/" rel="tag"># VFIO</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/05/21/VFIO(%E4%BA%8C)/" rel="prev" title="VFIO框架初始化">
+      <i class="fa fa-chevron-left"></i> VFIO框架初始化
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-struct-vfio-iommu"><span class="nav-number">1.</span> <span class="nav-text">1. struct vfio_iommu</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-struct-vfio-domain"><span class="nav-number">2.</span> <span class="nav-text">2. struct vfio_domain</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-struct-vfio-dma"><span class="nav-number">3.</span> <span class="nav-text">3. struct vfio_dma</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#iova"><span class="nav-number">3.1.</span> <span class="nav-text">iova</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#vaddr"><span class="nav-number">3.2.</span> <span class="nav-text">vaddr</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#size"><span class="nav-number">3.3.</span> <span class="nav-text">size</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#prot"><span class="nav-number">3.4.</span> <span class="nav-text">prot</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#iommu-mapped"><span class="nav-number">3.5.</span> <span class="nav-text">iommu_mapped</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#task-%E5%92%8C-mm"><span class="nav-number">3.6.</span> <span class="nav-text">task 和 mm</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#pfn-list"><span class="nav-number">3.7.</span> <span class="nav-text">pfn_list</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#bitmap"><span class="nav-number">3.8.</span> <span class="nav-text">bitmap</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-struct-vfio-iommu-group"><span class="nav-number">4.</span> <span class="nav-text">4. struct vfio_iommu_group</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-struct-vfio-iova"><span class="nav-number">5.</span> <span class="nav-text">5. struct vfio_iova</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-struct-vfio-pfn"><span class="nav-number">6.</span> <span class="nav-text">6. struct vfio_pfn</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#7-struct-vfio-batch"><span class="nav-number">7.</span> <span class="nav-text">7. struct vfio_batch</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#8-struct-vfio-regions"><span class="nav-number">8.</span> <span class="nav-text">8. struct vfio_regions</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#9-%E8%BF%99%E4%BA%9B%E7%BB%93%E6%9E%84%E4%BD%93%E4%B9%8B%E9%97%B4%E7%9A%84%E5%AE%8C%E6%95%B4%E5%85%B3%E7%B3%BB"><span class="nav-number">9.</span> <span class="nav-text">9. 这些结构体之间的完整关系</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">129</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">30</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
