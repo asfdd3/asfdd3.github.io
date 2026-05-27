@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="上面文章介绍完关键vfio_iommu_type1关键的数据结构后，本文就从 vfio_iommu_driver_ops_type1 这张回调函数集开始，分析 vfio-iommu-type1 是如何注册、如何在用户执行 VFIO_SET_IOMMU 时被选中、如何 attach group，以及后续如何通过 VFIO_IOMMU_MAP_DMA 建立 DMA 映射关系的。 vfio-iommu-">
+<meta property="og:type" content="article">
+<meta property="og:title" content="vfio_iommu_type1（二）">
+<meta property="og:url" content="http://example.com/2026/05/26/VFIO(%E5%9B%9B)/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="上面文章介绍完关键vfio_iommu_type1关键的数据结构后，本文就从 vfio_iommu_driver_ops_type1 这张回调函数集开始，分析 vfio-iommu-type1 是如何注册、如何在用户执行 VFIO_SET_IOMMU 时被选中、如何 attach group，以及后续如何通过 VFIO_IOMMU_MAP_DMA 建立 DMA 映射关系的。 vfio-iommu-">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-05-26T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-05-25T15:11:22.965Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="VFIO">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/05/26/VFIO(%E5%9B%9B)/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>vfio_iommu_type1（二） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/05/26/VFIO(%E5%9B%9B)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          vfio_iommu_type1（二）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-05-26 22:00:00" itemprop="dateCreated datePublished" datetime="2026-05-26T22:00:00+08:00">2026-05-26</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-05-25 23:11:22" itemprop="dateModified" datetime="2026-05-25T23:11:22+08:00">2026-05-25</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/VFIO/" itemprop="url" rel="index"><span itemprop="name">VFIO</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/05/26/VFIO(%E5%9B%9B)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/05/26/VFIO(%E5%9B%9B)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>上面文章介绍完关键<code>vfio_iommu_type1</code>关键的数据结构后，本文就从 <code>vfio_iommu_driver_ops_type1</code> 这张回调函数集开始，分析 <code>vfio-iommu-type1</code> 是如何注册、如何在用户执行 <code>VFIO_SET_IOMMU</code> 时被选中、如何 attach group，以及后续如何通过 <code>VFIO_IOMMU_MAP_DMA</code> 建立 DMA 映射关系的。</p>
+<p><strong><code>vfio-iommu-type1</code> 本质上是 VFIO core 的一个 IOMMU 后端实现。它并不是用户态直接打开的设备文件，而是作为一个内核模块，把自己的一组回调函数注册到 VFIO框架中，在<code>VFIO_SET_IOMMU</code>会遍历注册的后端，这时如果用户指定了<code>vfio-iommu-type1</code>就会和对应的<code>container</code>关联起来。</strong></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> __init <span class="title function_">vfio_iommu_type1_init</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span> vfio_register_iommu_driver(&amp;vfio_iommu_driver_ops_type1);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> __exit <span class="title function_">vfio_iommu_type1_cleanup</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	vfio_unregister_iommu_driver(&amp;vfio_iommu_driver_ops_type1);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">module_init(vfio_iommu_type1_init);</span><br><span class="line">module_exit(vfio_iommu_type1_cleanup);</span><br></pre></td></tr></table></figure>
+
+<p>这里最重要的是 <code>vfio_register_iommu_driver()</code>。它会把 <code>vfio_iommu_driver_ops_type1</code> 注册到 VFIO core 维护的 IOMMU 后端驱动链表中，具体代码所示</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">vfio_register_iommu_driver</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> vfio_iommu_driver_ops *ops)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfio_iommu_driver</span> *<span class="title">driver</span>, *<span class="title">tmp</span>;</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (WARN_ON(!ops-&gt;register_device != !ops-&gt;unregister_device))</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line">	<span class="comment">//申请一个driver</span></span><br><span class="line">	driver = kzalloc(<span class="keyword">sizeof</span>(*driver), GFP_KERNEL);</span><br><span class="line">	<span class="keyword">if</span> (!driver)</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">	<span class="comment">//设置ops</span></span><br><span class="line">	driver-&gt;ops = ops;</span><br><span class="line"></span><br><span class="line">	mutex_lock(&amp;vfio.iommu_drivers_lock);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Check for duplicates */</span></span><br><span class="line">	list_for_each_entry(tmp, &amp;vfio.iommu_drivers_list, vfio_next) &#123;</span><br><span class="line">		<span class="keyword">if</span> (tmp-&gt;ops == ops) &#123;</span><br><span class="line">			mutex_unlock(&amp;vfio.iommu_drivers_lock);</span><br><span class="line">			kfree(driver);</span><br><span class="line">			<span class="keyword">return</span> -EINVAL;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//挂到iommu_drivers_list vfio_ioctl_set_iommu会遍历这个list</span></span><br><span class="line">	list_add(&amp;driver-&gt;vfio_next, &amp;vfio.iommu_drivers_list);</span><br><span class="line"></span><br><span class="line">	mutex_unlock(&amp;vfio.iommu_drivers_lock);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>vfio_register_iommu_driver()</code> 的作用就是<strong>把某个 IOMMU 后端驱动的回调表 <code>ops</code> 封装成 <code>vfio_iommu_driver</code>，检查不能重复注册后，挂到 VFIO 全局的 <code>iommu_drivers_list</code> 链表里，后面用户执行 <code>VFIO_SET_IOMMU</code> 时，VFIO core 就会遍历这个链表找到合适的 IOMMU 后端。</strong></p>
+<p>对于<code>vfio_iommu_type1</code>来说注册给 VFIO core 的回调函数集如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">vfio_iommu_driver_ops</span> <span class="title">vfio_iommu_driver_ops_type1</span> =</span> &#123;</span><br><span class="line">	.name			= <span class="string">&quot;vfio-iommu-type1&quot;</span>,</span><br><span class="line">	.owner			= THIS_MODULE,</span><br><span class="line">	.open			= vfio_iommu_type1_open, 		 <span class="comment">//用户对 container 执行 VFIO_SET_IOMMU 时调用，创建并初始化 vfio_iommu 私有结构</span></span><br><span class="line">	.release		= vfio_iommu_type1_release,</span><br><span class="line">	.ioctl			= vfio_iommu_type1_ioctl,			<span class="comment">//处理 VFIO IOMMU 相关 ioctl，比如 DMA_MAP、DMA_UNMAP、GET_INFO 等</span></span><br><span class="line">	.attach_group		= vfio_iommu_type1_attach_group, <span class="comment">//将一个 VFIO group 绑定到 type1 IOMMU 后端，通常会创建或者复用 iommu_domain 并 attach 到 IOMMU group</span></span><br><span class="line">	.detach_group		= vfio_iommu_type1_detach_group,</span><br><span class="line">	.pin_pages		= vfio_iommu_type1_pin_pages,</span><br><span class="line">	.unpin_pages		= vfio_iommu_type1_unpin_pages,</span><br><span class="line">	.register_device	= vfio_iommu_type1_register_device,</span><br><span class="line">	.unregister_device	= vfio_iommu_type1_unregister_device,</span><br><span class="line">	.dma_rw			= vfio_iommu_type1_dma_rw,</span><br><span class="line">	.group_iommu_domain	= vfio_iommu_type1_group_iommu_domain, <span class="comment">//查询某个 group 当前绑定的 iommu_domain</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li>用户态设置 container 的 IOMMU 类型时，会走到 <code>.open</code>；</li>
+<li>group 加入 container 后，需要绑定到 IOMMU 后端时，会走到 <code>.attach_group</code>；</li>
+<li>用户态执行 <code>VFIO_IOMMU_MAP_DMA</code> 或 <code>VFIO_IOMMU_UNMAP_DMA</code> 时，会走到 <code>.ioctl</code>；</li>
+</ul>
+<p>接下来主要围绕上述三个关键接口进行介绍</p>
+<h3 id="vfio-iommu-type1-open"><a href="#vfio-iommu-type1-open" class="headerlink" title="vfio_iommu_type1_open"></a><code>vfio_iommu_type1_open</code></h3><p><code>vfio_iommu_type1_open</code>在<code>vfio_ioctl_set_iommu</code>中被调用,会创建并初始化 <code>vfio_iommu</code> 私有结构,具体代码如下所示:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//vfio_ioctl_set_iommu()中调用</span></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> *<span class="title function_">vfio_iommu_type1_open</span><span class="params">(<span class="type">unsigned</span> <span class="type">long</span> arg)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfio_iommu</span> *<span class="title">iommu</span>;</span></span><br><span class="line">	<span class="comment">//这里给当前 container 分配一个vfio_iommu</span></span><br><span class="line">	iommu = kzalloc(<span class="keyword">sizeof</span>(*iommu), GFP_KERNEL);</span><br><span class="line">	<span class="keyword">if</span> (!iommu)</span><br><span class="line">		<span class="keyword">return</span> ERR_PTR(-ENOMEM);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">switch</span> (arg) &#123;</span><br><span class="line">	<span class="keyword">case</span> VFIO_TYPE1_IOMMU:<span class="comment">//</span></span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> VFIO_TYPE1_NESTING_IOMMU:</span><br><span class="line">		iommu-&gt;nesting = <span class="literal">true</span>;</span><br><span class="line">		fallthrough;</span><br><span class="line">	<span class="keyword">case</span> VFIO_TYPE1v2_IOMMU:</span><br><span class="line">		iommu-&gt;v2 = <span class="literal">true</span>;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		kfree(iommu);</span><br><span class="line">		<span class="keyword">return</span> ERR_PTR(-EINVAL);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//初始化domain_list 和iova</span></span><br><span class="line">	INIT_LIST_HEAD(&amp;iommu-&gt;domain_list);</span><br><span class="line">	INIT_LIST_HEAD(&amp;iommu-&gt;iova_list);</span><br><span class="line">	<span class="comment">//用来记录用户已经映射过的 DMA 区间</span></span><br><span class="line">	iommu-&gt;dma_list = RB_ROOT;</span><br><span class="line">	<span class="comment">//为了防止用户无限制创建 DMA 映射，内核会设置一个限制</span></span><br><span class="line">	<span class="comment">//后续每dma映射一次的时候会--</span></span><br><span class="line">	iommu-&gt;dma_avail = dma_entry_limit;</span><br><span class="line">	mutex_init(&amp;iommu-&gt;lock);</span><br><span class="line">	mutex_init(&amp;iommu-&gt;device_list_lock);</span><br><span class="line">	<span class="comment">//记录当前这个 vfio_iommu 下关联的设备</span></span><br><span class="line">	INIT_LIST_HEAD(&amp;iommu-&gt;device_list);</span><br><span class="line">	iommu-&gt;pgsize_bitmap = PAGE_MASK;</span><br><span class="line">	INIT_LIST_HEAD(&amp;iommu-&gt;emulated_iommu_groups);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> iommu;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>vfio_iommu_type1_open()</code> 是 type1 IOMMU 后端的创建入口，它会为当前 VFIO container 分配一个 <code>vfio_iommu</code> 对象，并初始化 domain、IOVA、DMA 映射和设备链表等管理结构，后续 group attach 和 DMA map 都会基于这个对象进行。</p>
+<h3 id="vfio-iommu-type1-attach-group"><a href="#vfio-iommu-type1-attach-group" class="headerlink" title="vfio_iommu_type1_attach_group"></a><code>vfio_iommu_type1_attach_group</code></h3><p><code>vfio_iommu_type1_attach_group()</code> 负责把 VFIO group 绑定到 type1 后端管理的 <code>iommu_domain</code> 上，是设备正式进入 VFIO DMA 隔离地址空间的关键步骤。</p>
+<p>具体代码如下所示</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">vfio_iommu_type1_attach_group</span><span class="params">(<span class="type">void</span> *iommu_data,</span></span><br><span class="line"><span class="params">		<span class="keyword">struct</span> iommu_group *iommu_group, <span class="keyword">enum</span> vfio_group_type type)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfio_iommu</span> *<span class="title">iommu</span> =</span> iommu_data; <span class="comment">//取出当前 container 对应的 vfio_iommu .open() 返回的那个 vfio_iommu</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfio_iommu_group</span> *<span class="title">group</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfio_domain</span> *<span class="title">domain</span>, *<span class="title">d</span>;</span></span><br><span class="line">	<span class="type">bool</span> resv_msi;</span><br><span class="line">	<span class="type">phys_addr_t</span> resv_msi_base = <span class="number">0</span>;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">iommu_domain_geometry</span> *<span class="title">geo</span>;</span></span><br><span class="line">	LIST_HEAD(iova_copy);</span><br><span class="line">	LIST_HEAD(group_resv_regions);</span><br><span class="line">	<span class="type">int</span> ret = -EBUSY;</span><br><span class="line"></span><br><span class="line">	mutex_lock(&amp;iommu-&gt;lock);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Attach could require pinning, so disallow while vaddr is invalid. */</span></span><br><span class="line">	<span class="comment">//attach group 的过程中可能需要 pin 用户页，如果当前有用户虚拟地址处于 invalid 状态，就不能继续 attach</span></span><br><span class="line">	<span class="keyword">if</span> (iommu-&gt;vaddr_invalid_count)</span><br><span class="line">		<span class="keyword">goto</span> out_unlock;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Check for duplicates */</span></span><br><span class="line">	ret = -EINVAL;</span><br><span class="line">	<span class="comment">//检查这个 group 是否已经 attach 过</span></span><br><span class="line">	<span class="keyword">if</span> (vfio_iommu_find_iommu_group(iommu, iommu_group))</span><br><span class="line">		<span class="keyword">goto</span> out_unlock;</span><br><span class="line"></span><br><span class="line">	ret = -ENOMEM;</span><br><span class="line">	<span class="comment">//这里创建的是 VFIO type1 自己管理的 group 包装结构：</span></span><br><span class="line">	group = kzalloc(<span class="keyword">sizeof</span>(*group), GFP_KERNEL);</span><br><span class="line">	<span class="keyword">if</span> (!group)</span><br><span class="line">		<span class="keyword">goto</span> out_unlock;</span><br><span class="line">	<span class="comment">//包装一下</span></span><br><span class="line">	group-&gt;iommu_group = iommu_group;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (type == VFIO_EMULATED_IOMMU) &#123;</span><br><span class="line">		list_add(&amp;group-&gt;next, &amp;iommu-&gt;emulated_iommu_groups);</span><br><span class="line">		<span class="comment">/*</span></span><br><span class="line"><span class="comment">		 * An emulated IOMMU group cannot dirty memory directly, it can</span></span><br><span class="line"><span class="comment">		 * only use interfaces that provide dirty tracking.</span></span><br><span class="line"><span class="comment">		 * The iommu scope can only be promoted with the addition of a</span></span><br><span class="line"><span class="comment">		 * dirty tracking group.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		group-&gt;pinned_page_dirty_scope = <span class="literal">true</span>;</span><br><span class="line">		ret = <span class="number">0</span>;</span><br><span class="line">		<span class="keyword">goto</span> out_unlock;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	ret = -ENOMEM;</span><br><span class="line">	<span class="comment">//分配 vfio_domain</span></span><br><span class="line">	domain = kzalloc(<span class="keyword">sizeof</span>(*domain), GFP_KERNEL);</span><br><span class="line">	<span class="keyword">if</span> (!domain)</span><br><span class="line">		<span class="keyword">goto</span> out_free_group;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * Going via the iommu_group iterator avoids races, and trivially gives</span></span><br><span class="line"><span class="comment">	 * us a representative device for the IOMMU API call. We don&#x27;t actually</span></span><br><span class="line"><span class="comment">	 * want to iterate beyond the first device (if any).</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	ret = -EIO;</span><br><span class="line">	<span class="comment">//遍历这个 iommu_group 里面的设备，拿其中一个设备作为代表设备，然后根据这个设备所属的 bus 分配一个 iommu_domain</span></span><br><span class="line">	iommu_group_for_each_dev(iommu_group, &amp;domain-&gt;domain,</span><br><span class="line">				 vfio_iommu_domain_alloc);</span><br><span class="line">	<span class="keyword">if</span> (!domain-&gt;domain)</span><br><span class="line">		<span class="keyword">goto</span> out_free_domain;</span><br><span class="line">	<span class="comment">//主要和嵌套页表、虚拟 IOMMU 等场景相关</span></span><br><span class="line">	<span class="keyword">if</span> (iommu-&gt;nesting) &#123;</span><br><span class="line">		ret = iommu_enable_nesting(domain-&gt;domain);</span><br><span class="line">		<span class="keyword">if</span> (ret)</span><br><span class="line">			<span class="keyword">goto</span> out_domain;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//真正 attach group 到 IOMMU domain</span></span><br><span class="line">	ret = iommu_attach_group(domain-&gt;domain, group-&gt;iommu_group);</span><br><span class="line">	<span class="keyword">if</span> (ret)</span><br><span class="line">		<span class="keyword">goto</span> out_domain;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Get aperture info */</span></span><br><span class="line">	<span class="comment">//这个 IOMMU domain 能处理的 IOVA 地址范围</span></span><br><span class="line">	geo = &amp;domain-&gt;domain-&gt;geometry;</span><br><span class="line">	<span class="comment">/*新 attach 进来的 domain 的 IOVA 能力范围，是否会导致当前 container 已经存在的 DMA 映射变得不可用。</span></span><br><span class="line"><span class="comment">	如果会，就认为 aperture 冲突，拒绝 attach；如果不会，就允许后续把 container 的可用 IOVA 范围缩小到新 domain 也能支持的范围。 */</span></span><br><span class="line">	<span class="comment">//注意这里只是检查</span></span><br><span class="line">	<span class="keyword">if</span> (vfio_iommu_aper_conflict(iommu, geo-&gt;aperture_start,</span><br><span class="line">				     geo-&gt;aperture_end)) &#123;</span><br><span class="line">		ret = -EINVAL;</span><br><span class="line">		<span class="keyword">goto</span> out_detach;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//获取当前 iommu_group 对应设备的 IOMMU 保留地址区域</span></span><br><span class="line">	ret = iommu_get_group_resv_regions(iommu_group, &amp;group_resv_regions);</span><br><span class="line">	<span class="keyword">if</span> (ret)</span><br><span class="line">		<span class="keyword">goto</span> out_detach;</span><br><span class="line">	<span class="comment">//新 group 声明的这些保留 IOVA 范围是否已经被当前 container 中已有的 vfio_dma 映射占用了？</span></span><br><span class="line">	<span class="keyword">if</span> (vfio_iommu_resv_conflict(iommu, &amp;group_resv_regions)) &#123;</span><br><span class="line">		ret = -EINVAL;</span><br><span class="line">		<span class="keyword">goto</span> out_detach;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * We don&#x27;t want to work on the original iova list as the list</span></span><br><span class="line"><span class="comment">	 * gets modified and in case of failure we have to retain the</span></span><br><span class="line"><span class="comment">	 * original list. Get a copy here.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//复制当前 container 的 iova_list</span></span><br><span class="line">	ret = vfio_iommu_iova_get_copy(iommu, &amp;iova_copy);</span><br><span class="line">	<span class="keyword">if</span> (ret)</span><br><span class="line">		<span class="keyword">goto</span> out_detach;</span><br><span class="line">	<span class="comment">//根据新 domain 的 aperture 缩小 IOVA 范围</span></span><br><span class="line">	ret = vfio_iommu_aper_resize(&amp;iova_copy, geo-&gt;aperture_start,</span><br><span class="line">				     geo-&gt;aperture_end);</span><br><span class="line">	<span class="keyword">if</span> (ret)</span><br><span class="line">		<span class="keyword">goto</span> out_detach;</span><br><span class="line">	<span class="comment">//从可用 IOVA 范围里排除 reserved region</span></span><br><span class="line">	ret = vfio_iommu_resv_exclude(&amp;iova_copy, &amp;group_resv_regions);</span><br><span class="line">	<span class="keyword">if</span> (ret)</span><br><span class="line">		<span class="keyword">goto</span> out_detach;</span><br><span class="line">	<span class="comment">//检查是否存在 software MSI 保留区域</span></span><br><span class="line">	resv_msi = vfio_iommu_has_sw_msi(&amp;group_resv_regions, &amp;resv_msi_base);</span><br><span class="line">	<span class="comment">//初始化 domain 的 group_list 把 group 挂进去</span></span><br><span class="line">	INIT_LIST_HEAD(&amp;domain-&gt;group_list);</span><br><span class="line">	list_add(&amp;group-&gt;next, &amp;domain-&gt;group_list);</span><br><span class="line">	<span class="comment">//检查中断隔离是否安全</span></span><br><span class="line">	<span class="keyword">if</span> (!allow_unsafe_interrupts &amp;&amp;</span><br><span class="line">	    !iommu_group_has_isolated_msi(iommu_group)) &#123;</span><br><span class="line">		pr_warn(<span class="string">&quot;%s: No interrupt remapping support.  Use the module param \&quot;allow_unsafe_interrupts\&quot; to enable VFIO IOMMU support on this platform\n&quot;</span>,</span><br><span class="line">		       __func__);</span><br><span class="line">		ret = -EPERM;</span><br><span class="line">		<span class="keyword">goto</span> out_detach;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * If the IOMMU can block non-coherent operations (ie PCIe TLPs with</span></span><br><span class="line"><span class="comment">	 * no-snoop set) then VFIO always turns this feature on because on Intel</span></span><br><span class="line"><span class="comment">	 * platforms it optimizes KVM to disable wbinvd emulation.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (domain-&gt;domain-&gt;ops-&gt;enforce_cache_coherency)</span><br><span class="line">		domain-&gt;enforce_cache_coherency =</span><br><span class="line">			domain-&gt;domain-&gt;ops-&gt;enforce_cache_coherency(</span><br><span class="line">				domain-&gt;domain);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * Try to match an existing compatible domain.  We don&#x27;t want to</span></span><br><span class="line"><span class="comment">	 * preclude an IOMMU driver supporting multiple bus_types and being</span></span><br><span class="line"><span class="comment">	 * able to include different bus_types in the same IOMMU domain, so</span></span><br><span class="line"><span class="comment">	 * we test whether the domains use the same iommu_ops rather than</span></span><br><span class="line"><span class="comment">	 * testing if they&#x27;re on the same bus_type.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//尝试复用已有 domain</span></span><br><span class="line">	list_for_each_entry(d, &amp;iommu-&gt;domain_list, next) &#123;</span><br><span class="line">		<span class="keyword">if</span> (d-&gt;domain-&gt;ops == domain-&gt;domain-&gt;ops &amp;&amp;  <span class="comment">//IOMMU ops 相同</span></span><br><span class="line">		    d-&gt;enforce_cache_coherency ==          <span class="comment">//cache coherency 状态相同</span></span><br><span class="line">			    domain-&gt;enforce_cache_coherency) &#123;</span><br><span class="line">			iommu_detach_group(domain-&gt;domain, group-&gt;iommu_group);</span><br><span class="line">			<span class="keyword">if</span> (!iommu_attach_group(d-&gt;domain,     <span class="comment">//尝试 attach 到已有 domain</span></span><br><span class="line">						group-&gt;iommu_group)) &#123;</span><br><span class="line">				list_add(&amp;group-&gt;next, &amp;d-&gt;group_list);</span><br><span class="line">				iommu_domain_free(domain-&gt;domain);</span><br><span class="line">				kfree(domain);</span><br><span class="line">				<span class="keyword">goto</span> done;</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			ret = iommu_attach_group(domain-&gt;domain,</span><br><span class="line">						 group-&gt;iommu_group);</span><br><span class="line">			<span class="keyword">if</span> (ret)</span><br><span class="line">				<span class="keyword">goto</span> out_domain;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//没有复用成功的情况</span></span><br><span class="line">	vfio_test_domain_fgsp(domain, &amp;iova_copy);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* replay mappings on new domains */</span></span><br><span class="line">	<span class="comment">//把 container 里已有的 DMA 映射同步到新建的 IOMMU domain ，相当于补到新的这个iommu的页表中。</span></span><br><span class="line">	ret = vfio_iommu_replay(iommu, domain);</span><br><span class="line">	<span class="keyword">if</span> (ret)</span><br><span class="line">		<span class="keyword">goto</span> out_detach;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (resv_msi) &#123;</span><br><span class="line">	<span class="comment">//准备一份 MSI 相关的管理信息，让后续 MSI 地址能够被 IOMMU 正确处理</span></span><br><span class="line">		ret = iommu_get_msi_cookie(domain-&gt;domain, resv_msi_base);</span><br><span class="line">		<span class="keyword">if</span> (ret &amp;&amp; ret != -ENODEV)</span><br><span class="line">			<span class="keyword">goto</span> out_detach;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//把新 domain 加入 domain_list</span></span><br><span class="line">	list_add(&amp;domain-&gt;next, &amp;iommu-&gt;domain_list);</span><br><span class="line">	vfio_update_pgsize_bitmap(iommu);</span><br><span class="line">done:</span><br><span class="line">	<span class="comment">/* Delete the old one and insert new iova list */</span></span><br><span class="line">	<span class="comment">//把新的替换上，上面其实只对副本做了修改</span></span><br><span class="line">	vfio_iommu_iova_insert_copy(iommu, &amp;iova_copy);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * An iommu backed group can dirty memory directly and therefore</span></span><br><span class="line"><span class="comment">	 * demotes the iommu scope until it declares itself dirty tracking</span></span><br><span class="line"><span class="comment">	 * capable via the page pinning interface.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	iommu-&gt;num_non_pinned_groups++;</span><br><span class="line">	mutex_unlock(&amp;iommu-&gt;lock);</span><br><span class="line">	vfio_iommu_resv_free(&amp;group_resv_regions);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">out_detach:</span><br><span class="line">	iommu_detach_group(domain-&gt;domain, group-&gt;iommu_group);</span><br><span class="line">out_domain:</span><br><span class="line">	iommu_domain_free(domain-&gt;domain);</span><br><span class="line">	vfio_iommu_iova_free(&amp;iova_copy);</span><br><span class="line">	vfio_iommu_resv_free(&amp;group_resv_regions);</span><br><span class="line">out_free_domain:</span><br><span class="line">	kfree(domain);</span><br><span class="line">out_free_group:</span><br><span class="line">	kfree(group);</span><br><span class="line">out_unlock:</span><br><span class="line">	mutex_unlock(&amp;iommu-&gt;lock);</span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>vfio_iommu_type1_attach_group()</code> 的核心作用就是<strong>把一个 VFIO group 接入当前 container 的 type1 IOMMU 后端管理中</strong>。它先检查这个 group 是否已经 attach 过，然后为它创建 VFIO 自己的 <code>vfio_iommu_group</code> 包装结构；如果是真实 IOMMU group，就再分配一个 <code>vfio_domain</code>，通过 group 里的设备申请 <code>iommu_domain</code>，然后调用 <code>iommu_attach_group()</code> 把这个 group 真正挂到 IOMMU domain 上。接着它会检查这个 domain 支持的 IOVA 地址范围、reserved region、MSI 保留区域、中断隔离是否安全，并尝试复用已有 compatible domain；如果不能复用，就把已有 DMA 映射 replay 到新 domain 里，最后把 group&#x2F;domain 挂到 <code>iommu-&gt;domain_list</code>，更新当前 container 的可用 IOVA 范围。简单说，这个函数就是：<strong>为新加入 container 的 group 找一个合适的 IOMMU domain，并保证这个 group 后续 DMA 访问受 type1 IOMMU 地址空间控制。</strong></p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/VFIO/" rel="tag"># VFIO</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/05/24/VFIO%EF%BC%88%E4%B8%89%EF%BC%89/" rel="prev" title="vfio_iommu_type1（一）">
+      <i class="fa fa-chevron-left"></i> vfio_iommu_type1（一）
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2026/05/28/VFIO(%E4%BA%94)/" rel="next" title="vfio_iommu_type1（三）">
+      vfio_iommu_type1（三） <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#vfio-iommu-type1-open"><span class="nav-number">1.</span> <span class="nav-text">vfio_iommu_type1_open</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#vfio-iommu-type1-attach-group"><span class="nav-number">2.</span> <span class="nav-text">vfio_iommu_type1_attach_group</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">131</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">30</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

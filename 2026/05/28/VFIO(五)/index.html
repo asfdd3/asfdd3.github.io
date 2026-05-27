@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="在前面的 VFIO 流程中，用户态程序首先会打开 &#x2F;dev&#x2F;vfio&#x2F;vfio 得到一个 container 文件描述符，然后通过 VFIO_SET_IOMMU 给这个 container 绑定一个具体的 IOMMU 后端，例如 VFIO_TYPE1_IOMMU。从这个时刻开始，这个 container 后续收到的 IOMMU 相关 ioctl 请求，就不再只是停留在 VFIO container">
+<meta property="og:type" content="article">
+<meta property="og:title" content="vfio_iommu_type1（三）">
+<meta property="og:url" content="http://example.com/2026/05/28/VFIO(%E4%BA%94)/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="在前面的 VFIO 流程中，用户态程序首先会打开 &#x2F;dev&#x2F;vfio&#x2F;vfio 得到一个 container 文件描述符，然后通过 VFIO_SET_IOMMU 给这个 container 绑定一个具体的 IOMMU 后端，例如 VFIO_TYPE1_IOMMU。从这个时刻开始，这个 container 后续收到的 IOMMU 相关 ioctl 请求，就不再只是停留在 VFIO container">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-05-28T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-05-27T13:02:18.369Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="VFIO">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/05/28/VFIO(%E4%BA%94)/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>vfio_iommu_type1（三） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/05/28/VFIO(%E4%BA%94)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          vfio_iommu_type1（三）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-05-28 22:00:00" itemprop="dateCreated datePublished" datetime="2026-05-28T22:00:00+08:00">2026-05-28</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-05-27 21:02:18" itemprop="dateModified" datetime="2026-05-27T21:02:18+08:00">2026-05-27</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/VFIO/" itemprop="url" rel="index"><span itemprop="name">VFIO</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/05/28/VFIO(%E4%BA%94)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/05/28/VFIO(%E4%BA%94)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>在前面的 VFIO 流程中，用户态程序首先会打开 <code>/dev/vfio/vfio</code> 得到一个 container 文件描述符，然后通过 <code>VFIO_SET_IOMMU</code> 给这个 container 绑定一个具体的 IOMMU 后端，例如 <code>VFIO_TYPE1_IOMMU</code>。从这个时刻开始，这个 container 后续收到的 IOMMU 相关 ioctl 请求，就不再只是停留在 VFIO container 层，而是会被转发到 Type1 IOMMU 后端中处理。</p>
+<p>真正负责 DMA 映射、查询 IOMMU 能力、等工作的，是后端注册的 <code>vfio_iommu_driver_ops</code>。在 Type1 IOMMU 场景下，这个后端处理函数就是 <code>vfio_iommu_type1_ioctl()</code>。</p>
+<h3 id="vfio-iommu-type1-ioctl"><a href="#vfio-iommu-type1-ioctl" class="headerlink" title="vfio_iommu_type1_ioctl"></a>vfio_iommu_type1_ioctl</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">long</span> <span class="title function_">vfio_iommu_type1_ioctl</span><span class="params">(<span class="type">void</span> *iommu_data,</span></span><br><span class="line"><span class="params">				   <span class="type">unsigned</span> <span class="type">int</span> cmd, <span class="type">unsigned</span> <span class="type">long</span> arg)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfio_iommu</span> *<span class="title">iommu</span> =</span> iommu_data;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">switch</span> (cmd) &#123;</span><br><span class="line">	<span class="keyword">case</span> VFIO_CHECK_EXTENSION:</span><br><span class="line">		<span class="keyword">return</span> vfio_iommu_type1_check_extension(iommu, arg);</span><br><span class="line">	<span class="keyword">case</span> VFIO_IOMMU_GET_INFO:</span><br><span class="line">		<span class="keyword">return</span> vfio_iommu_type1_get_info(iommu, arg);</span><br><span class="line">	<span class="keyword">case</span> VFIO_IOMMU_MAP_DMA:</span><br><span class="line">		<span class="keyword">return</span> vfio_iommu_type1_map_dma(iommu, arg);</span><br><span class="line">	<span class="keyword">case</span> VFIO_IOMMU_UNMAP_DMA:</span><br><span class="line">		<span class="keyword">return</span> vfio_iommu_type1_unmap_dma(iommu, arg);</span><br><span class="line">	<span class="keyword">case</span> VFIO_IOMMU_DIRTY_PAGES:</span><br><span class="line">		<span class="keyword">return</span> vfio_iommu_type1_dirty_pages(iommu, arg);</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		<span class="keyword">return</span> -ENOTTY;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>vfio_iommu_type1_map_dma</strong>是里面最核心的 ioctl 之一，用于把用户态的一段虚拟内存，映射成设备可以访问的 IOVA 地址空间。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">vfio_iommu_type1_map_dma</span><span class="params">(<span class="keyword">struct</span> vfio_iommu *iommu,</span></span><br><span class="line"><span class="params">				    <span class="type">unsigned</span> <span class="type">long</span> arg)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfio_iommu_type1_dma_map</span> <span class="title">map</span>;</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> minsz;</span><br><span class="line">	<span class="type">uint32_t</span> mask = VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE |</span><br><span class="line">			VFIO_DMA_MAP_FLAG_VADDR;</span><br><span class="line"></span><br><span class="line">	minsz = offsetofend(<span class="keyword">struct</span> vfio_iommu_type1_dma_map, size);</span><br><span class="line">	<span class="comment">//从用户空间拷贝数据</span></span><br><span class="line">	<span class="keyword">if</span> (copy_from_user(&amp;<span class="built_in">map</span>, (<span class="type">void</span> __user *)arg, minsz))</span><br><span class="line">		<span class="keyword">return</span> -EFAULT;</span><br><span class="line">	<span class="comment">//检查参数有效性</span></span><br><span class="line">	<span class="keyword">if</span> (<span class="built_in">map</span>.argsz &lt; minsz || <span class="built_in">map</span>.flags &amp; ~mask)</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line">	<span class="comment">//真正执行iommu</span></span><br><span class="line">	<span class="keyword">return</span> vfio_dma_do_map(iommu, &amp;<span class="built_in">map</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述代码通过<code>vfio_dma_do_map</code>完成真正的<code>iommu</code>映射，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">vfio_dma_do_map</span><span class="params">(<span class="keyword">struct</span> vfio_iommu *iommu,</span></span><br><span class="line"><span class="params">			   <span class="keyword">struct</span> vfio_iommu_type1_dma_map *<span class="built_in">map</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">bool</span> set_vaddr = <span class="built_in">map</span>-&gt;flags &amp; VFIO_DMA_MAP_FLAG_VADDR;</span><br><span class="line">	<span class="type">dma_addr_t</span> iova = <span class="built_in">map</span>-&gt;iova;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> vaddr = <span class="built_in">map</span>-&gt;vaddr;</span><br><span class="line">	<span class="type">size_t</span> size = <span class="built_in">map</span>-&gt;size;</span><br><span class="line">	<span class="type">int</span> ret = <span class="number">0</span>, prot = <span class="number">0</span>;</span><br><span class="line">	<span class="type">size_t</span> pgsize;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfio_dma</span> *<span class="title">dma</span>;</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Verify that none of our __u64 fields overflow */</span></span><br><span class="line">	<span class="comment">//溢出检查</span></span><br><span class="line">	<span class="keyword">if</span> (<span class="built_in">map</span>-&gt;size != size || <span class="built_in">map</span>-&gt;vaddr != vaddr || <span class="built_in">map</span>-&gt;iova != iova)</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* READ/WRITE from device perspective */</span></span><br><span class="line">	<span class="comment">//设置 IOMMU 访问权限</span></span><br><span class="line">	<span class="keyword">if</span> (<span class="built_in">map</span>-&gt;flags &amp; VFIO_DMA_MAP_FLAG_WRITE)</span><br><span class="line">		prot |= IOMMU_WRITE;</span><br><span class="line">	<span class="keyword">if</span> (<span class="built_in">map</span>-&gt;flags &amp; VFIO_DMA_MAP_FLAG_READ)</span><br><span class="line">		prot |= IOMMU_READ;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> ((prot &amp;&amp; set_vaddr) || (!prot &amp;&amp; !set_vaddr))</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line"></span><br><span class="line">	mutex_lock(&amp;iommu-&gt;lock);</span><br><span class="line"></span><br><span class="line">	pgsize = (<span class="type">size_t</span>)<span class="number">1</span> &lt;&lt; __ffs(iommu-&gt;pgsize_bitmap);</span><br><span class="line"></span><br><span class="line">	WARN_ON((pgsize - <span class="number">1</span>) &amp; PAGE_MASK);</span><br><span class="line">	<span class="comment">//对齐与溢出检查 大小不能为 0，地址和大小必须是 pgsize 的整数倍</span></span><br><span class="line">	<span class="keyword">if</span> (!size || (size | iova | vaddr) &amp; (pgsize - <span class="number">1</span>)) &#123;</span><br><span class="line">		ret = -EINVAL;</span><br><span class="line">		<span class="keyword">goto</span> out_unlock;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Don&#x27;t allow IOVA or virtual address wrap */</span></span><br><span class="line">	<span class="keyword">if</span> (iova + size - <span class="number">1</span> &lt; iova || vaddr + size - <span class="number">1</span> &lt; vaddr) &#123;</span><br><span class="line">		ret = -EINVAL;</span><br><span class="line">		<span class="keyword">goto</span> out_unlock;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//查找已存在的 DMA 区域 其实就是遍历红黑树，通过应该找到不到</span></span><br><span class="line">	dma = vfio_find_dma(iommu, iova, size);</span><br><span class="line">	<span class="comment">//热迁移的场景</span></span><br><span class="line">	<span class="keyword">if</span> (set_vaddr) &#123;</span><br><span class="line">		<span class="keyword">if</span> (!dma) &#123;</span><br><span class="line">			ret = -ENOENT;</span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> (!dma-&gt;vaddr_invalid || dma-&gt;iova != iova ||</span><br><span class="line">			   dma-&gt;size != size) &#123;</span><br><span class="line">			ret = -EINVAL;</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			ret = vfio_change_dma_owner(dma);</span><br><span class="line">			<span class="keyword">if</span> (ret)</span><br><span class="line">				<span class="keyword">goto</span> out_unlock;</span><br><span class="line">			dma-&gt;vaddr = vaddr;</span><br><span class="line">			dma-&gt;vaddr_invalid = <span class="literal">false</span>;</span><br><span class="line">			iommu-&gt;vaddr_invalid_count--;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">goto</span> out_unlock;</span><br><span class="line">	<span class="comment">//不是热迁移还找到了，那表示已经存在了</span></span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (dma) &#123;</span><br><span class="line">		ret = -EEXIST;</span><br><span class="line">		<span class="keyword">goto</span> out_unlock;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//可以映射多少次，是否达到了上限</span></span><br><span class="line">	<span class="keyword">if</span> (!iommu-&gt;dma_avail) &#123;</span><br><span class="line">		ret = -ENOSPC;</span><br><span class="line">		<span class="keyword">goto</span> out_unlock;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//是否落在IOVA的区间内</span></span><br><span class="line">	<span class="keyword">if</span> (!vfio_iommu_iova_dma_valid(iommu, iova, iova + size - <span class="number">1</span>)) &#123;</span><br><span class="line">		ret = -EINVAL;</span><br><span class="line">		<span class="keyword">goto</span> out_unlock;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//申请一个记录这次映射的结构</span></span><br><span class="line">	dma = kzalloc(<span class="keyword">sizeof</span>(*dma), GFP_KERNEL);</span><br><span class="line">	<span class="keyword">if</span> (!dma) &#123;</span><br><span class="line">		ret = -ENOMEM;</span><br><span class="line">		<span class="keyword">goto</span> out_unlock;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//初始化字段，iova vaddr 这里减去了映射的次数</span></span><br><span class="line">	iommu-&gt;dma_avail--;</span><br><span class="line">	dma-&gt;iova = iova;</span><br><span class="line">	dma-&gt;vaddr = vaddr;</span><br><span class="line">	dma-&gt;prot = prot;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * We need to be able to both add to a task&#x27;s locked memory and test</span></span><br><span class="line"><span class="comment">	 * against the locked memory limit and we need to be able to do both</span></span><br><span class="line"><span class="comment">	 * outside of this call path as pinning can be asynchronous via the</span></span><br><span class="line"><span class="comment">	 * external interfaces for mdev devices.  RLIMIT_MEMLOCK requires a</span></span><br><span class="line"><span class="comment">	 * task_struct. Save the group_leader so that all DMA tracking uses</span></span><br><span class="line"><span class="comment">	 * the same task, to make debugging easier.  VM locked pages requires</span></span><br><span class="line"><span class="comment">	 * an mm_struct, so grab the mm in case the task dies.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	get_task_struct(current-&gt;group_leader);</span><br><span class="line">	dma-&gt;task = current-&gt;group_leader;</span><br><span class="line">	dma-&gt;lock_cap = capable(CAP_IPC_LOCK);</span><br><span class="line">	dma-&gt;mm = current-&gt;mm; <span class="comment">//进程的mm</span></span><br><span class="line">	mmgrab(dma-&gt;mm);</span><br><span class="line"></span><br><span class="line">	dma-&gt;pfn_list = RB_ROOT; <span class="comment">//初始化红黑树根节点</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Insert zero-sized and grow as we map chunks of it */</span></span><br><span class="line">	vfio_link_dma(iommu, dma);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Don&#x27;t pin and map if container doesn&#x27;t contain IOMMU capable domain*/</span></span><br><span class="line">	<span class="keyword">if</span> (list_empty(&amp;iommu-&gt;domain_list))</span><br><span class="line">		dma-&gt;size = size;</span><br><span class="line">	<span class="keyword">else</span><span class="comment">//正常走这里</span></span><br><span class="line">		ret = vfio_pin_map_dma(iommu, dma, size);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!ret &amp;&amp; iommu-&gt;dirty_page_tracking) &#123;</span><br><span class="line">		ret = vfio_dma_bitmap_alloc(dma, pgsize);</span><br><span class="line">		<span class="keyword">if</span> (ret)</span><br><span class="line">			vfio_remove_dma(iommu, dma);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">out_unlock:</span><br><span class="line">	mutex_unlock(&amp;iommu-&gt;lock);</span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>vfio_dma_do_map()</code> 是 <code>VFIO_IOMMU_MAP_DMA</code> 的核心处理函数。它接收用户态传入的 <code>vaddr</code>、<code>iova</code> 和 <code>size</code>，先检查参数是否溢出、是否页对齐、地址范围是否回绕，然后根据 <code>READ/WRITE</code> 标志设置设备 DMA 的访问权限。接着它会检查这段 IOVA 是否已经存在映射、是否落在允许的 DMA 窗口内（这里注意<code>iova</code>的范围是由iommu的<code>geometry</code>决定的），以及 DMA 映射条目是否还有额度。检查通过后，函数会分配并初始化一个 <code>struct vfio_dma</code>，用它记录这次映射的 <code>iova</code>、<code>vaddr</code>、权限、进程 <code>mm</code>、<code>task</code> 等信息，并把它插入 VFIO 的 DMA 红黑树中。最后，如果 container 已经绑定了 IOMMU domain，就继续调用 <code>vfio_pin_map_dma()</code>，完成用户页 pin 和 <code>IOVA -&gt; 物理页</code> 的 IOMMU 映射。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">vfio_pin_map_dma</span><span class="params">(<span class="keyword">struct</span> vfio_iommu *iommu, <span class="keyword">struct</span> vfio_dma *dma,</span></span><br><span class="line"><span class="params">			    <span class="type">size_t</span> map_size)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">dma_addr_t</span> iova = dma-&gt;iova;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> vaddr = dma-&gt;vaddr;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfio_batch</span> <span class="title">batch</span>;</span></span><br><span class="line">	<span class="type">size_t</span> size = map_size;</span><br><span class="line">	<span class="type">long</span> npage;</span><br><span class="line">	<span class="comment">//计算最多可以pin住多少个页</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> pfn, limit = rlimit(RLIMIT_MEMLOCK) &gt;&gt; PAGE_SHIFT;</span><br><span class="line">	<span class="type">int</span> ret = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//初始化batch 用于批量 pin面</span></span><br><span class="line">	vfio_batch_init(&amp;batch);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">while</span> (size) &#123;</span><br><span class="line">		<span class="comment">/* Pin a contiguous chunk of memory */</span></span><br><span class="line">		<span class="comment">//pin住连续的页， 返回是pin了多少个页 ，第一次的dma——size是0 。npage表示要pin住的页数</span></span><br><span class="line">		<span class="comment">//pfn是第一个固定页的物理页帧号</span></span><br><span class="line">		npage = vfio_pin_pages_remote(dma, vaddr + dma-&gt;size,</span><br><span class="line">					      size &gt;&gt; PAGE_SHIFT, &amp;pfn, limit,</span><br><span class="line">					      &amp;batch);</span><br><span class="line">		<span class="keyword">if</span> (npage &lt;= <span class="number">0</span>) &#123;</span><br><span class="line">			WARN_ON(!npage);</span><br><span class="line">			ret = (<span class="type">int</span>)npage;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Map it! */</span></span><br><span class="line">		<span class="comment">//调用iommu的接口完成真正的映射</span></span><br><span class="line">		ret = vfio_iommu_map(iommu, iova + dma-&gt;size, pfn, npage,</span><br><span class="line">				     dma-&gt;prot);</span><br><span class="line">		<span class="keyword">if</span> (ret) &#123;</span><br><span class="line">			vfio_unpin_pages_remote(dma, iova + dma-&gt;size, pfn,</span><br><span class="line">						npage, <span class="literal">true</span>);</span><br><span class="line">			vfio_batch_unpin(&amp;batch, dma);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//更新size 和 已经映射的size</span></span><br><span class="line">		size -= npage &lt;&lt; PAGE_SHIFT;</span><br><span class="line">		dma-&gt;size += npage &lt;&lt; PAGE_SHIFT;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	vfio_batch_fini(&amp;batch);</span><br><span class="line">	dma-&gt;iommu_mapped = <span class="literal">true</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (ret)</span><br><span class="line">		vfio_remove_dma(iommu, dma);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>vfio_pin_map_dma()</code> 是在 <code>vfio_dma_do_map()</code> 创建好 <code>struct vfio_dma</code> 记录之后，继续完成 <strong>用户页 pin + IOMMU 映射</strong> 的函数。它从 <code>dma-&gt;iova</code> 和 <code>dma-&gt;vaddr</code> 开始，按照 <code>map_size</code> 一段一段处理用户态内存：每轮先调用 <code>vfio_pin_pages_remote()</code>，从当前 <code>vaddr + dma-&gt;size</code> 位置开始，把一批连续用户页 pin 住，并拿到起始物理页帧号 <code>pfn</code> 和连续页数 <code>npage</code>；然后调用 <strong><code>vfio_iommu_map(封装了iommu_map)</code></strong>，把这批物理页映射到设备可见的 IOVA 地址 <code>iova + dma-&gt;size</code> 上，也就是建立 <code>IOVA -&gt; PFN</code> 的 IOMMU 页表映射。映射成功后，就减少剩余 <code>size</code>，并增加 <code>dma-&gt;size</code>，表示这段 DMA 区域已经成功映射了多少字节。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment"> * Attempt to pin pages.  We really don&#x27;t want to track all the pfns and</span></span><br><span class="line"><span class="comment"> * the iommu can only map chunks of consecutive pfns anyway, so get the</span></span><br><span class="line"><span class="comment"> * first page and all consecutive pages with the same locking.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="type">static</span> <span class="type">long</span> <span class="title function_">vfio_pin_pages_remote</span><span class="params">(<span class="keyword">struct</span> vfio_dma *dma, <span class="type">unsigned</span> <span class="type">long</span> vaddr,</span></span><br><span class="line"><span class="params">				  <span class="type">long</span> npage, <span class="type">unsigned</span> <span class="type">long</span> *pfn_base,</span></span><br><span class="line"><span class="params">				  <span class="type">unsigned</span> <span class="type">long</span> limit, <span class="keyword">struct</span> vfio_batch *batch)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span> pfn;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">mm_struct</span> *<span class="title">mm</span> =</span> current-&gt;mm;</span><br><span class="line">	<span class="type">long</span> ret, pinned = <span class="number">0</span>, lock_acct = <span class="number">0</span>;</span><br><span class="line">	<span class="type">bool</span> rsvd;</span><br><span class="line">	<span class="type">dma_addr_t</span> iova = vaddr - dma-&gt;vaddr + dma-&gt;iova;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* This code path is only user initiated */</span></span><br><span class="line">	<span class="keyword">if</span> (!mm)</span><br><span class="line">		<span class="keyword">return</span> -ENODEV;</span><br><span class="line">	<span class="comment">//第一次外层循环进来这里应该是0</span></span><br><span class="line">	<span class="comment">//否则拿到物理页的编号</span></span><br><span class="line">	<span class="keyword">if</span> (batch-&gt;size) &#123;</span><br><span class="line">		<span class="comment">/* Leftover pages in batch from an earlier call. */</span></span><br><span class="line">		*pfn_base = page_to_pfn(batch-&gt;pages[batch-&gt;offset]);</span><br><span class="line">		pfn = *pfn_base;</span><br><span class="line">		rsvd = is_invalid_reserved_pfn(*pfn_base);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;<span class="comment">//先初始化为0</span></span><br><span class="line">		*pfn_base = <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//一共需要处理的页数</span></span><br><span class="line">	<span class="keyword">while</span> (npage) &#123;</span><br><span class="line">		<span class="keyword">if</span> (!batch-&gt;size) &#123;<span class="comment">//第一次进这里，注意第二次就不进这里了</span></span><br><span class="line">			<span class="comment">/* Empty batch, so refill it. */</span></span><br><span class="line">			<span class="type">long</span> req_pages = <span class="type">min_t</span>(<span class="type">long</span>, npage, batch-&gt;capacity);</span><br><span class="line">			<span class="comment">//这里是真正的锁住了页面，注意应该是锁住了多个页，返回的是锁住的页数</span></span><br><span class="line">			ret = vaddr_get_pfns(mm, vaddr, req_pages, dma-&gt;prot,</span><br><span class="line">					     &amp;pfn, batch-&gt;pages);</span><br><span class="line">			<span class="keyword">if</span> (ret &lt; <span class="number">0</span>)</span><br><span class="line">				<span class="keyword">goto</span> unpin_out;</span><br><span class="line">			<span class="comment">//记录锁住的</span></span><br><span class="line">			batch-&gt;size = ret;</span><br><span class="line">			<span class="comment">//初始化为0</span></span><br><span class="line">			batch-&gt;offset = <span class="number">0</span>;</span><br><span class="line">			<span class="comment">//记录起始编号</span></span><br><span class="line">			<span class="keyword">if</span> (!*pfn_base) &#123;</span><br><span class="line">				*pfn_base = pfn;</span><br><span class="line">				rsvd = is_invalid_reserved_pfn(*pfn_base);</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/*</span></span><br><span class="line"><span class="comment">		 * pfn is preset for the first iteration of this inner loop and</span></span><br><span class="line"><span class="comment">		 * updated at the end to handle a VM_PFNMAP pfn.  In that case,</span></span><br><span class="line"><span class="comment">		 * batch-&gt;pages isn&#x27;t valid (there&#x27;s no struct page), so allow</span></span><br><span class="line"><span class="comment">		 * batch-&gt;pages to be touched only when there&#x27;s more than one</span></span><br><span class="line"><span class="comment">		 * pfn to check, which guarantees the pfns are from a</span></span><br><span class="line"><span class="comment">		 * !VM_PFNMAP vma.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="keyword">while</span> (<span class="literal">true</span>) &#123;</span><br><span class="line">			<span class="keyword">if</span> (pfn != *pfn_base + pinned || <span class="comment">//// 物理页不连续</span></span><br><span class="line">			    rsvd != is_invalid_reserved_pfn(pfn)) <span class="comment">//不是普通用户匿名页，而是特殊物理地址映射，比如某些设备 MMIO，注意额这里保留页也会被映射</span></span><br><span class="line">				<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">			<span class="comment">/*</span></span><br><span class="line"><span class="comment">			 * Reserved pages aren&#x27;t counted against the user,</span></span><br><span class="line"><span class="comment">			 * externally pinned pages are already counted against</span></span><br><span class="line"><span class="comment">			 * the user.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="keyword">if</span> (!rsvd &amp;&amp; !vfio_find_vpfn(dma, iova)) &#123;<span class="comment">//是否为保留页 比如mmio? 是否已被pin过</span></span><br><span class="line">				<span class="keyword">if</span> (!dma-&gt;lock_cap &amp;&amp;</span><br><span class="line">				    mm-&gt;locked_vm + lock_acct + <span class="number">1</span> &gt; limit) &#123;<span class="comment">//当前已锁页数 + 本次已累积页数 + 当前这一页 &gt; 限制</span></span><br><span class="line">					pr_warn(<span class="string">&quot;%s: RLIMIT_MEMLOCK (%ld) exceeded\n&quot;</span>,</span><br><span class="line">						__func__, limit &lt;&lt; PAGE_SHIFT);</span><br><span class="line">					ret = -ENOMEM;</span><br><span class="line">					<span class="keyword">goto</span> unpin_out;</span><br><span class="line">				&#125;</span><br><span class="line">				lock_acct++;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="comment">//这里更新锁住的页数</span></span><br><span class="line">			pinned++;</span><br><span class="line">			<span class="comment">//减少总共需要映射的页数</span></span><br><span class="line">			npage--;</span><br><span class="line">			vaddr += PAGE_SIZE;</span><br><span class="line">			iova += PAGE_SIZE;</span><br><span class="line">			batch-&gt;offset++;</span><br><span class="line">			batch-&gt;size--;</span><br><span class="line"></span><br><span class="line">			<span class="keyword">if</span> (!batch-&gt;size)</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			<span class="comment">//下一个页</span></span><br><span class="line">			pfn = page_to_pfn(batch-&gt;pages[batch-&gt;offset]);</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (unlikely(disable_hugepages))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">	ret = vfio_lock_acct(dma, lock_acct, <span class="literal">false</span>);</span><br><span class="line"></span><br><span class="line">unpin_out:</span><br><span class="line">	<span class="keyword">if</span> (batch-&gt;size == <span class="number">1</span> &amp;&amp; !batch-&gt;offset) &#123;</span><br><span class="line">		<span class="comment">/* May be a VM_PFNMAP pfn, which the batch can&#x27;t remember. */</span></span><br><span class="line">		put_pfn(pfn, dma-&gt;prot);</span><br><span class="line">		batch-&gt;size = <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//出错回滚的逻辑，这保留页不被释放</span></span><br><span class="line">	<span class="keyword">if</span> (ret &lt; <span class="number">0</span>) &#123;</span><br><span class="line">		<span class="keyword">if</span> (pinned &amp;&amp; !rsvd) &#123;</span><br><span class="line">			<span class="keyword">for</span> (pfn = *pfn_base ; pinned ; pfn++, pinned--)</span><br><span class="line">				put_pfn(pfn, dma-&gt;prot);</span><br><span class="line">		&#125;</span><br><span class="line">		vfio_batch_unpin(batch, dma);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">return</span> ret;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> pinned;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>vfio_pin_pages_remote()</code> 的核是从用户态虚拟地址 <code>vaddr</code> 开始，pin 住一段物理页连续的内存，并返回起始 PFN 和连续页数**。它先通过 <code>vaddr_get_pfns()</code> 获取并固定一批用户页，然后逐页检查 PFN 是否连续，以及页类型是否一致，比如不能把普通用户页和 reserved page 混在同一个连续块里。如果遇到物理页不连续、页类型变化，或者 batch 用完，就停止本轮处理，把已经连续的这一段返回给上层。</p>
+<p>同时，它还会对普通用户页做 <code>RLIMIT_MEMLOCK</code> 检查，防止用户 pin 太多内存；如果出错，就把已经 pin 的页释放掉。整体来说，它就是给后面的 <code>vfio_iommu_map()</code> 准备一段 <strong>已经 pin 住、PFN 连续、可以直接建立 IOMMU 映射</strong> 的物理页区间。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/VFIO/" rel="tag"># VFIO</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/05/26/VFIO(%E5%9B%9B)/" rel="prev" title="vfio_iommu_type1（二）">
+      <i class="fa fa-chevron-left"></i> vfio_iommu_type1（二）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#vfio-iommu-type1-ioctl"><span class="nav-number">1.</span> <span class="nav-text">vfio_iommu_type1_ioctl</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">131</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">30</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
