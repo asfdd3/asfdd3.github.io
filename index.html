@@ -193,6 +193,105 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/06/03/VFIO(%E4%B8%83)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2026/06/03/VFIO(%E4%B8%83)/" class="post-title-link" itemprop="url">vfio_pci（二）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-06-03 22:00:00 / 修改时间：22:13:19" itemprop="dateCreated datePublished" datetime="2026-06-03T22:00:00+08:00">2026-06-03</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/VFIO/" itemprop="url" rel="index"><span itemprop="name">VFIO</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/06/03/VFIO(%E4%B8%83)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/06/03/VFIO(%E4%B8%83)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>在前面已经介绍当VFIO 在创建 group 的时候，会给 group 初始化一个字符设备，并且给这个字符设备挂上一组 file_operations。用户态打开 &#x2F;dev&#x2F;vfio&#x2F;<group_id> 之后，拿到的就是这个 group 对应的 fd。后续用户态对 group fd 执行的各种 ioctl，最终都会进入 group 层提供的 ops 处理函数。也就是说，group 的 ops 集合就是用户态操作 VFIO group 的入口。它不直接代表某一个 PCI 设备，而是负责完成 group 这一层的管理动作，比如查询 group 状态.</group_id></p>
+<p>把 group 绑定到 container、从 group 中获取具体设备的 device fd 等 核心入口就是下面这个<code>ioctl</code>。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">long</span> <span class="title function_">vfio_group_fops_unl_ioctl</span><span class="params">(<span class="keyword">struct</span> file *filep,</span></span><br><span class="line"><span class="params">                      <span class="type">unsigned</span> <span class="type">int</span> cmd, <span class="type">unsigned</span> <span class="type">long</span> arg)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">vfio_group</span> *<span class="title">group</span> =</span> filep-&gt;private_data;</span><br><span class="line">    <span class="type">void</span> __user *uarg = (<span class="type">void</span> __user *)arg;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">switch</span> (cmd) &#123;</span><br><span class="line">    <span class="keyword">case</span> VFIO_GROUP_GET_DEVICE_FD:</span><br><span class="line">        <span class="keyword">return</span> vfio_group_ioctl_get_device_fd(group, uarg);</span><br><span class="line">    <span class="keyword">case</span> VFIO_GROUP_GET_STATUS:</span><br><span class="line">        <span class="keyword">return</span> vfio_group_ioctl_get_status(group, uarg);</span><br><span class="line">    <span class="keyword">case</span> VFIO_GROUP_SET_CONTAINER:</span><br><span class="line">        <span class="keyword">return</span> vfio_group_ioctl_set_container(group, uarg);</span><br><span class="line">    <span class="keyword">case</span> VFIO_GROUP_UNSET_CONTAINER:</span><br><span class="line">        <span class="keyword">return</span> vfio_group_ioctl_unset_container(group);</span><br><span class="line">    <span class="keyword">default</span>:</span><br><span class="line">        <span class="keyword">return</span> -ENOTTY;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>其中最重要的两个<code>cmd</code>是VFIO_GROUP_SET_CONTAINER 和  VFIO_GROUP_GET_DEVICE_FD ，前者负责把 group 加入到 container，也就是让这个 group 后续可以使用 container 提供的 IOMMU&#x2F;DMA 管理能力；后者负责从 group 里面拿到具体设备的 fd，用户态后面真正操作 PCI 设备，比如查询 region、mmap BAR、设置中断，都是基于这个 device fd 。</p>
+<h3 id="vfio-group-ioctl-get-device-fd"><a href="#vfio-group-ioctl-get-device-fd" class="headerlink" title="vfio_group_ioctl_get_device_fd"></a>vfio_group_ioctl_get_device_fd</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">vfio_group_ioctl_get_device_fd</span><span class="params">(<span class="keyword">struct</span> vfio_group *group,</span></span><br><span class="line"><span class="params">                      <span class="type">char</span> __user *arg)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">vfio_device</span> *<span class="title">device</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">file</span> *<span class="title">filep</span>;</span></span><br><span class="line">    <span class="type">char</span> *buf;</span><br><span class="line">    <span class="type">int</span> fdno;</span><br><span class="line">    <span class="type">int</span> ret;</span><br><span class="line"></span><br><span class="line">    buf = strndup_user(arg, PAGE_SIZE);</span><br><span class="line">    <span class="keyword">if</span> (IS_ERR(buf))</span><br><span class="line">        <span class="keyword">return</span> PTR_ERR(buf);</span><br><span class="line">    <span class="comment">//根据设备名在 group 里找 vfio_device </span></span><br><span class="line">    <span class="comment">//这里会调用设备的ops vfio_pci_core_match</span></span><br><span class="line">    device = vfio_device_get_from_name(group, buf);</span><br><span class="line">    kfree(buf);</span><br><span class="line">    <span class="keyword">if</span> (IS_ERR(device))</span><br><span class="line">        <span class="keyword">return</span> PTR_ERR(device);</span><br><span class="line">    <span class="comment">//分配一个新的 fd</span></span><br><span class="line">    fdno = get_unused_fd_flags(O_CLOEXEC);</span><br><span class="line">    <span class="keyword">if</span> (fdno &lt; <span class="number">0</span>) &#123;</span><br><span class="line">        ret = fdno;</span><br><span class="line">        <span class="keyword">goto</span> err_put_device;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//为 vfio_device 创建 struct file</span></span><br><span class="line">    filep = vfio_device_open_file(device);</span><br><span class="line">    <span class="keyword">if</span> (IS_ERR(filep)) &#123;</span><br><span class="line">        ret = PTR_ERR(filep);</span><br><span class="line">        <span class="keyword">goto</span> err_put_fdno;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//关联fd 和file</span></span><br><span class="line">    fd_install(fdno, filep);</span><br><span class="line">    <span class="keyword">return</span> fdno;</span><br><span class="line"></span><br><span class="line">err_put_fdno:</span><br><span class="line">    put_unused_fd(fdno);</span><br><span class="line">err_put_device:</span><br><span class="line">    vfio_device_put_registration(device);</span><br><span class="line">    <span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述代码的作用是当用户态通过 VFIO_GROUP_GET_DEVICE_FD 传进来一个设备名，比如 “0000:01:00.0”，内核就在当前 vfio group 里面根据这个名字找到对应的 vfio_device，然后给这个设备单独创建一个新的 file，并分配一个新的 fd 返回给用户态。先从当前进程的 fd 表里分配一个空闲 fd 号；接着 调用vfio_device_open_file() 为这个具体的 vfio_device 创建 struct file，也就是后面真正操作设备用的 device file；最后把 fd 号和这个 file 绑定起来并返回给用户态。</p>
+<h3 id="vfio-device-open-file"><a href="#vfio-device-open-file" class="headerlink" title="vfio_device_open_file"></a>vfio_device_open_file</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">struct</span> file *<span class="title function_">vfio_device_open_file</span><span class="params">(<span class="keyword">struct</span> vfio_device *device)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">vfio_device_file</span> *<span class="title">df</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">file</span> *<span class="title">filep</span>;</span></span><br><span class="line">    <span class="type">int</span> ret;</span><br><span class="line">    <span class="comment">//分配 vfio_device_file 它是 device fd 的私有上下文</span></span><br><span class="line">    <span class="comment">//设置的vfio device</span></span><br><span class="line">    df = vfio_allocate_device_file(device);</span><br><span class="line">    <span class="keyword">if</span> (IS_ERR(df)) &#123;</span><br><span class="line">        ret = PTR_ERR(df);</span><br><span class="line">        <span class="keyword">goto</span> err_out;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//这里设置了 vfio group</span></span><br><span class="line">    df-&gt;group = device-&gt;group;</span><br><span class="line">    <span class="comment">//把上面申请的df传进去了 ，这里面调用了pci设备的open</span></span><br><span class="line">    ret = vfio_df_group_open(df);</span><br><span class="line">    <span class="keyword">if</span> (ret)</span><br><span class="line">        <span class="keyword">goto</span> err_free;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">     * We can&#x27;t use anon_inode_getfd() because we need to modify</span></span><br><span class="line"><span class="comment">     * the f_mode flags directly to allow more than just ioctls</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="comment">// 创建一个匿名 struct file</span></span><br><span class="line">    <span class="comment">// 这个 file 不对应磁盘文件，而是内核创建的一个匿名文件对象</span></span><br><span class="line">    <span class="comment">// file-&gt;f_op = &amp;vfio_device_fops</span></span><br><span class="line">    <span class="comment">// 注意里面 file-&gt;private_data = df</span></span><br><span class="line">    <span class="comment">// 后面用户态拿到的 device_fd，本质上就是指向这个 file</span></span><br><span class="line">    filep = anon_inode_getfile(<span class="string">&quot;[vfio-device]&quot;</span>, &amp;vfio_device_fops,</span><br><span class="line">                   df, O_RDWR);</span><br><span class="line">    <span class="keyword">if</span> (IS_ERR(filep)) &#123;</span><br><span class="line">        ret = PTR_ERR(filep);</span><br><span class="line">        <span class="keyword">goto</span> err_close_device;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">     * <span class="doctag">TODO:</span> add an anon_inode interface to do this.</span></span><br><span class="line"><span class="comment">     * Appears to be missing by lack of need rather than</span></span><br><span class="line"><span class="comment">     * explicitly prevented.  Now there&#x27;s need.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    filep-&gt;f_mode |= (FMODE_PREAD | FMODE_PWRITE);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (device-&gt;group-&gt;type == VFIO_NO_IOMMU)</span><br><span class="line">        dev_warn(device-&gt;dev, <span class="string">&quot;vfio-noiommu device opened by user &quot;</span></span><br><span class="line">             <span class="string">&quot;(%s:%d)\n&quot;</span>, current-&gt;comm, task_pid_nr(current));</span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">     * On success the ref of device is moved to the file and</span></span><br><span class="line"><span class="comment">     * put in vfio_device_fops_release()</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="keyword">return</span> filep;</span><br><span class="line"></span><br><span class="line">err_close_device:</span><br><span class="line">    vfio_df_group_close(df);</span><br><span class="line">err_free:</span><br><span class="line">    kfree(df);</span><br><span class="line">err_out:</span><br><span class="line">    <span class="keyword">return</span> ERR_PTR(ret);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>vfio_device_open_file首先创建一个匿名 file，作为用户态 device fd 的内核表示。它先分配 vfio_device_file 作为 device fd 的私有上下文，设置 group，并调用 vfio_df_group_open() 做 group 相关初始化；然后通过 anon_inode_getfile() 创建匿名 file，把 vfio_device_file 关联到file-&gt;private_data，并设置读写权限，返回给用户态。用户态拿到的 device fd 实际上就是这个匿名 file。</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2026/06/03/VFIO(%E4%B8%83)/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2026/06/01/VFIO(%E5%85%AD)/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1203,104 +1302,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2026/05/10/ARP(%E4%B8%89)/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2026/05/10/ARP(%E4%B8%89)/" class="post-title-link" itemprop="url">ARP初始化（三）</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2026-05-10 22:00:00 / 修改时间：22:33:45" itemprop="dateCreated datePublished" datetime="2026-05-10T22:00:00+08:00">2026-05-10</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2026/05/10/ARP(%E4%B8%89)/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2026/05/10/ARP(%E4%B8%89)/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h3 id="neigh-hash-alloc"><a href="#neigh-hash-alloc" class="headerlink" title="neigh_hash_alloc"></a><code>neigh_hash_alloc</code></h3><p>前文<code>neigh_table_init</code>中会调用  <code>RCU_INIT_POINTER(tbl-&gt;nht, neigh_hash_alloc(3));</code>分配并初始化一个邻居哈希表，然后通过 <code>RCU_INIT_POINTER</code> 以 RCU 安全的方式把这个哈希表挂到 <code>tbl-&gt;nht</code> 指针上。申请<code>hash</code>表的代码如下所示:</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">struct</span> neigh_hash_table *<span class="title function_">neigh_hash_alloc</span><span class="params">(<span class="type">unsigned</span> <span class="type">int</span> shift)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//8× 8字节指针</span></span><br><span class="line">	<span class="type">size_t</span> size = (<span class="number">1</span> &lt;&lt; shift) * <span class="keyword">sizeof</span>(<span class="keyword">struct</span> neighbour *);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">neigh_hash_table</span> *<span class="title">ret</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">neighbour</span> __<span class="title">rcu</span> **<span class="title">buckets</span>;</span></span><br><span class="line">	<span class="type">int</span> i;</span><br><span class="line">	<span class="comment">//管理hash表的结构</span></span><br><span class="line">	ret = kmalloc(<span class="keyword">sizeof</span>(*ret), GFP_ATOMIC);</span><br><span class="line">	<span class="keyword">if</span> (!ret)</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">	<span class="comment">//这里申请了桶</span></span><br><span class="line">	<span class="keyword">if</span> (size &lt;= PAGE_SIZE) &#123;</span><br><span class="line">		buckets = kzalloc(size, GFP_ATOMIC);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		buckets = (<span class="keyword">struct</span> neighbour __rcu **)</span><br><span class="line">			  __get_free_pages(GFP_ATOMIC | __GFP_ZERO,</span><br><span class="line">					   get_order(size));</span><br><span class="line">		kmemleak_alloc(buckets, size, <span class="number">1</span>, GFP_ATOMIC);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> (!buckets) &#123;</span><br><span class="line">		kfree(ret);</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//绑定桶数组并记录哈希偏移</span></span><br><span class="line">	ret-&gt;hash_buckets = buckets;</span><br><span class="line">	ret-&gt;hash_shift = shift;</span><br><span class="line">	<span class="comment">//成随机哈希种子</span></span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; NEIGH_NUM_HASH_RND; i++)</span><br><span class="line">		neigh_get_hash_rnd(&amp;ret-&gt;hash_rnd[i]);</span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p><code>neigh_hash_alloc</code>先根据 <code>shift</code> 计算桶数量 <code>1 &lt;&lt; shift</code>(这里默认是8，后续会动态调整)，然后申请一个 <code>neigh_hash_table</code> 管理结构，再为真正的哈希桶数组申请内存。随后把桶数组地址保存到 <code>ret-&gt;hash_buckets</code>，记录哈希表大小参数 <code>hash_shift</code>，最后生成几组随机哈希种子 <code>hash_rnd</code>，用于后续邻居项哈希计算，防止哈希冲突被恶意构造。</p>
-<p><code>neigh_periodic_work</code></p>
-<p>申请完<code>hash</code>表后，<code>neigh_table_init</code>中启动一个工作队列<code>neigh_periodic_work</code>，用于定期进行垃圾回收，具体代码如所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">neigh_periodic_work</span><span class="params">(<span class="keyword">struct</span> work_struct *work)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">neigh_table</span> *<span class="title">tbl</span> =</span> container_of(work, <span class="keyword">struct</span> neigh_table, gc_work.work);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">neighbour</span> *<span class="title">n</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">neighbour</span> __<span class="title">rcu</span> **<span class="title">np</span>;</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> i;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">neigh_hash_table</span> *<span class="title">nht</span>;</span></span><br><span class="line">	<span class="comment">//累计周期性GC的执行次数</span></span><br><span class="line">	NEIGH_CACHE_STAT_INC(tbl, periodic_gc_runs);</span><br><span class="line"></span><br><span class="line">	write_lock_bh(&amp;tbl-&gt;lock);</span><br><span class="line">	<span class="comment">//拿到hash表</span></span><br><span class="line">	nht = rcu_dereference_protected(tbl-&gt;nht,</span><br><span class="line">					lockdep_is_held(&amp;tbl-&gt;lock));</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	periodically recompute ReachableTime from random function</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//每隔300s就冲洗计算reachtime</span></span><br><span class="line">	<span class="keyword">if</span> (time_after(jiffies, tbl-&gt;last_rand + <span class="number">300</span> * HZ)) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">neigh_parms</span> *<span class="title">p</span>;</span></span><br><span class="line"></span><br><span class="line">		WRITE_ONCE(tbl-&gt;last_rand, jiffies);</span><br><span class="line">		list_for_each_entry(p, &amp;tbl-&gt;parms_list, <span class="built_in">list</span>)</span><br><span class="line">			p-&gt;reachable_time =</span><br><span class="line">				neigh_rand_reach_time(NEIGH_VAR(p, BASE_REACHABLE_TIME));</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//条目数 &lt; gc_thresh1（默认128），跳过清理</span></span><br><span class="line">	<span class="keyword">if</span> (<span class="type">atomic_read</span>(&amp;tbl-&gt;entries) &lt; READ_ONCE(tbl-&gt;gc_thresh1))</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	<span class="comment">//遍历hash桶</span></span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span> ; i &lt; (<span class="number">1</span> &lt;&lt; nht-&gt;hash_shift); i++) &#123;</span><br><span class="line">		np = &amp;nht-&gt;hash_buckets[i];</span><br><span class="line">	<span class="comment">//遍历桶上的条目</span></span><br><span class="line">		<span class="keyword">while</span> ((n = rcu_dereference_protected(*np,</span><br><span class="line">				lockdep_is_held(&amp;tbl-&gt;lock))) != <span class="literal">NULL</span>) &#123;</span><br><span class="line">			<span class="type">unsigned</span> <span class="type">int</span> state;</span><br><span class="line"></span><br><span class="line">			write_lock(&amp;n-&gt;lock);</span><br><span class="line">			<span class="comment">//跳过受保护条目比如可到达</span></span><br><span class="line">			state = n-&gt;nud_state;</span><br><span class="line">			<span class="keyword">if</span> ((state &amp; (NUD_PERMANENT | NUD_IN_TIMER)) ||</span><br><span class="line">			    (n-&gt;flags &amp; NTF_EXT_LEARNED)) &#123;</span><br><span class="line">				write_unlock(&amp;n-&gt;lock);</span><br><span class="line">				<span class="keyword">goto</span> next_elt;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="comment">//邻居条目最后一次被使用的时间在确认可达的前面，修正used时间</span></span><br><span class="line">			<span class="keyword">if</span> (time_before(n-&gt;used, n-&gt;confirmed) &amp;&amp; <span class="comment">//update的时候会设置confirmed neigh_add_timer 会设置used</span></span><br><span class="line">			    time_is_before_eq_jiffies(n-&gt;confirmed))</span><br><span class="line">				n-&gt;used = n-&gt;confirmed;</span><br><span class="line">			<span class="comment">//没人使用，标记为无效，且超过了老化时间</span></span><br><span class="line">			<span class="keyword">if</span> (refcount_read(&amp;n-&gt;refcnt) == <span class="number">1</span> &amp;&amp;</span><br><span class="line">			    (state == NUD_FAILED ||  <span class="comment">//手动删除或者定时器到期，或者配置了广播ip地址的时候可能会设置标志</span></span><br><span class="line">			     !time_in_range_open(jiffies, n-&gt;used,</span><br><span class="line">						 n-&gt;used + NEIGH_VAR(n-&gt;parms, GC_STALETIME)))) &#123;</span><br><span class="line">				rcu_assign_pointer(*np,</span><br><span class="line">					rcu_dereference_protected(n-&gt;next,</span><br><span class="line">						lockdep_is_held(&amp;tbl-&gt;lock)));</span><br><span class="line">				neigh_mark_dead(n);<span class="comment">//标记为dead，并从gc等链表中移除</span></span><br><span class="line">				write_unlock(&amp;n-&gt;lock);</span><br><span class="line">				neigh_cleanup_and_release(n);<span class="comment">//清楚定时器，清除发送队列，清除相关技术</span></span><br><span class="line">				<span class="keyword">continue</span>;</span><br><span class="line">			&#125;</span><br><span class="line">			write_unlock(&amp;n-&gt;lock);</span><br><span class="line"></span><br><span class="line">next_elt:</span><br><span class="line">			np = &amp;n-&gt;next;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">/*</span></span><br><span class="line"><span class="comment">		 * It&#x27;s fine to release lock here, even if hash table</span></span><br><span class="line"><span class="comment">		 * grows while we are preempted.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		write_unlock_bh(&amp;tbl-&gt;lock);</span><br><span class="line">		cond_resched();<span class="comment">//防止长时间占用 CPU 导致其他任务饥饿。</span></span><br><span class="line">		write_lock_bh(&amp;tbl-&gt;lock);</span><br><span class="line">		<span class="comment">//在短暂释放锁的窗口期内，另一个 CPU 可能对邻居表进行了扩容所以这里重新获取表</span></span><br><span class="line">		nht = rcu_dereference_protected(tbl-&gt;nht,</span><br><span class="line">						lockdep_is_held(&amp;tbl-&gt;lock));</span><br><span class="line">	&#125;</span><br><span class="line">out:</span><br><span class="line">	<span class="comment">/* Cycle through all hash buckets every BASE_REACHABLE_TIME/2 ticks.</span></span><br><span class="line"><span class="comment">	 * ARP entry timeouts range from 1/2 BASE_REACHABLE_TIME to 3/2</span></span><br><span class="line"><span class="comment">	 * BASE_REACHABLE_TIME.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//重新调度下一次 GC 运行</span></span><br><span class="line">	queue_delayed_work(system_power_efficient_wq, &amp;tbl-&gt;gc_work,</span><br><span class="line">			      NEIGH_VAR(&amp;tbl-&gt;parms, BASE_REACHABLE_TIME) &gt;&gt; <span class="number">1</span>);</span><br><span class="line">	write_unlock_bh(&amp;tbl-&gt;lock);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>这段 <code>neigh_periodic_work()</code> 是 ARP 邻居表的周期性垃圾回收函数，负责定期扫描整个邻居哈希表，把长期不用或者已经失效的 ARP 表项清理掉。函数开始先拿到当前邻居哈希表，然后每隔 300 秒重新随机计算一次 <code>reachable_time</code>，避免所有 ARP 表项同时老化。接着如果当前邻居项数量没超过 <code>gc_thresh1</code>（默认 128），就直接退出；否则开始遍历所有哈希桶以及桶上的邻居链表。遍历过程中会跳过永久表项、正在定时器管理的表项以及受保护的表项；对于普通邻居项，如果引用计数只剩 1（说明没人再使用），并且状态已经失败或者长时间没有被使用超过 <code>GC_STALETIME</code>，就把它从哈希链表摘除，标记为 dead，然后清理定时器、发送队列等资源并释放。为了避免长时间持有锁导致 CPU 饥饿，它每遍历完一个桶都会临时释放锁并 <code>cond_resched()</code> 主动让出 CPU，最后再重新调度下一次 GC 定时任务。</p>
-<h3 id="neigh-managed-work"><a href="#neigh-managed-work" class="headerlink" title="neigh_managed_work"></a><code>neigh_managed_work</code></h3><p>此外还会启动主动探测任务工作队列，负责周期性探测 <code>managed_list</code> 链表中的邻居项是否还存活。具体代码如下所示：</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2026/05/10/ARP(%E4%B8%89)/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1370,7 +1371,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">132</span>
+          <span class="site-state-item-count">133</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>

@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="在前面已经介绍当VFIO 在创建 group 的时候，会给 group 初始化一个字符设备，并且给这个字符设备挂上一组 file_operations。用户态打开 &#x2F;dev&#x2F;vfio&#x2F; 之后，拿到的就是这个 group 对应的 fd。后续用户态对 group fd 执行的各种 ioctl，最终都会进入 group 层提供的 ops 处理函数。也就是说，group 的">
+<meta property="og:type" content="article">
+<meta property="og:title" content="vfio_pci（二）">
+<meta property="og:url" content="http://example.com/2026/06/03/VFIO(%E4%B8%83)/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="在前面已经介绍当VFIO 在创建 group 的时候，会给 group 初始化一个字符设备，并且给这个字符设备挂上一组 file_operations。用户态打开 &#x2F;dev&#x2F;vfio&#x2F; 之后，拿到的就是这个 group 对应的 fd。后续用户态对 group fd 执行的各种 ioctl，最终都会进入 group 层提供的 ops 处理函数。也就是说，group 的">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-06-03T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-06-03T14:13:19.109Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="VFIO">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/06/03/VFIO(%E4%B8%83)/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>vfio_pci（二） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/06/03/VFIO(%E4%B8%83)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          vfio_pci（二）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-06-03 22:00:00 / 修改时间：22:13:19" itemprop="dateCreated datePublished" datetime="2026-06-03T22:00:00+08:00">2026-06-03</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/VFIO/" itemprop="url" rel="index"><span itemprop="name">VFIO</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/06/03/VFIO(%E4%B8%83)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/06/03/VFIO(%E4%B8%83)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>在前面已经介绍当VFIO 在创建 group 的时候，会给 group 初始化一个字符设备，并且给这个字符设备挂上一组 file_operations。用户态打开 &#x2F;dev&#x2F;vfio&#x2F;<group_id> 之后，拿到的就是这个 group 对应的 fd。后续用户态对 group fd 执行的各种 ioctl，最终都会进入 group 层提供的 ops 处理函数。也就是说，group 的 ops 集合就是用户态操作 VFIO group 的入口。它不直接代表某一个 PCI 设备，而是负责完成 group 这一层的管理动作，比如查询 group 状态.</p>
+<p>把 group 绑定到 container、从 group 中获取具体设备的 device fd 等 核心入口就是下面这个<code>ioctl</code>。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">long</span> <span class="title function_">vfio_group_fops_unl_ioctl</span><span class="params">(<span class="keyword">struct</span> file *filep,</span></span><br><span class="line"><span class="params">                      <span class="type">unsigned</span> <span class="type">int</span> cmd, <span class="type">unsigned</span> <span class="type">long</span> arg)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">vfio_group</span> *<span class="title">group</span> =</span> filep-&gt;private_data;</span><br><span class="line">    <span class="type">void</span> __user *uarg = (<span class="type">void</span> __user *)arg;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">switch</span> (cmd) &#123;</span><br><span class="line">    <span class="keyword">case</span> VFIO_GROUP_GET_DEVICE_FD:</span><br><span class="line">        <span class="keyword">return</span> vfio_group_ioctl_get_device_fd(group, uarg);</span><br><span class="line">    <span class="keyword">case</span> VFIO_GROUP_GET_STATUS:</span><br><span class="line">        <span class="keyword">return</span> vfio_group_ioctl_get_status(group, uarg);</span><br><span class="line">    <span class="keyword">case</span> VFIO_GROUP_SET_CONTAINER:</span><br><span class="line">        <span class="keyword">return</span> vfio_group_ioctl_set_container(group, uarg);</span><br><span class="line">    <span class="keyword">case</span> VFIO_GROUP_UNSET_CONTAINER:</span><br><span class="line">        <span class="keyword">return</span> vfio_group_ioctl_unset_container(group);</span><br><span class="line">    <span class="keyword">default</span>:</span><br><span class="line">        <span class="keyword">return</span> -ENOTTY;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>其中最重要的两个<code>cmd</code>是VFIO_GROUP_SET_CONTAINER 和  VFIO_GROUP_GET_DEVICE_FD ，前者负责把 group 加入到 container，也就是让这个 group 后续可以使用 container 提供的 IOMMU&#x2F;DMA 管理能力；后者负责从 group 里面拿到具体设备的 fd，用户态后面真正操作 PCI 设备，比如查询 region、mmap BAR、设置中断，都是基于这个 device fd 。</p>
+<h3 id="vfio-group-ioctl-get-device-fd"><a href="#vfio-group-ioctl-get-device-fd" class="headerlink" title="vfio_group_ioctl_get_device_fd"></a>vfio_group_ioctl_get_device_fd</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">vfio_group_ioctl_get_device_fd</span><span class="params">(<span class="keyword">struct</span> vfio_group *group,</span></span><br><span class="line"><span class="params">                      <span class="type">char</span> __user *arg)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">vfio_device</span> *<span class="title">device</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">file</span> *<span class="title">filep</span>;</span></span><br><span class="line">    <span class="type">char</span> *buf;</span><br><span class="line">    <span class="type">int</span> fdno;</span><br><span class="line">    <span class="type">int</span> ret;</span><br><span class="line"></span><br><span class="line">    buf = strndup_user(arg, PAGE_SIZE);</span><br><span class="line">    <span class="keyword">if</span> (IS_ERR(buf))</span><br><span class="line">        <span class="keyword">return</span> PTR_ERR(buf);</span><br><span class="line">    <span class="comment">//根据设备名在 group 里找 vfio_device </span></span><br><span class="line">    <span class="comment">//这里会调用设备的ops vfio_pci_core_match</span></span><br><span class="line">    device = vfio_device_get_from_name(group, buf);</span><br><span class="line">    kfree(buf);</span><br><span class="line">    <span class="keyword">if</span> (IS_ERR(device))</span><br><span class="line">        <span class="keyword">return</span> PTR_ERR(device);</span><br><span class="line">    <span class="comment">//分配一个新的 fd</span></span><br><span class="line">    fdno = get_unused_fd_flags(O_CLOEXEC);</span><br><span class="line">    <span class="keyword">if</span> (fdno &lt; <span class="number">0</span>) &#123;</span><br><span class="line">        ret = fdno;</span><br><span class="line">        <span class="keyword">goto</span> err_put_device;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//为 vfio_device 创建 struct file</span></span><br><span class="line">    filep = vfio_device_open_file(device);</span><br><span class="line">    <span class="keyword">if</span> (IS_ERR(filep)) &#123;</span><br><span class="line">        ret = PTR_ERR(filep);</span><br><span class="line">        <span class="keyword">goto</span> err_put_fdno;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//关联fd 和file</span></span><br><span class="line">    fd_install(fdno, filep);</span><br><span class="line">    <span class="keyword">return</span> fdno;</span><br><span class="line"></span><br><span class="line">err_put_fdno:</span><br><span class="line">    put_unused_fd(fdno);</span><br><span class="line">err_put_device:</span><br><span class="line">    vfio_device_put_registration(device);</span><br><span class="line">    <span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述代码的作用是当用户态通过 VFIO_GROUP_GET_DEVICE_FD 传进来一个设备名，比如 “0000:01:00.0”，内核就在当前 vfio group 里面根据这个名字找到对应的 vfio_device，然后给这个设备单独创建一个新的 file，并分配一个新的 fd 返回给用户态。先从当前进程的 fd 表里分配一个空闲 fd 号；接着 调用vfio_device_open_file() 为这个具体的 vfio_device 创建 struct file，也就是后面真正操作设备用的 device file；最后把 fd 号和这个 file 绑定起来并返回给用户态。</p>
+<h3 id="vfio-device-open-file"><a href="#vfio-device-open-file" class="headerlink" title="vfio_device_open_file"></a>vfio_device_open_file</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">struct</span> file *<span class="title function_">vfio_device_open_file</span><span class="params">(<span class="keyword">struct</span> vfio_device *device)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">vfio_device_file</span> *<span class="title">df</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">file</span> *<span class="title">filep</span>;</span></span><br><span class="line">    <span class="type">int</span> ret;</span><br><span class="line">    <span class="comment">//分配 vfio_device_file 它是 device fd 的私有上下文</span></span><br><span class="line">    <span class="comment">//设置的vfio device</span></span><br><span class="line">    df = vfio_allocate_device_file(device);</span><br><span class="line">    <span class="keyword">if</span> (IS_ERR(df)) &#123;</span><br><span class="line">        ret = PTR_ERR(df);</span><br><span class="line">        <span class="keyword">goto</span> err_out;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//这里设置了 vfio group</span></span><br><span class="line">    df-&gt;group = device-&gt;group;</span><br><span class="line">    <span class="comment">//把上面申请的df传进去了 ，这里面调用了pci设备的open</span></span><br><span class="line">    ret = vfio_df_group_open(df);</span><br><span class="line">    <span class="keyword">if</span> (ret)</span><br><span class="line">        <span class="keyword">goto</span> err_free;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">     * We can&#x27;t use anon_inode_getfd() because we need to modify</span></span><br><span class="line"><span class="comment">     * the f_mode flags directly to allow more than just ioctls</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="comment">// 创建一个匿名 struct file</span></span><br><span class="line">    <span class="comment">// 这个 file 不对应磁盘文件，而是内核创建的一个匿名文件对象</span></span><br><span class="line">    <span class="comment">// file-&gt;f_op = &amp;vfio_device_fops</span></span><br><span class="line">    <span class="comment">// 注意里面 file-&gt;private_data = df</span></span><br><span class="line">    <span class="comment">// 后面用户态拿到的 device_fd，本质上就是指向这个 file</span></span><br><span class="line">    filep = anon_inode_getfile(<span class="string">&quot;[vfio-device]&quot;</span>, &amp;vfio_device_fops,</span><br><span class="line">                   df, O_RDWR);</span><br><span class="line">    <span class="keyword">if</span> (IS_ERR(filep)) &#123;</span><br><span class="line">        ret = PTR_ERR(filep);</span><br><span class="line">        <span class="keyword">goto</span> err_close_device;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">     * <span class="doctag">TODO:</span> add an anon_inode interface to do this.</span></span><br><span class="line"><span class="comment">     * Appears to be missing by lack of need rather than</span></span><br><span class="line"><span class="comment">     * explicitly prevented.  Now there&#x27;s need.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    filep-&gt;f_mode |= (FMODE_PREAD | FMODE_PWRITE);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (device-&gt;group-&gt;type == VFIO_NO_IOMMU)</span><br><span class="line">        dev_warn(device-&gt;dev, <span class="string">&quot;vfio-noiommu device opened by user &quot;</span></span><br><span class="line">             <span class="string">&quot;(%s:%d)\n&quot;</span>, current-&gt;comm, task_pid_nr(current));</span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">     * On success the ref of device is moved to the file and</span></span><br><span class="line"><span class="comment">     * put in vfio_device_fops_release()</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="keyword">return</span> filep;</span><br><span class="line"></span><br><span class="line">err_close_device:</span><br><span class="line">    vfio_df_group_close(df);</span><br><span class="line">err_free:</span><br><span class="line">    kfree(df);</span><br><span class="line">err_out:</span><br><span class="line">    <span class="keyword">return</span> ERR_PTR(ret);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>vfio_device_open_file首先创建一个匿名 file，作为用户态 device fd 的内核表示。它先分配 vfio_device_file 作为 device fd 的私有上下文，设置 group，并调用 vfio_df_group_open() 做 group 相关初始化；然后通过 anon_inode_getfile() 创建匿名 file，把 vfio_device_file 关联到file-&gt;private_data，并设置读写权限，返回给用户态。用户态拿到的 device fd 实际上就是这个匿名 file。</p>
+<p>注意上述代码vfio_df_group_open中调用了pci设备的open_device回调，主要逻辑就是使能这个设备，并检查bar空间时候可以mmp，对于vfio pci设备来说就是vfio_pci_open_device,具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">vfio_pci_open_device</span><span class="params">(<span class="keyword">struct</span> vfio_device *core_vdev)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">vfio_pci_core_device</span> *<span class="title">vdev</span> =</span></span><br><span class="line">        container_of(core_vdev, <span class="keyword">struct</span> vfio_pci_core_device, vdev);</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">pci_dev</span> *<span class="title">pdev</span> =</span> vdev-&gt;pdev;</span><br><span class="line">    <span class="type">int</span> ret;</span><br><span class="line">    <span class="comment">//这里使能了设备了</span></span><br><span class="line">    ret = vfio_pci_core_enable(vdev);</span><br><span class="line">    <span class="keyword">if</span> (ret)</span><br><span class="line">        <span class="keyword">return</span> ret;</span><br><span class="line">    <span class="keyword">if</span> (vfio_pci_is_vga(pdev) &amp;&amp;</span><br><span class="line">        pdev-&gt;vendor == PCI_VENDOR_ID_INTEL &amp;&amp;</span><br><span class="line">        IS_ENABLED(CONFIG_VFIO_PCI_IGD)) &#123;</span><br><span class="line">        ret = vfio_pci_igd_init(vdev);</span><br><span class="line">        <span class="keyword">if</span> (ret &amp;&amp; ret != -ENODEV) &#123;</span><br><span class="line">            pci_warn(pdev, <span class="string">&quot;Failed to setup Intel IGD regions\n&quot;</span>);</span><br><span class="line">            vfio_pci_core_disable(vdev);</span><br><span class="line">            <span class="keyword">return</span> ret;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//检查 PCI 设备的每个 BAR 能不能通过 VFIO mmap 给用户态</span></span><br><span class="line">    vfio_pci_core_finish_enable(vdev);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p>上述代码的逻辑为当 device fd 被创建出来以后，就会进入具体设备驱动的 open_device 回调，就是 vfio_pci_open_device()。它首先通过 vfio_pci_core_enable() 使能 PCI 设备，完成设备启用、BAR 资源准备、中断状态初始化等核心工作；最后调用 vfio_pci_core_finish_enable()检查每个 BAR 是否支持 mmap，给后面用户态映射 BAR 空间做准备。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">int</span> <span class="title function_">vfio_pci_core_enable</span><span class="params">(<span class="keyword">struct</span> vfio_pci_core_device *vdev)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">pci_dev</span> *<span class="title">pdev</span> =</span> vdev-&gt;pdev;</span><br><span class="line">    <span class="type">int</span> ret;</span><br><span class="line">    u16 cmd;</span><br><span class="line">    u8 msix_pos;</span><br><span class="line">    <span class="comment">//低功耗模式下就唤醒 PCI 设备</span></span><br><span class="line">    <span class="keyword">if</span> (!disable_idle_d3) &#123;</span><br><span class="line">        ret = pm_runtime_resume_and_get(&amp;pdev-&gt;dev);</span><br><span class="line">        <span class="keyword">if</span> (ret &lt; <span class="number">0</span>)</span><br><span class="line">            <span class="keyword">return</span> ret;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Don&#x27;t allow our initial saved state to include busmaster */</span></span><br><span class="line">    <span class="comment">//不要让保存下来的 PCI 初始状态里包含 DMA 使能位</span></span><br><span class="line">    pci_clear_master(pdev);</span><br><span class="line">    <span class="comment">//使能这个设备</span></span><br><span class="line">    ret = pci_enable_device(pdev);</span><br><span class="line">    <span class="keyword">if</span> (ret)</span><br><span class="line">        <span class="keyword">goto</span> out_power;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* If reset fails because of the device lock, fail this path entirely */</span></span><br><span class="line">    <span class="comment">//复位设备</span></span><br><span class="line">    ret = pci_try_reset_function(pdev);</span><br><span class="line">    <span class="keyword">if</span> (ret == -EAGAIN)</span><br><span class="line">        <span class="keyword">goto</span> out_disable_device;</span><br><span class="line"></span><br><span class="line">    vdev-&gt;reset_works = !ret;</span><br><span class="line">    pci_save_state(pdev);</span><br><span class="line">    <span class="comment">//保存 PCI 配置空间</span></span><br><span class="line">    vdev-&gt;pci_saved_state = pci_store_saved_state(pdev);</span><br><span class="line">    <span class="keyword">if</span> (!vdev-&gt;pci_saved_state)</span><br><span class="line">        pci_dbg(pdev, <span class="string">&quot;%s: Couldn&#x27;t store saved state\n&quot;</span>, __func__);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (likely(!nointxmask)) &#123;</span><br><span class="line">        <span class="keyword">if</span> (vfio_pci_nointx(pdev)) &#123; <span class="comment">//检查这个设备是不是不能用 INTx 返回true表示有问题</span></span><br><span class="line">            pci_info(pdev, <span class="string">&quot;Masking broken INTx support\n&quot;</span>);</span><br><span class="line">            vdev-&gt;nointx = <span class="literal">true</span>; </span><br><span class="line">            pci_intx(pdev, <span class="number">0</span>); <span class="comment">//关闭 INTx</span></span><br><span class="line">        &#125; <span class="keyword">else</span></span><br><span class="line">            vdev-&gt;pci_2_3 = pci_intx_mask_supported(pdev);<span class="comment">//如果没问题</span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//读取 PCI_COMMAND 寄存器</span></span><br><span class="line">    pci_read_config_word(pdev, PCI_COMMAND, &amp;cmd);</span><br><span class="line">    <span class="comment">//如果支持 INTx mask，但当前 INTx 被 disable，就重新打开</span></span><br><span class="line">    <span class="keyword">if</span> (vdev-&gt;pci_2_3 &amp;&amp; (cmd &amp; PCI_COMMAND_INTX_DISABLE)) &#123;</span><br><span class="line">        cmd &amp;= ~PCI_COMMAND_INTX_DISABLE;</span><br><span class="line">        pci_write_config_word(pdev, PCI_COMMAND, cmd);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    ret = vfio_pci_zdev_open_device(vdev);</span><br><span class="line">    <span class="keyword">if</span> (ret)</span><br><span class="line">        <span class="keyword">goto</span> out_free_state;</span><br><span class="line">    <span class="comment">// 初始化 VFIO 维护的虚拟 PCI 配置空间让用户态后续读写 PCI config space 时</span></span><br><span class="line">    <span class="comment">// VFIO 能拦截和保护 BAR、COMMAND、INTx、MSI/MSI-X 等敏感字段，而不是直接读写硬件的配置空间</span></span><br><span class="line">    ret = vfio_config_init(vdev);</span><br><span class="line">    <span class="keyword">if</span> (ret)</span><br><span class="line">        <span class="keyword">goto</span> out_free_zdev;</span><br><span class="line"></span><br><span class="line">    msix_pos = pdev-&gt;msix_cap;</span><br><span class="line">    <span class="keyword">if</span> (msix_pos) &#123;</span><br><span class="line">        u16 flags;</span><br><span class="line">        u32 table;</span><br><span class="line">        <span class="comment">//读取msix的配置信息</span></span><br><span class="line">        pci_read_config_word(pdev, msix_pos + PCI_MSIX_FLAGS, &amp;flags);</span><br><span class="line">        pci_read_config_dword(pdev, msix_pos + PCI_MSIX_TABLE, &amp;table);</span><br><span class="line">        <span class="comment">//保存MSI-X Table 在哪个 BAR BAR 内偏移是多少 Table 总大小</span></span><br><span class="line">        vdev-&gt;msix_bar = table &amp; PCI_MSIX_TABLE_BIR;</span><br><span class="line">        vdev-&gt;msix_offset = table &amp; PCI_MSIX_TABLE_OFFSET;</span><br><span class="line">        vdev-&gt;msix_size = ((flags &amp; PCI_MSIX_FLAGS_QSIZE) + <span class="number">1</span>) * <span class="number">16</span>;</span><br><span class="line">        vdev-&gt;has_dyn_msix = pci_msix_can_alloc_dyn(pdev);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        vdev-&gt;msix_bar = <span class="number">0xFF</span>;</span><br><span class="line">        vdev-&gt;has_dyn_msix = <span class="literal">false</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!vfio_vga_disabled() &amp;&amp; vfio_pci_is_vga(pdev))</span><br><span class="line">        vdev-&gt;has_vga = <span class="literal">true</span>;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">out_free_zdev:</span><br><span class="line">    vfio_pci_zdev_close_device(vdev);</span><br><span class="line">out_free_state:</span><br><span class="line">    kfree(vdev-&gt;pci_saved_state);</span><br><span class="line">    vdev-&gt;pci_saved_state = <span class="literal">NULL</span>;</span><br><span class="line">out_disable_device:</span><br><span class="line">    pci_disable_device(pdev);</span><br><span class="line">out_power:</span><br><span class="line">    <span class="keyword">if</span> (!disable_idle_d3)</span><br><span class="line">        pm_runtime_put(&amp;pdev-&gt;dev);</span><br><span class="line">    <span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上述代码的核心逻辑是唤醒并启用 PCI 设备，复位并保存 PCI 配置空间状态，初始化 VFIO 维护的虚拟配置空间，为用户态安全访问设备（读写 config space、BAR、MSI&#x2F;MSI-X 等）做好准备。</p>
+<p>vfio_pci_core_finish_enable最终会调用vfio_pci_probe_mmaps检查PCI设备的每个BAR能不能mmap给用户态，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">vfio_pci_probe_mmaps</span><span class="params">(<span class="keyword">struct</span> vfio_pci_core_device *vdev)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">resource</span> *<span class="title">res</span>;</span></span><br><span class="line">    <span class="type">int</span> i;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">vfio_pci_dummy_resource</span> *<span class="title">dummy_res</span>;</span></span><br><span class="line">    <span class="comment">//默认是6个bar空间</span></span><br><span class="line">    <span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; PCI_STD_NUM_BARS; i++) &#123;</span><br><span class="line">        <span class="type">int</span> bar = i + PCI_STD_RESOURCES;</span><br><span class="line"></span><br><span class="line">        res = &amp;vdev-&gt;pdev-&gt;resource[bar];</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (!IS_ENABLED(CONFIG_VFIO_PCI_MMAP))</span><br><span class="line">            <span class="keyword">goto</span> no_mmap;</span><br><span class="line">        <span class="comment">//BAR 必须是内存类型</span></span><br><span class="line">        <span class="keyword">if</span> (!(res-&gt;flags &amp; IORESOURCE_MEM))</span><br><span class="line">            <span class="keyword">goto</span> no_mmap;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/*</span></span><br><span class="line"><span class="comment">         * The PCI core shouldn&#x27;t set up a resource with a</span></span><br><span class="line"><span class="comment">         * type but zero size. But there may be bugs that</span></span><br><span class="line"><span class="comment">         * cause us to do that.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="comment">//BAR 长度不能为 0</span></span><br><span class="line">        <span class="keyword">if</span> (!resource_size(res))</span><br><span class="line">            <span class="keyword">goto</span> no_mmap;</span><br><span class="line">        <span class="comment">//BAR 的大小大于等于一个物理页</span></span><br><span class="line">        <span class="keyword">if</span> (resource_size(res) &gt;= PAGE_SIZE) &#123;</span><br><span class="line">            vdev-&gt;bar_mmap_supported[bar] = <span class="literal">true</span>;</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">//处理没有对其的情况</span></span><br><span class="line">        <span class="keyword">if</span> (!(res-&gt;start &amp; ~PAGE_MASK)) &#123;</span><br><span class="line">            <span class="comment">/*</span></span><br><span class="line"><span class="comment">             * Add a dummy resource to reserve the remainder</span></span><br><span class="line"><span class="comment">             * of the exclusive page in case that hot-add</span></span><br><span class="line"><span class="comment">             * device&#x27;s bar is assigned into it.</span></span><br><span class="line"><span class="comment">             */</span></span><br><span class="line">            dummy_res =</span><br><span class="line">                kzalloc(<span class="keyword">sizeof</span>(*dummy_res), GFP_KERNEL_ACCOUNT);</span><br><span class="line">            <span class="keyword">if</span> (dummy_res == <span class="literal">NULL</span>)</span><br><span class="line">                <span class="keyword">goto</span> no_mmap;</span><br><span class="line"></span><br><span class="line">            dummy_res-&gt;resource.name = <span class="string">&quot;vfio sub-page reserved&quot;</span>;</span><br><span class="line">            dummy_res-&gt;resource.start = res-&gt;end + <span class="number">1</span>;</span><br><span class="line">            dummy_res-&gt;resource.end = res-&gt;start + PAGE_SIZE - <span class="number">1</span>;</span><br><span class="line">            dummy_res-&gt;resource.flags = res-&gt;flags;</span><br><span class="line">            <span class="keyword">if</span> (request_resource(res-&gt;parent,</span><br><span class="line">                        &amp;dummy_res-&gt;resource)) &#123;</span><br><span class="line">                kfree(dummy_res);</span><br><span class="line">                <span class="keyword">goto</span> no_mmap;</span><br><span class="line">            &#125;</span><br><span class="line">            dummy_res-&gt;index = bar;</span><br><span class="line">            list_add(&amp;dummy_res-&gt;res_next,</span><br><span class="line">                    &amp;vdev-&gt;dummy_resources_list);</span><br><span class="line">            vdev-&gt;bar_mmap_supported[bar] = <span class="literal">true</span>;</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">/*</span></span><br><span class="line"><span class="comment">         * Here we don&#x27;t handle the case when the BAR is not page</span></span><br><span class="line"><span class="comment">         * aligned because we can&#x27;t expect the BAR will be</span></span><br><span class="line"><span class="comment">         * assigned into the same location in a page in guest</span></span><br><span class="line"><span class="comment">         * when we passthrough the BAR. And it&#x27;s hard to access</span></span><br><span class="line"><span class="comment">         * this BAR in userspace because we have no way to get</span></span><br><span class="line"><span class="comment">         * the BAR&#x27;s location in a page.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">no_mmap:</span><br><span class="line">        <span class="comment">//标记支持mmap</span></span><br><span class="line">        vdev-&gt;bar_mmap_supported[bar] = <span class="literal">false</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码遍历 PCI 设备的标准 6 个 BAR，判断每个 BAR 是否可以被用户态通过 VFIO mmap 映射访问。如果 BAR 是内存类型且大小大于等于一个页，就直接标记可映射。</p>
+<h3 id="vfio-group-ioctl-set-container"><a href="#vfio-group-ioctl-set-container" class="headerlink" title="vfio_group_ioctl_set_container"></a>vfio_group_ioctl_set_container</h3><p>回到group的ioctl中，vfio_group_ioctl_set_container用于把当前 VFIO group 绑定到用户态传进来的 container fd 上，让这个 group 后续使用该 container 管理的 IOMMU 地址空间，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">vfio_group_ioctl_set_container</span><span class="params">(<span class="keyword">struct</span> vfio_group *group,</span></span><br><span class="line"><span class="params">                      <span class="type">int</span> __user *arg)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">vfio_container</span> *<span class="title">container</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">iommufd_ctx</span> *<span class="title">iommufd</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">fd</span> <span class="title">f</span>;</span></span><br><span class="line">    <span class="type">int</span> ret;</span><br><span class="line">    <span class="type">int</span> fd;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (get_user(fd, arg))</span><br><span class="line">        <span class="keyword">return</span> -EFAULT;</span><br><span class="line">    <span class="comment">//用户态传入的container fd</span></span><br><span class="line">    f = fdget(fd);</span><br><span class="line">    <span class="keyword">if</span> (!f.file)</span><br><span class="line">        <span class="keyword">return</span> -EBADF;</span><br><span class="line"></span><br><span class="line">    mutex_lock(&amp;group-&gt;group_lock);</span><br><span class="line">    <span class="comment">//是否绑定过iommu对象</span></span><br><span class="line">    <span class="keyword">if</span> (vfio_group_has_iommu(group)) &#123;</span><br><span class="line">        ret = -EINVAL;</span><br><span class="line">        <span class="keyword">goto</span> out_unlock;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (!group-&gt;iommu_group) &#123;</span><br><span class="line">        ret = -ENODEV;</span><br><span class="line">        <span class="keyword">goto</span> out_unlock;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//传统 VFIO container fd</span></span><br><span class="line">    container = vfio_container_from_file(f.file);</span><br><span class="line">    <span class="keyword">if</span> (container) &#123;</span><br><span class="line">        <span class="comment">//把 group 挂到 container 上 ，注意这里处理完就直接返回了</span></span><br><span class="line">        ret = vfio_container_attach_group(container, group);</span><br><span class="line">        <span class="keyword">goto</span> out_unlock;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//第二种 iommufd 这里不分析</span></span><br><span class="line">    iommufd = iommufd_ctx_from_file(f.file);</span><br><span class="line">    <span class="keyword">if</span> (!IS_ERR(iommufd)) &#123;</span><br><span class="line">        <span class="keyword">if</span> (IS_ENABLED(CONFIG_VFIO_NOIOMMU) &amp;&amp;</span><br><span class="line">            group-&gt;type == VFIO_NO_IOMMU)</span><br><span class="line">            ret = iommufd_vfio_compat_set_no_iommu(iommufd);</span><br><span class="line">        <span class="keyword">else</span></span><br><span class="line">            ret = iommufd_vfio_compat_ioas_create(iommufd);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (ret) &#123;</span><br><span class="line">            iommufd_ctx_put(iommufd);</span><br><span class="line">            <span class="keyword">goto</span> out_unlock;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        group-&gt;iommufd = iommufd;</span><br><span class="line">        <span class="keyword">goto</span> out_unlock;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* The FD passed is not recognized. */</span></span><br><span class="line">    ret = -EBADFD;</span><br><span class="line"></span><br><span class="line">out_unlock:</span><br><span class="line">    mutex_unlock(&amp;group-&gt;group_lock);</span><br><span class="line">    fdput(f);</span><br><span class="line">    <span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>vfio_group_ioctl_set_container 先从用户传入的 fd 获取对应的内核 file，然后检查 group 是否已经绑定过 IOMMU（不能重复绑定），以及 group 是否有 iommu_group。接着判断这个 fd 是传统 VFIO container 还是 iommufd，对应不同处理：如果是 VFIO container，就调用 vfio_container_attach_group() 把 group 挂上 container</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">vfio_container_attach_group</span><span class="params">(<span class="keyword">struct</span> vfio_container *container,</span></span><br><span class="line"><span class="params">                <span class="keyword">struct</span> vfio_group *group)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">vfio_iommu_driver</span> *<span class="title">driver</span>;</span></span><br><span class="line">    <span class="type">int</span> ret = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    lockdep_assert_held(&amp;group-&gt;group_lock);</span><br><span class="line">    <span class="comment">//no iommu 模式检查</span></span><br><span class="line">    <span class="keyword">if</span> (group-&gt;type == VFIO_NO_IOMMU &amp;&amp; !capable(CAP_SYS_RAWIO))</span><br><span class="line">        <span class="keyword">return</span> -EPERM;</span><br><span class="line"></span><br><span class="line">    down_write(&amp;container-&gt;group_lock);</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Real groups and fake groups cannot mix */</span></span><br><span class="line">    <span class="comment">//一个container中不能同时放iommu 和no iommu</span></span><br><span class="line">    <span class="keyword">if</span> (!list_empty(&amp;container-&gt;group_list) &amp;&amp;</span><br><span class="line">        container-&gt;noiommu != (group-&gt;type == VFIO_NO_IOMMU)) &#123;</span><br><span class="line">        ret = -EPERM;</span><br><span class="line">        <span class="keyword">goto</span> out_unlock_container;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//这里相当于声明 这个iommu group的 dma管理归VFIO管了</span></span><br><span class="line">    <span class="keyword">if</span> (group-&gt;type == VFIO_IOMMU) &#123;</span><br><span class="line">        ret = iommu_group_claim_dma_owner(group-&gt;iommu_group, group);</span><br><span class="line">        <span class="keyword">if</span> (ret)</span><br><span class="line">            <span class="keyword">goto</span> out_unlock_container;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//看 container 是否已经设置过 iommu driver</span></span><br><span class="line">    <span class="comment">//这是有可能的，因为可能调用过set iommu了</span></span><br><span class="line">    <span class="comment">//所以这个的这个group要立刻attach到这个iommu后端</span></span><br><span class="line">    driver = container-&gt;iommu_driver;</span><br><span class="line">    <span class="keyword">if</span> (driver) &#123;</span><br><span class="line">        <span class="comment">//其实这里在set iommu的时候也调用了，其实就是看先后顺序</span></span><br><span class="line">        ret = driver-&gt;ops-&gt;attach_group(container-&gt;iommu_data,</span><br><span class="line">                        group-&gt;iommu_group,</span><br><span class="line">                        group-&gt;type);</span><br><span class="line">        <span class="keyword">if</span> (ret) &#123;</span><br><span class="line">            <span class="keyword">if</span> (group-&gt;type == VFIO_IOMMU)</span><br><span class="line">                iommu_group_release_dma_owner(</span><br><span class="line">                    group-&gt;iommu_group);</span><br><span class="line">            <span class="keyword">goto</span> out_unlock_container;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//真正把 group 挂到 container 上</span></span><br><span class="line">    group-&gt;container = container;</span><br><span class="line">    group-&gt;container_users = <span class="number">1</span>;</span><br><span class="line">    container-&gt;noiommu = (group-&gt;type == VFIO_NO_IOMMU);</span><br><span class="line">    <span class="comment">//把当前 group 加入 container 的 group 链表</span></span><br><span class="line">    list_add(&amp;group-&gt;container_next, &amp;container-&gt;group_list);</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Get a reference on the container and mark a user within the group */</span></span><br><span class="line">    vfio_container_get(container);</span><br><span class="line"></span><br><span class="line">out_unlock_container:</span><br><span class="line">    up_write(&amp;container-&gt;group_lock);</span><br><span class="line">    <span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h2 id="bar空间的映射"><a href="#bar空间的映射" class="headerlink" title="bar空间的映射"></a>bar空间的映射</h2><p>当用户通过 VFIO_GROUP_GET_DEVICE_FD 拿到具体设备的fd 后，如果想要访问设备的寄存器，就需要映射bar空间，对应的内核回调就是 vfio_pci_core_mmap()，对应的具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">vfio_pci_core_mmap</span><span class="params">(<span class="keyword">struct</span> vfio_device *core_vdev, <span class="keyword">struct</span> vm_area_struct *vma)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">vfio_pci_core_device</span> *<span class="title">vdev</span> =</span></span><br><span class="line">        container_of(core_vdev, <span class="keyword">struct</span> vfio_pci_core_device, vdev);</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">pci_dev</span> *<span class="title">pdev</span> =</span> vdev-&gt;pdev;</span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> index;</span><br><span class="line">    u64 phys_len, req_len, pgoff, req_start;</span><br><span class="line">    <span class="type">int</span> ret;</span><br><span class="line">    <span class="comment">//获取bar的索引</span></span><br><span class="line">    index = vma-&gt;vm_pgoff &gt;&gt; (VFIO_PCI_OFFSET_SHIFT - PAGE_SHIFT);</span><br><span class="line">    <span class="comment">//参数合法性检查</span></span><br><span class="line">    <span class="keyword">if</span> (index &gt;= VFIO_PCI_NUM_REGIONS + vdev-&gt;num_regions)</span><br><span class="line">        <span class="keyword">return</span> -EINVAL;</span><br><span class="line">    <span class="keyword">if</span> (vma-&gt;vm_end &lt; vma-&gt;vm_start)</span><br><span class="line">        <span class="keyword">return</span> -EINVAL;</span><br><span class="line">    <span class="keyword">if</span> ((vma-&gt;vm_flags &amp; VM_SHARED) == <span class="number">0</span>)</span><br><span class="line">        <span class="keyword">return</span> -EINVAL;</span><br><span class="line">    <span class="comment">//有额外 region的处理</span></span><br><span class="line">    <span class="keyword">if</span> (index &gt;= VFIO_PCI_NUM_REGIONS) &#123;</span><br><span class="line">        <span class="type">int</span> regnum = index - VFIO_PCI_NUM_REGIONS;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">vfio_pci_region</span> *<span class="title">region</span> =</span> vdev-&gt;region + regnum;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (region-&gt;ops &amp;&amp; region-&gt;ops-&gt;mmap &amp;&amp;</span><br><span class="line">            (region-&gt;flags &amp; VFIO_REGION_INFO_FLAG_MMAP))</span><br><span class="line">            <span class="keyword">return</span> region-&gt;ops-&gt;mmap(vdev, region, vma);</span><br><span class="line">        <span class="keyword">return</span> -EINVAL;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (index &gt;= VFIO_PCI_ROM_REGION_INDEX)</span><br><span class="line">        <span class="keyword">return</span> -EINVAL;</span><br><span class="line">    <span class="comment">//不支持也直接返回，这个是在open_device中设置的</span></span><br><span class="line">    <span class="keyword">if</span> (!vdev-&gt;bar_mmap_supported[index])</span><br><span class="line">        <span class="keyword">return</span> -EINVAL;</span><br><span class="line">    <span class="comment">//验证映射范围不超出 BAR 物理长度</span></span><br><span class="line">    phys_len = PAGE_ALIGN(pci_resource_len(pdev, index));</span><br><span class="line">    <span class="comment">//用户请求映射的长度</span></span><br><span class="line">    req_len = vma-&gt;vm_end - vma-&gt;vm_start;</span><br><span class="line">    <span class="comment">//用户想要从 BAR 的第几个页开始映射</span></span><br><span class="line">    pgoff = vma-&gt;vm_pgoff &amp;</span><br><span class="line">        ((<span class="number">1U</span> &lt;&lt; (VFIO_PCI_OFFSET_SHIFT - PAGE_SHIFT)) - <span class="number">1</span>);</span><br><span class="line">    <span class="comment">//字节的偏移</span></span><br><span class="line">    req_start = pgoff &lt;&lt; PAGE_SHIFT;</span><br><span class="line">    <span class="comment">//长度检查</span></span><br><span class="line">    <span class="keyword">if</span> (req_start + req_len &gt; phys_len)</span><br><span class="line">        <span class="keyword">return</span> -EINVAL;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">     * Even though we don&#x27;t make use of the barmap for the mmap,</span></span><br><span class="line"><span class="comment">     * we need to request the region and the barmap tracks that.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="keyword">if</span> (!vdev-&gt;barmap[index]) &#123;</span><br><span class="line">        <span class="comment">//向PCI 子系统申请占用该 BAR 的 I/O 或内存资源，正常的内核驱动也要这么写</span></span><br><span class="line">        ret = pci_request_selected_regions(pdev,</span><br><span class="line">                           <span class="number">1</span> &lt;&lt; index, <span class="string">&quot;vfio-pci&quot;</span>);</span><br><span class="line">        <span class="keyword">if</span> (ret)</span><br><span class="line">            <span class="keyword">return</span> ret;</span><br><span class="line">        <span class="comment">//内核虚拟地址空间中映射整个 BAR 但是好像并不使用这个地址</span></span><br><span class="line">        vdev-&gt;barmap[index] = pci_iomap(pdev, index, <span class="number">0</span>);</span><br><span class="line">        <span class="keyword">if</span> (!vdev-&gt;barmap[index]) &#123;</span><br><span class="line">            pci_release_selected_regions(pdev, <span class="number">1</span> &lt;&lt; index);</span><br><span class="line">            <span class="keyword">return</span> -ENOMEM;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    vma-&gt;vm_private_data = vdev;</span><br><span class="line">    <span class="comment">//这是设置页表的属性</span></span><br><span class="line">    vma-&gt;vm_page_prot = pgprot_noncached(vma-&gt;vm_page_prot);</span><br><span class="line">    <span class="comment">//变成物理页帧号</span></span><br><span class="line">    vma-&gt;vm_pgoff = (pci_resource_start(pdev, index) &gt;&gt; PAGE_SHIFT) + pgoff;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">     * See remap_pfn_range(), called from vfio_pci_fault() but we can&#x27;t</span></span><br><span class="line"><span class="comment">     * change vm_flags within the fault handler.  Set them now.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    vm_flags_set(vma, VM_IO | VM_PFNMAP | VM_DONTEXPAND | VM_DONTDUMP);</span><br><span class="line">    <span class="comment">//这里其实并没有真正的映射bar空间</span></span><br><span class="line">    <span class="comment">//延迟到用户进程第一次访问时，通过缺页异常触发 vfio_pci_fault</span></span><br><span class="line">    vma-&gt;vm_ops = &amp;vfio_pci_mmap_ops;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p>vfio_pci_core_mmap 会首先根据 vma-&gt;vm_pgoff 计算请求映射的 BAR 索引和偏移，并检查索引、长度以及该 BAR 是否支持 mmap 等合法性；如果 BAR 之前没有被申请，会通过 pci_request_selected_regions() 占用 BAR 并用 pci_iomap() 建立内核虚拟地址映射（只是用于记录和占位）；然后将偏移转换为物理页帧，同时把 vma-&gt;vm_ops 指向 vfio_pci_mmap_ops。整个过程只是准备用户态访问 BAR 的条件，实际映射并不立即发生，而是在用户进程首次访问时通过缺页异常触发 vfio_pci_fault(里面调用io_remap_pfn_range) ，真正的把 BAR 映射到用户态虚拟地址空间。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/VFIO/" rel="tag"># VFIO</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/06/01/VFIO(%E5%85%AD)/" rel="prev" title="vfio_pci（一）">
+      <i class="fa fa-chevron-left"></i> vfio_pci（一）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#vfio-group-ioctl-get-device-fd"><span class="nav-number">1.</span> <span class="nav-text">vfio_group_ioctl_get_device_fd</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#vfio-device-open-file"><span class="nav-number">2.</span> <span class="nav-text">vfio_device_open_file</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#vfio-group-ioctl-set-container"><span class="nav-number">3.</span> <span class="nav-text">vfio_group_ioctl_set_container</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#bar%E7%A9%BA%E9%97%B4%E7%9A%84%E6%98%A0%E5%B0%84"><span class="nav-number"></span> <span class="nav-text">bar空间的映射</span></a></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">133</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">30</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
