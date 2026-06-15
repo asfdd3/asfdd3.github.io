@@ -193,6 +193,114 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/05/12/ARP(%E5%9B%9B)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2026/05/12/ARP(%E5%9B%9B)/" class="post-title-link" itemprop="url">ARP报文的接收与发送（一）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-05-12 22:00:00" itemprop="dateCreated datePublished" datetime="2026-05-12T22:00:00+08:00">2026-05-12</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-05-13 21:32:37" itemprop="dateModified" datetime="2026-05-13T21:32:37+08:00">2026-05-13</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/05/12/ARP(%E5%9B%9B)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/05/12/ARP(%E5%9B%9B)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>在 Linux 内核发送路径中，一个 IP 数据包在完成路由查找后，需要经过邻居子系统完成二层地址解析。这个过程的核心入口之一，就是 <code>ip_finish_output2()</code>。该函数位于 IPv4 输出路径的末端，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">ip_finish_output2</span><span class="params">(<span class="keyword">struct</span> net *net, <span class="keyword">struct</span> sock *sk, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">    ...</span><br><span class="line">    neigh = ip_neigh_for_gw(rt, skb, &amp;is_v6gw);</span><br><span class="line">    <span class="keyword">if</span> (!IS_ERR(neigh)) &#123;</span><br><span class="line">        <span class="type">int</span> res;</span><br><span class="line"></span><br><span class="line">        sock_confirm_neigh(skb, neigh);</span><br><span class="line">        <span class="comment">/* if crossing protocols, can not use the cached header */</span></span><br><span class="line">        <span class="comment">//邻居子系统的发包函数</span></span><br><span class="line">        res = neigh_output(neigh, skb, is_v6gw);</span><br><span class="line">        rcu_read_unlock();</span><br><span class="line">        <span class="keyword">return</span> res;</span><br><span class="line">    &#125;</span><br><span class="line">    ···</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ip_finish_output2</code>首先调用 <code>ip_neigh_for_gw()</code> 根据路由项中的下一跳信息查找对应的邻居表项 <code>struct neighbour</code>。如果邻居表中已经存在对应项，则直接返回已有 <code>neighbour</code>；如果不存在，则会动态创建一个新的邻居对象，之后向下调用邻居子系统的发包函数入口neigh_output。</p>
+<p>上述查找<code>ip_neigh_for_gw</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="keyword">struct</span> neighbour *<span class="title function_">ip_neigh_for_gw</span><span class="params">(<span class="keyword">struct</span> rtable *rt,</span></span><br><span class="line"><span class="params">                        <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">                        <span class="type">bool</span> *is_v6gw)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span> =</span> rt-&gt;dst.dev;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">neighbour</span> *<span class="title">neigh</span>;</span></span><br><span class="line">    <span class="comment">//查路由的时候设置的，是否需要通过网关转发，如果需要这里daddr就是网关的ip</span></span><br><span class="line">    <span class="keyword">if</span> (likely(rt-&gt;rt_gw_family == AF_INET)) &#123;</span><br><span class="line">        neigh = ip_neigh_gw4(dev, rt-&gt;rt_gw4);</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (rt-&gt;rt_gw_family == AF_INET6) &#123;</span><br><span class="line">        neigh = ip_neigh_gw6(dev, &amp;rt-&gt;rt_gw6);</span><br><span class="line">        *is_v6gw = <span class="literal">true</span>;</span><br><span class="line">    <span class="comment">//同一个子网的，这里就是用数据包的目的ip就ok</span></span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        neigh = ip_neigh_gw4(dev, ip_hdr(skb)-&gt;daddr);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> neigh;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ip_neigh_for_gw()</code> 的作用就是确定当前数据包到底应该对哪个 IP 做邻居解析。如果路由结果中标记了需要发往网关，那么真正需要解析 MAC 的其实是网关 IP，因此这里会使用 <code>rt-&gt;rt_gw4</code> 查找邻居表；如果没有网关，说明目标就在本地二层网络内，那么直接使用数据包目的 IP <code>daddr</code> 查找邻居即可。<code>ip_neigh_gw4</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="keyword">struct</span> neighbour *<span class="title function_">ip_neigh_gw4</span><span class="params">(<span class="keyword">struct</span> net_device *dev,</span></span><br><span class="line"><span class="params">                         __be32 daddr)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">neighbour</span> *<span class="title">neigh</span>;</span></span><br><span class="line">    <span class="comment">//根据目的ip查找邻居表项</span></span><br><span class="line">    neigh = __ipv4_neigh_lookup_noref(dev, (__force u32)daddr);</span><br><span class="line">    <span class="keyword">if</span> (unlikely(!neigh))</span><br><span class="line">        <span class="comment">//没找到可能会创建一个</span></span><br><span class="line">        neigh = __neigh_create(&amp;arp_tbl, &amp;daddr, dev, <span class="literal">false</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> neigh;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>ip_neigh_gw4()</code> 先根据目标 IP 在 ARP 邻居表中查找对应的 <code>neighbour</code> 表项，如果已经存在就直接返回；如果没找到，则调用 <code>__neigh_create()</code> 动态创建一个新的邻居对象，也就是说邻居表项通常不是提前建立好的，而是在真正发包时发现没有对应 MAC 映射后才动态创建。上述查找邻居表项<code>__ipv4_neigh_lookup_noref</code>实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="class"><span class="keyword">struct</span> <span class="title">neighbour</span> *___<span class="title">neigh_lookup_noref</span>(</span></span><br><span class="line"><span class="class">    <span class="keyword">struct</span> <span class="title">neigh_table</span> *<span class="title">tbl</span>,</span></span><br><span class="line"><span class="class">    <span class="title">bool</span> (*<span class="title">key_eq</span>)(<span class="title">const</span> <span class="keyword">struct</span> <span class="title">neighbour</span> *<span class="title">n</span>, <span class="title">const</span> <span class="title">void</span> *<span class="title">pkey</span>),</span></span><br><span class="line"><span class="class">    __<span class="title">u32</span> (*<span class="title">hash</span>)(<span class="title">const</span> <span class="title">void</span> *<span class="title">pkey</span>,</span></span><br><span class="line"><span class="class">              <span class="title">const</span> <span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span>,</span></span><br><span class="line"><span class="class">              __<span class="title">u32</span> *<span class="title">hash_rnd</span>),</span></span><br><span class="line"><span class="class">    <span class="title">const</span> <span class="title">void</span> *<span class="title">pkey</span>,</span></span><br><span class="line"><span class="class">    <span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span>)</span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">neigh_hash_table</span> *<span class="title">nht</span> =</span> rcu_dereference(tbl-&gt;nht);</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">neighbour</span> *<span class="title">n</span>;</span></span><br><span class="line">    u32 hash_val;</span><br><span class="line">    <span class="comment">//计算hash值</span></span><br><span class="line">    hash_val = hash(pkey, dev, nht-&gt;hash_rnd) &gt;&gt; (<span class="number">32</span> - nht-&gt;hash_shift);</span><br><span class="line">    <span class="comment">//遍历桶</span></span><br><span class="line">    <span class="keyword">for</span> (n = rcu_dereference(nht-&gt;hash_buckets[hash_val]);</span><br><span class="line">         n != <span class="literal">NULL</span>;</span><br><span class="line">         n = rcu_dereference(n-&gt;next)) &#123;</span><br><span class="line">        <span class="keyword">if</span> (n-&gt;dev == dev &amp;&amp; key_eq(n, pkey))</span><br><span class="line">            <span class="keyword">return</span> n;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码其实就是计算<code>hash</code>后遍历桶，查找<code>ip</code>地址和设备相同的邻居表项并返回，如果没有匹配的条目则直接返回<code>NULL</code>，外层通过调用<code>__neigh_create</code>尝试创建邻居表项，具体代码如下所示：</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2026/05/12/ARP(%E5%9B%9B)/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2026/05/10/ARP(%E4%B8%89)/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1164,101 +1272,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/12/%E6%B5%81%E9%87%8F%E6%8E%A7%E5%88%B6/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2026/04/12/%E6%B5%81%E9%87%8F%E6%8E%A7%E5%88%B6/" class="post-title-link" itemprop="url">流量控制(TC)初始化</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-              
-
-              <time title="创建时间：2026-04-12 22:00:00 / 修改时间：17:27:23" itemprop="dateCreated datePublished" datetime="2026-04-12T22:00:00+08:00">2026-04-12</time>
-            </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2026/04/12/%E6%B5%81%E9%87%8F%E6%8E%A7%E5%88%B6/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2026/04/12/%E6%B5%81%E9%87%8F%E6%8E%A7%E5%88%B6/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="引言"><a href="#引言" class="headerlink" title="引言"></a>引言</h2><p>在 Linux 内核网络协议栈中，流量控制（Traffic Control，TC）位于发送路径的关键位置，负责在数据包进入网卡之前完成排队与调度。内核在网络设备初始化和激活阶段，就已经为每个设备构建了一套默认的队列体系，而对于多队列网卡，则会建立分层结构，将流量分发到不同的发送队列，并为每个队列配置独立的排队策略。与此同时，这些队列规则会被绑定到设备的发送路径上，使得所有数据包在发送前都会经过统一的调度入口。后续用户后可以通过 <code>tc</code> 命令对队列规则的配置，替换和重组这套已经存在的调度结构。</p>
-<p><strong>本文重点介绍<code>mq</code> + <code>pfifofast</code></strong></p>
-<h2 id="流量控制的初始化"><a href="#流量控制的初始化" class="headerlink" title="流量控制的初始化"></a>流量控制的初始化</h2><h3 id="register-netdev"><a href="#register-netdev" class="headerlink" title="register_netdev"></a><code>register_netdev</code></h3><p>网络驱动注册网络设备时，会完成一部分初始化工作，注册时候会为所有发送队列统一挂载 <code>noop_qdisc</code> 作为初始占位调度器，并完成 ingress 队列（如存在）及发送 watchdog 定时器的初始化，为后续真正的 <code>qdisc</code> 挂载和调度激活做准备，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//注册网卡时被调用</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">dev_init_scheduler</span><span class="params">(<span class="keyword">struct</span> net_device *dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//先给每个设备注册一个空的qdisc</span></span><br><span class="line">	rcu_assign_pointer(dev-&gt;qdisc, &amp;noop_qdisc);</span><br><span class="line">	<span class="comment">//遍历网卡的每个队列，这里的队列数量是申请网络设备时候驱动注册的</span></span><br><span class="line">	netdev_for_each_tx_queue(dev, dev_init_scheduler_queue, &amp;noop_qdisc);</span><br><span class="line">	<span class="comment">//如果这个设备存在ingress 也需要初始化，这里大概率没有</span></span><br><span class="line">	<span class="keyword">if</span> (dev_ingress_queue(dev))</span><br><span class="line">		dev_init_scheduler_queue(dev, dev_ingress_queue(dev), &amp;noop_qdisc);</span><br><span class="line">	<span class="comment">//这里设置watchdog 用于判断发送队列是不是卡死了 一直发不出去</span></span><br><span class="line">	timer_setup(&amp;dev-&gt;watchdog_timer, dev_watchdog, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<h3 id="dev-activate"><a href="#dev-activate" class="headerlink" title="dev_activate"></a><code>dev_activate</code></h3><p>后续在网卡<code>link up</code> 或者 逻辑上<code>up</code>会调用<code>dev_activate</code>完成实际<code>qdisc</code>的初始化工作，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//网卡open或者link up的时候会调用</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">dev_activate</span><span class="params">(<span class="keyword">struct</span> net_device *dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> need_watchdog;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* No queueing discipline is attached to device;</span></span><br><span class="line"><span class="comment">	 * create default one for devices, which need queueing</span></span><br><span class="line"><span class="comment">	 * and noqueue_qdisc for virtual interfaces</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//如果是noop 就挂默认的qdisc</span></span><br><span class="line">	<span class="keyword">if</span> (rtnl_dereference(dev-&gt;qdisc) == &amp;noop_qdisc)</span><br><span class="line">		attach_default_qdiscs(dev);</span><br><span class="line">	<span class="comment">//还没有link</span></span><br><span class="line">	<span class="keyword">if</span> (!netif_carrier_ok(dev))</span><br><span class="line">		<span class="comment">/* Delay activation until next carrier-on event */</span></span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">	need_watchdog = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//设置qdisc</span></span><br><span class="line">	netdev_for_each_tx_queue(dev, transition_one_qdisc, &amp;need_watchdog);</span><br><span class="line">	<span class="comment">//处理ingress 方向</span></span><br><span class="line">	<span class="keyword">if</span> (dev_ingress_queue(dev))</span><br><span class="line">		transition_one_qdisc(dev, dev_ingress_queue(dev), <span class="literal">NULL</span>);</span><br><span class="line">	<span class="comment">//记录当前事件，启动设备的看门狗</span></span><br><span class="line">	<span class="keyword">if</span> (need_watchdog) &#123;</span><br><span class="line">		netif_trans_update(dev);</span><br><span class="line">		dev_watchdog_up(dev);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2026/04/12/%E6%B5%81%E9%87%8F%E6%8E%A7%E5%88%B6/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1328,14 +1341,14 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">133</span>
+          <span class="site-state-item-count">134</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
       <div class="site-state-item site-state-categories">
             <a href="/categories/">
           
-        <span class="site-state-item-count">6</span>
+        <span class="site-state-item-count">7</span>
         <span class="site-state-item-name">分类</span></a>
       </div>
       <div class="site-state-item site-state-tags">
