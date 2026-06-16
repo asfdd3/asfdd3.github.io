@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="在 Linux 中，网卡驱动并不是主动去“扫描”硬件设备，而是遵循内核的设备驱动模型。以 igb 驱动为例，系统启动时 PCI 子系统会先枚举机器上的 PCI 设备，读取每个设备配置空间中的 vendor id、device id 等信息；而当 igb 驱动被内置进内核，或者通过 insmod &#x2F; modprobe 加载时，它会通过 pci_register_driver() 把自己的">
+<meta property="og:type" content="article">
+<meta property="og:title" content="IGB网卡驱动初始化（一）">
+<meta property="og:url" content="http://example.com/2026/06/14/IGB/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="在 Linux 中，网卡驱动并不是主动去“扫描”硬件设备，而是遵循内核的设备驱动模型。以 igb 驱动为例，系统启动时 PCI 子系统会先枚举机器上的 PCI 设备，读取每个设备配置空间中的 vendor id、device id 等信息；而当 igb 驱动被内置进内核，或者通过 insmod &#x2F; modprobe 加载时，它会通过 pci_register_driver() 把自己的">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-06-14T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-06-16T12:47:10.619Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="网卡驱动">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/06/14/IGB/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>IGB网卡驱动初始化（一） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/06/14/IGB/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          IGB网卡驱动初始化（一）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-06-14 22:00:00" itemprop="dateCreated datePublished" datetime="2026-06-14T22:00:00+08:00">2026-06-14</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-06-16 20:47:10" itemprop="dateModified" datetime="2026-06-16T20:47:10+08:00">2026-06-16</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" itemprop="url" rel="index"><span itemprop="name">IGB网卡驱动</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/06/14/IGB/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/06/14/IGB/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>在 Linux 中，网卡驱动并不是主动去“扫描”硬件设备，而是遵循内核的设备驱动模型。以 igb 驱动为例，系统启动时 PCI 子系统会先枚举机器上的 PCI 设备，读取每个设备配置空间中的 vendor id、device id 等信息；而当 igb 驱动被内置进内核，或者通过 <code>insmod</code> &#x2F; <code>modprobe</code> 加载时，它会通过 <code>pci_register_driver()</code> 把自己的 <code>pci_driver</code> 注册到 PCI 子系统中。随后，driver core 会将已经枚举到的 PCI 设备和 igb 驱动的 <code>id_table</code> 进行匹配。如果某个 Intel 网卡设备匹配成功，内核就会调用 igb 驱动提供的 <code>probe</code> 回调函数，也就是 <code>igb_probe()</code>。因此，<code>igb_probe()</code> 可以看作 igb 驱动接管一块具体网卡的入口函数，后续 PCI 设备使能、BAR 映射、<code>net_device</code> 分配、MAC&#x2F;PHY&#x2F;NVM 初始化、中断和队列初始化，以及最终的 <code>register_netdev()</code>，都是从这里展开的。</p>
+<p><code>igb_probe</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br><span class="line">217</span><br><span class="line">218</span><br><span class="line">219</span><br><span class="line">220</span><br><span class="line">221</span><br><span class="line">222</span><br><span class="line">223</span><br><span class="line">224</span><br><span class="line">225</span><br><span class="line">226</span><br><span class="line">227</span><br><span class="line">228</span><br><span class="line">229</span><br><span class="line">230</span><br><span class="line">231</span><br><span class="line">232</span><br><span class="line">233</span><br><span class="line">234</span><br><span class="line">235</span><br><span class="line">236</span><br><span class="line">237</span><br><span class="line">238</span><br><span class="line">239</span><br><span class="line">240</span><br><span class="line">241</span><br><span class="line">242</span><br><span class="line">243</span><br><span class="line">244</span><br><span class="line">245</span><br><span class="line">246</span><br><span class="line">247</span><br><span class="line">248</span><br><span class="line">249</span><br><span class="line">250</span><br><span class="line">251</span><br><span class="line">252</span><br><span class="line">253</span><br><span class="line">254</span><br><span class="line">255</span><br><span class="line">256</span><br><span class="line">257</span><br><span class="line">258</span><br><span class="line">259</span><br><span class="line">260</span><br><span class="line">261</span><br><span class="line">262</span><br><span class="line">263</span><br><span class="line">264</span><br><span class="line">265</span><br><span class="line">266</span><br><span class="line">267</span><br><span class="line">268</span><br><span class="line">269</span><br><span class="line">270</span><br><span class="line">271</span><br><span class="line">272</span><br><span class="line">273</span><br><span class="line">274</span><br><span class="line">275</span><br><span class="line">276</span><br><span class="line">277</span><br><span class="line">278</span><br><span class="line">279</span><br><span class="line">280</span><br><span class="line">281</span><br><span class="line">282</span><br><span class="line">283</span><br><span class="line">284</span><br><span class="line">285</span><br><span class="line">286</span><br><span class="line">287</span><br><span class="line">288</span><br><span class="line">289</span><br><span class="line">290</span><br><span class="line">291</span><br><span class="line">292</span><br><span class="line">293</span><br><span class="line">294</span><br><span class="line">295</span><br><span class="line">296</span><br><span class="line">297</span><br><span class="line">298</span><br><span class="line">299</span><br><span class="line">300</span><br><span class="line">301</span><br><span class="line">302</span><br><span class="line">303</span><br><span class="line">304</span><br><span class="line">305</span><br><span class="line">306</span><br><span class="line">307</span><br><span class="line">308</span><br><span class="line">309</span><br><span class="line">310</span><br><span class="line">311</span><br><span class="line">312</span><br><span class="line">313</span><br><span class="line">314</span><br><span class="line">315</span><br><span class="line">316</span><br><span class="line">317</span><br><span class="line">318</span><br><span class="line">319</span><br><span class="line">320</span><br><span class="line">321</span><br><span class="line">322</span><br><span class="line">323</span><br><span class="line">324</span><br><span class="line">325</span><br><span class="line">326</span><br><span class="line">327</span><br><span class="line">328</span><br><span class="line">329</span><br><span class="line">330</span><br><span class="line">331</span><br><span class="line">332</span><br><span class="line">333</span><br><span class="line">334</span><br><span class="line">335</span><br><span class="line">336</span><br><span class="line">337</span><br><span class="line">338</span><br><span class="line">339</span><br><span class="line">340</span><br><span class="line">341</span><br><span class="line">342</span><br><span class="line">343</span><br><span class="line">344</span><br><span class="line">345</span><br><span class="line">346</span><br><span class="line">347</span><br><span class="line">348</span><br><span class="line">349</span><br><span class="line">350</span><br><span class="line">351</span><br><span class="line">352</span><br><span class="line">353</span><br><span class="line">354</span><br><span class="line">355</span><br><span class="line">356</span><br><span class="line">357</span><br><span class="line">358</span><br><span class="line">359</span><br><span class="line">360</span><br><span class="line">361</span><br><span class="line">362</span><br><span class="line">363</span><br><span class="line">364</span><br><span class="line">365</span><br><span class="line">366</span><br><span class="line">367</span><br><span class="line">368</span><br><span class="line">369</span><br><span class="line">370</span><br><span class="line">371</span><br><span class="line">372</span><br><span class="line">373</span><br><span class="line">374</span><br><span class="line">375</span><br><span class="line">376</span><br><span class="line">377</span><br><span class="line">378</span><br><span class="line">379</span><br><span class="line">380</span><br><span class="line">381</span><br><span class="line">382</span><br><span class="line">383</span><br><span class="line">384</span><br><span class="line">385</span><br><span class="line">386</span><br><span class="line">387</span><br><span class="line">388</span><br><span class="line">389</span><br><span class="line">390</span><br><span class="line">391</span><br><span class="line">392</span><br><span class="line">393</span><br><span class="line">394</span><br><span class="line">395</span><br><span class="line">396</span><br><span class="line">397</span><br><span class="line">398</span><br><span class="line">399</span><br><span class="line">400</span><br><span class="line">401</span><br><span class="line">402</span><br><span class="line">403</span><br><span class="line">404</span><br><span class="line">405</span><br><span class="line">406</span><br><span class="line">407</span><br><span class="line">408</span><br><span class="line">409</span><br><span class="line">410</span><br><span class="line">411</span><br><span class="line">412</span><br><span class="line">413</span><br><span class="line">414</span><br><span class="line">415</span><br><span class="line">416</span><br><span class="line">417</span><br><span class="line">418</span><br><span class="line">419</span><br><span class="line">420</span><br><span class="line">421</span><br><span class="line">422</span><br><span class="line">423</span><br><span class="line">424</span><br><span class="line">425</span><br><span class="line">426</span><br><span class="line">427</span><br><span class="line">428</span><br><span class="line">429</span><br><span class="line">430</span><br><span class="line">431</span><br><span class="line">432</span><br><span class="line">433</span><br><span class="line">434</span><br><span class="line">435</span><br><span class="line">436</span><br><span class="line">437</span><br><span class="line">438</span><br><span class="line">439</span><br><span class="line">440</span><br><span class="line">441</span><br><span class="line">442</span><br><span class="line">443</span><br><span class="line">444</span><br><span class="line">445</span><br><span class="line">446</span><br><span class="line">447</span><br><span class="line">448</span><br><span class="line">449</span><br><span class="line">450</span><br><span class="line">451</span><br><span class="line">452</span><br><span class="line">453</span><br><span class="line">454</span><br><span class="line">455</span><br><span class="line">456</span><br><span class="line">457</span><br><span class="line">458</span><br><span class="line">459</span><br><span class="line">460</span><br><span class="line">461</span><br><span class="line">462</span><br><span class="line">463</span><br><span class="line">464</span><br><span class="line">465</span><br><span class="line">466</span><br><span class="line">467</span><br><span class="line">468</span><br><span class="line">469</span><br><span class="line">470</span><br><span class="line">471</span><br><span class="line">472</span><br><span class="line">473</span><br><span class="line">474</span><br><span class="line">475</span><br><span class="line">476</span><br><span class="line">477</span><br><span class="line">478</span><br><span class="line">479</span><br><span class="line">480</span><br><span class="line">481</span><br><span class="line">482</span><br><span class="line">483</span><br><span class="line">484</span><br><span class="line">485</span><br><span class="line">486</span><br><span class="line">487</span><br><span class="line">488</span><br><span class="line">489</span><br><span class="line">490</span><br><span class="line">491</span><br><span class="line">492</span><br><span class="line">493</span><br><span class="line">494</span><br><span class="line">495</span><br><span class="line">496</span><br><span class="line">497</span><br><span class="line">498</span><br><span class="line">499</span><br><span class="line">500</span><br><span class="line">501</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">igb_probe</span><span class="params">(<span class="keyword">struct</span> pci_dev *pdev, <span class="type">const</span> <span class="keyword">struct</span> pci_device_id *ent)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">netdev</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">igb_adapter</span> *<span class="title">adapter</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">e1000_hw</span> *<span class="title">hw</span>;</span></span><br><span class="line">	u16 eeprom_data = <span class="number">0</span>;</span><br><span class="line">	s32 ret_val;</span><br><span class="line">	<span class="type">static</span> <span class="type">int</span> global_quad_port_a; <span class="comment">/* global quad port a indication */</span></span><br><span class="line">	<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">e1000_info</span> *<span class="title">ei</span> =</span> igb_info_tbl[ent-&gt;driver_data];</span><br><span class="line">	u8 part_str[E1000_PBANUM_LENGTH];</span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Catch broken hardware that put the wrong VF device ID in</span></span><br><span class="line"><span class="comment">	 * the PCIe SR-IOV capability.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//VF的情况</span></span><br><span class="line">	<span class="keyword">if</span> (pdev-&gt;is_virtfn) &#123;</span><br><span class="line">		WARN(<span class="number">1</span>, KERN_ERR <span class="string">&quot;%s (%x:%x) should not be a VF!\n&quot;</span>,</span><br><span class="line">			pci_name(pdev), pdev-&gt;vendor, pdev-&gt;device);</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//使能设备</span></span><br><span class="line">	err = pci_enable_device_mem(pdev);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line">	<span class="comment">//告诉内核这个设备可以使用64bit DMA地址</span></span><br><span class="line">	err = dma_set_mask_and_coherent(&amp;pdev-&gt;dev, DMA_BIT_MASK(<span class="number">64</span>));</span><br><span class="line">	<span class="keyword">if</span> (err) &#123;</span><br><span class="line">		dev_err(&amp;pdev-&gt;dev,</span><br><span class="line">			<span class="string">&quot;No usable DMA configuration, aborting\n&quot;</span>);</span><br><span class="line">		<span class="keyword">goto</span> err_dma;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//申请 PCI memory BAR 资源</span></span><br><span class="line">	err = pci_request_mem_regions(pdev, igb_driver_name);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> err_pci_reg;</span><br><span class="line"></span><br><span class="line">	pci_set_master(pdev);</span><br><span class="line">	pci_save_state(pdev);</span><br><span class="line"></span><br><span class="line">	err = -ENOMEM;</span><br><span class="line">	<span class="comment">//申请一个netdev</span></span><br><span class="line">	netdev = alloc_etherdev_mq(<span class="keyword">sizeof</span>(<span class="keyword">struct</span> igb_adapter),</span><br><span class="line">				   IGB_MAX_TX_QUEUES);</span><br><span class="line">	<span class="keyword">if</span> (!netdev)</span><br><span class="line">		<span class="keyword">goto</span> err_alloc_etherdev;</span><br><span class="line"></span><br><span class="line">	SET_NETDEV_DEV(netdev, &amp;pdev-&gt;dev);</span><br><span class="line">	<span class="comment">//关联私有数据和netdev</span></span><br><span class="line">	pci_set_drvdata(pdev, netdev);</span><br><span class="line">	adapter = netdev_priv(netdev);</span><br><span class="line">	adapter-&gt;netdev = netdev;</span><br><span class="line">	adapter-&gt;pdev = pdev;</span><br><span class="line">	hw = &amp;adapter-&gt;hw;</span><br><span class="line">	hw-&gt;back = adapter;</span><br><span class="line">	adapter-&gt;msg_enable = netif_msg_init(debug, DEFAULT_MSG_ENABLE);</span><br><span class="line"></span><br><span class="line">	err = -EIO;</span><br><span class="line">	<span class="comment">//这里很关键，映射了bar空间</span></span><br><span class="line">	adapter-&gt;io_addr = pci_iomap(pdev, <span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line">	<span class="keyword">if</span> (!adapter-&gt;io_addr)</span><br><span class="line">		<span class="keyword">goto</span> err_ioremap;</span><br><span class="line">	<span class="comment">/* hw-&gt;hw_addr can be altered, we&#x27;ll use adapter-&gt;io_addr for unmap */</span></span><br><span class="line">	hw-&gt;hw_addr = adapter-&gt;io_addr;</span><br><span class="line">	<span class="comment">//设置netdev 回调函数</span></span><br><span class="line">	netdev-&gt;netdev_ops = &amp;igb_netdev_ops;</span><br><span class="line">	<span class="comment">//设置ethtool回调</span></span><br><span class="line">	igb_set_ethtool_ops(netdev);</span><br><span class="line">	<span class="comment">//这个是操作系统层面的看门狗</span></span><br><span class="line">	netdev-&gt;watchdog_timeo = <span class="number">5</span> * HZ;</span><br><span class="line"></span><br><span class="line">	<span class="built_in">strncpy</span>(netdev-&gt;name, pci_name(pdev), <span class="keyword">sizeof</span>(netdev-&gt;name) - <span class="number">1</span>);</span><br><span class="line">	<span class="comment">//记录bar 0 开始地址和结束地址</span></span><br><span class="line">	netdev-&gt;mem_start = pci_resource_start(pdev, <span class="number">0</span>);</span><br><span class="line">	netdev-&gt;mem_end = pci_resource_end(pdev, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* PCI config space info */</span></span><br><span class="line">	<span class="comment">//保存pci的配置信息到hw中</span></span><br><span class="line">	hw-&gt;vendor_id = pdev-&gt;vendor;</span><br><span class="line">	hw-&gt;device_id = pdev-&gt;device;</span><br><span class="line">	hw-&gt;revision_id = pdev-&gt;revision;</span><br><span class="line">	hw-&gt;subsystem_vendor_id = pdev-&gt;subsystem_vendor;</span><br><span class="line">	hw-&gt;subsystem_device_id = pdev-&gt;subsystem_device;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Copy the default MAC, PHY and NVM function pointers */</span></span><br><span class="line">	<span class="comment">//设置mac phy的ops 这里的ei 是根据设备号找到的</span></span><br><span class="line">	<span class="built_in">memcpy</span>(&amp;hw-&gt;mac.ops, ei-&gt;mac_ops, <span class="keyword">sizeof</span>(hw-&gt;mac.ops));</span><br><span class="line">	<span class="built_in">memcpy</span>(&amp;hw-&gt;phy.ops, ei-&gt;phy_ops, <span class="keyword">sizeof</span>(hw-&gt;phy.ops));</span><br><span class="line">	<span class="built_in">memcpy</span>(&amp;hw-&gt;nvm.ops, ei-&gt;nvm_ops, <span class="keyword">sizeof</span>(hw-&gt;nvm.ops));</span><br><span class="line">	<span class="comment">/* Initialize skew-specific constants */</span></span><br><span class="line">	err = ei-&gt;get_invariants(hw); <span class="comment">//igb_get_invariants_82575，根据具体phy和mac设置ops</span></span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> err_sw_init;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* setup the private structure */</span></span><br><span class="line">	<span class="comment">//设置队列数，申请中断向量</span></span><br><span class="line">	err = igb_sw_init(adapter);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> err_sw_init;</span><br><span class="line">	<span class="comment">//获取pcie的信息 比如x4 x8</span></span><br><span class="line">	igb_get_bus_info_pcie(hw);</span><br><span class="line">	<span class="comment">//不等待自协商结果</span></span><br><span class="line">	hw-&gt;phy.autoneg_wait_to_complete = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Copper options */</span></span><br><span class="line">	<span class="comment">//铜口 RJ45</span></span><br><span class="line">	<span class="keyword">if</span> (hw-&gt;phy.media_type == e1000_media_type_copper) &#123;</span><br><span class="line">		hw-&gt;phy.mdix = AUTO_ALL_MODES;</span><br><span class="line">		hw-&gt;phy.disable_polarity_correction = <span class="literal">false</span>;</span><br><span class="line">		hw-&gt;phy.ms_type = e1000_ms_hw_default;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (igb_check_reset_block(hw))</span><br><span class="line">		dev_info(&amp;pdev-&gt;dev,</span><br><span class="line">			<span class="string">&quot;PHY reset is blocked due to SOL/IDER session.\n&quot;</span>);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* features is initialized to 0 in allocation, it might have bits</span></span><br><span class="line"><span class="comment">	 * set by igb_sw_init so we should use an or instead of an</span></span><br><span class="line"><span class="comment">	 * assignment.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	netdev-&gt;features |= NETIF_F_SG | <span class="comment">//分散聚合</span></span><br><span class="line">			    NETIF_F_TSO |		</span><br><span class="line">			    NETIF_F_TSO6 |</span><br><span class="line">			    NETIF_F_RXHASH |  <span class="comment">//可以给包计算hash指</span></span><br><span class="line">			    NETIF_F_RXCSUM |  <span class="comment">//接收方向校验和计算</span></span><br><span class="line">			    NETIF_F_HW_CSUM;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (hw-&gt;mac.type &gt;= e1000_82576)</span><br><span class="line">		netdev-&gt;features |= NETIF_F_SCTP_CRC | NETIF_F_GSO_UDP_L4; <span class="comment">//UDP的GSO</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (hw-&gt;mac.type &gt;= e1000_i350)</span><br><span class="line">		netdev-&gt;features |= NETIF_F_HW_TC;  <span class="comment">//tc卸载</span></span><br><span class="line"></span><br><span class="line"></span><br><span class="line">				  NETIF_F_GSO_GRE_CSUM | \</span><br><span class="line">				  NETIF_F_GSO_IPXIP4 | \</span><br><span class="line">				  NETIF_F_GSO_IPXIP6 | \</span><br><span class="line">				  NETIF_F_GSO_UDP_TUNNEL | \</span><br><span class="line">				  NETIF_F_GSO_UDP_TUNNEL_CSUM)</span><br><span class="line"></span><br><span class="line">	netdev-&gt;gso_partial_features = IGB_GSO_PARTIAL_FEATURES;</span><br><span class="line">	netdev-&gt;features |= NETIF_F_GSO_PARTIAL | IGB_GSO_PARTIAL_FEATURES;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* copy netdev features into list of user selectable features */</span></span><br><span class="line">	<span class="comment">//用户可通过 ethtool 开关的能力</span></span><br><span class="line">	netdev-&gt;hw_features |= netdev-&gt;features |</span><br><span class="line">			       NETIF_F_HW_VLAN_CTAG_RX |</span><br><span class="line">			       NETIF_F_HW_VLAN_CTAG_TX |</span><br><span class="line">			       NETIF_F_RXALL;</span><br><span class="line">	<span class="comment">//支持n元组过滤</span></span><br><span class="line">	<span class="keyword">if</span> (hw-&gt;mac.type &gt;= e1000_i350)</span><br><span class="line">		netdev-&gt;hw_features |= NETIF_F_NTUPLE;</span><br><span class="line">	<span class="comment">//支持高地址DMA</span></span><br><span class="line">	netdev-&gt;features |= NETIF_F_HIGHDMA;</span><br><span class="line"></span><br><span class="line">	netdev-&gt;vlan_features |= netdev-&gt;features | NETIF_F_TSO_MANGLEID;</span><br><span class="line">	netdev-&gt;mpls_features |= NETIF_F_HW_CSUM;</span><br><span class="line">	netdev-&gt;hw_enc_features |= netdev-&gt;vlan_features;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* set this bit last since it cannot be part of vlan_features */</span></span><br><span class="line">	netdev-&gt;features |= NETIF_F_HW_VLAN_CTAG_FILTER |</span><br><span class="line">			    NETIF_F_HW_VLAN_CTAG_RX |</span><br><span class="line">			    NETIF_F_HW_VLAN_CTAG_TX;</span><br><span class="line">	<span class="comment">//支持发送不带 FCS 的帧</span></span><br><span class="line">	netdev-&gt;priv_flags |= IFF_SUPP_NOFCS;</span><br><span class="line">	<span class="comment">//支持单播过滤</span></span><br><span class="line">	netdev-&gt;priv_flags |= IFF_UNICAST_FLT;</span><br><span class="line">	<span class="comment">//支持基础 XDP 和 redirect 能力</span></span><br><span class="line">	netdev-&gt;xdp_features = NETDEV_XDP_ACT_BASIC | NETDEV_XDP_ACT_REDIRECT;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* MTU range: 68 - 9216 */</span></span><br><span class="line">	netdev-&gt;min_mtu = ETH_MIN_MTU;</span><br><span class="line">	netdev-&gt;max_mtu = MAX_STD_JUMBO_FRAME_SIZE;</span><br><span class="line"></span><br><span class="line">	adapter-&gt;en_mng_pt = igb_enable_mng_pass_thru(hw);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* before reading the NVM, reset the controller to put the device in a</span></span><br><span class="line"><span class="comment">	 * known good starting state</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//复位硬件</span></span><br><span class="line">	hw-&gt;mac.ops.reset_hw(hw);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* make sure the NVM is good , i211/i210 parts can have special NVM</span></span><br><span class="line"><span class="comment">	 * that doesn&#x27;t contain a checksum</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//校验NVM 或者 E2PROM</span></span><br><span class="line">	<span class="keyword">switch</span> (hw-&gt;mac.type) &#123;</span><br><span class="line">	<span class="keyword">case</span> e1000_i210:</span><br><span class="line">	<span class="keyword">case</span> e1000_i211:</span><br><span class="line">		<span class="keyword">if</span> (igb_get_flash_presence_i210(hw)) &#123;</span><br><span class="line">			<span class="keyword">if</span> (hw-&gt;nvm.ops.validate(hw) &lt; <span class="number">0</span>) &#123;</span><br><span class="line">				dev_err(&amp;pdev-&gt;dev,</span><br><span class="line">					<span class="string">&quot;The NVM Checksum Is Not Valid\n&quot;</span>);</span><br><span class="line">				err = -EIO;</span><br><span class="line">				<span class="keyword">goto</span> err_eeprom;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		<span class="keyword">if</span> (hw-&gt;nvm.ops.validate(hw) &lt; <span class="number">0</span>) &#123;</span><br><span class="line">			dev_err(&amp;pdev-&gt;dev, <span class="string">&quot;The NVM Checksum Is Not Valid\n&quot;</span>);</span><br><span class="line">			err = -EIO;</span><br><span class="line">			<span class="keyword">goto</span> err_eeprom;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//从固件拿mac地址</span></span><br><span class="line">	<span class="keyword">if</span> (eth_platform_get_mac_address(&amp;pdev-&gt;dev, hw-&gt;mac.addr)) &#123;</span><br><span class="line">		<span class="comment">/* copy the MAC address out of the NVM */</span></span><br><span class="line">		<span class="keyword">if</span> (hw-&gt;mac.ops.read_mac_addr(hw))</span><br><span class="line">			dev_err(&amp;pdev-&gt;dev, <span class="string">&quot;NVM Read Error\n&quot;</span>);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//给到netdev</span></span><br><span class="line">	eth_hw_addr_set(netdev, hw-&gt;mac.addr);</span><br><span class="line">	<span class="comment">//校验地址是否合法</span></span><br><span class="line">	<span class="keyword">if</span> (!is_valid_ether_addr(netdev-&gt;dev_addr)) &#123;</span><br><span class="line">		dev_err(&amp;pdev-&gt;dev, <span class="string">&quot;Invalid MAC Address\n&quot;</span>);</span><br><span class="line">		err = -EIO;</span><br><span class="line">		<span class="keyword">goto</span> err_eeprom;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//写道mac地址过滤表中</span></span><br><span class="line">	igb_set_default_mac_filter(adapter);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* get firmware version for ethtool -i */</span></span><br><span class="line">	<span class="comment">//获取固件版本，供 ethtool -i 使用</span></span><br><span class="line">	igb_set_fw_version(adapter);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* configure RXPBSIZE and TXPBSIZE */</span></span><br><span class="line">	<span class="keyword">if</span> (hw-&gt;mac.type == e1000_i210) &#123;</span><br><span class="line">		wr32(E1000_RXPBS, I210_RXPBSIZE_DEFAULT);</span><br><span class="line">		wr32(E1000_TXPBS, I210_TXPBSIZE_DEFAULT);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//注册看门狗定时器，这个定时器就是调度工作队列，第二个定时器是获取link信息的定时器</span></span><br><span class="line">	timer_setup(&amp;adapter-&gt;watchdog_timer, igb_watchdog, <span class="number">0</span>);</span><br><span class="line">	timer_setup(&amp;adapter-&gt;phy_info_timer, igb_update_phy_info, <span class="number">0</span>);</span><br><span class="line">	<span class="comment">//txtimeout会调用这个复位网卡</span></span><br><span class="line">	INIT_WORK(&amp;adapter-&gt;reset_task, igb_reset_task);</span><br><span class="line">	<span class="comment">//初始化看门狗工作队列</span></span><br><span class="line">	INIT_WORK(&amp;adapter-&gt;watchdog_task, igb_watchdog_task);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Initialize link properties that are user-changeable */</span></span><br><span class="line">	<span class="comment">//初始化link相关的字段</span></span><br><span class="line">	adapter-&gt;fc_autoneg = <span class="literal">true</span>;</span><br><span class="line">	hw-&gt;mac.autoneg = <span class="literal">true</span>;</span><br><span class="line">	hw-&gt;phy.autoneg_advertised = <span class="number">0x2f</span>;</span><br><span class="line">	<span class="comment">//初始化流控</span></span><br><span class="line">	hw-&gt;fc.requested_mode = e1000_fc_default;</span><br><span class="line">	hw-&gt;fc.current_mode = e1000_fc_default;</span><br><span class="line"></span><br><span class="line">	igb_validate_mdi_setting(hw);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* By default, support wake on port A */</span></span><br><span class="line">	<span class="keyword">if</span> (hw-&gt;bus.func == <span class="number">0</span>)</span><br><span class="line">		adapter-&gt;flags |= IGB_FLAG_WOL_SUPPORTED;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Check the NVM for wake support on non-port A ports */</span></span><br><span class="line">	<span class="comment">//是否支持远程唤醒</span></span><br><span class="line">	<span class="keyword">if</span> (hw-&gt;mac.type &gt;= e1000_82580)</span><br><span class="line">		hw-&gt;nvm.ops.read(hw, NVM_INIT_CONTROL3_PORT_A +</span><br><span class="line">				 NVM_82580_LAN_FUNC_OFFSET(hw-&gt;bus.func), <span class="number">1</span>,</span><br><span class="line">				 &amp;eeprom_data);</span><br><span class="line">	<span class="keyword">else</span> <span class="keyword">if</span> (hw-&gt;bus.func == <span class="number">1</span>)</span><br><span class="line">		hw-&gt;nvm.ops.read(hw, NVM_INIT_CONTROL3_PORT_B, <span class="number">1</span>, &amp;eeprom_data);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (eeprom_data &amp; IGB_EEPROM_APME)</span><br><span class="line">		adapter-&gt;flags |= IGB_FLAG_WOL_SUPPORTED;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* now that we have the eeprom settings, apply the special cases where</span></span><br><span class="line"><span class="comment">	 * the eeprom may be wrong or the board simply won&#x27;t support wake on</span></span><br><span class="line"><span class="comment">	 * lan on a particular port</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">switch</span> (pdev-&gt;device) &#123;</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82575GB_QUAD_COPPER:</span><br><span class="line">		adapter-&gt;flags &amp;= ~IGB_FLAG_WOL_SUPPORTED;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82575EB_FIBER_SERDES:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82576_FIBER:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82576_SERDES:</span><br><span class="line">		<span class="comment">/* Wake events only supported on port A for dual fiber</span></span><br><span class="line"><span class="comment">		 * regardless of eeprom setting</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="keyword">if</span> (rd32(E1000_STATUS) &amp; E1000_STATUS_FUNC_1)</span><br><span class="line">			adapter-&gt;flags &amp;= ~IGB_FLAG_WOL_SUPPORTED;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82576_QUAD_COPPER:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82576_QUAD_COPPER_ET2:</span><br><span class="line">		<span class="comment">/* if quad port adapter, disable WoL on all but port A */</span></span><br><span class="line">		<span class="keyword">if</span> (global_quad_port_a != <span class="number">0</span>)</span><br><span class="line">			adapter-&gt;flags &amp;= ~IGB_FLAG_WOL_SUPPORTED;</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			adapter-&gt;flags |= IGB_FLAG_QUAD_PORT_A;</span><br><span class="line">		<span class="comment">/* Reset for multiple quad port adapters */</span></span><br><span class="line">		<span class="keyword">if</span> (++global_quad_port_a == <span class="number">4</span>)</span><br><span class="line">			global_quad_port_a = <span class="number">0</span>;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		<span class="comment">/* If the device can&#x27;t wake, don&#x27;t set software support */</span></span><br><span class="line">		<span class="keyword">if</span> (!device_can_wakeup(&amp;adapter-&gt;pdev-&gt;dev))</span><br><span class="line">			adapter-&gt;flags &amp;= ~IGB_FLAG_WOL_SUPPORTED;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* initialize the wol settings based on the eeprom settings */</span></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;flags &amp; IGB_FLAG_WOL_SUPPORTED)</span><br><span class="line">		adapter-&gt;wol |= E1000_WUFC_MAG;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Some vendors want WoL disabled by default, but still supported */</span></span><br><span class="line">	<span class="keyword">if</span> ((hw-&gt;mac.type == e1000_i350) &amp;&amp;</span><br><span class="line">	    (pdev-&gt;subsystem_vendor == PCI_VENDOR_ID_HP)) &#123;</span><br><span class="line">		adapter-&gt;flags |= IGB_FLAG_WOL_SUPPORTED;</span><br><span class="line">		adapter-&gt;wol = <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Some vendors want the ability to Use the EEPROM setting as</span></span><br><span class="line"><span class="comment">	 * enable/disable only, and not for capability</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (((hw-&gt;mac.type == e1000_i350) ||</span><br><span class="line">	     (hw-&gt;mac.type == e1000_i354)) &amp;&amp;</span><br><span class="line">	    (pdev-&gt;subsystem_vendor == PCI_VENDOR_ID_DELL)) &#123;</span><br><span class="line">		adapter-&gt;flags |= IGB_FLAG_WOL_SUPPORTED;</span><br><span class="line">		adapter-&gt;wol = <span class="number">0</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> (hw-&gt;mac.type == e1000_i350) &#123;</span><br><span class="line">		<span class="keyword">if</span> (((pdev-&gt;subsystem_device == <span class="number">0x5001</span>) ||</span><br><span class="line">		     (pdev-&gt;subsystem_device == <span class="number">0x5002</span>)) &amp;&amp;</span><br><span class="line">				(hw-&gt;bus.func == <span class="number">0</span>)) &#123;</span><br><span class="line">			adapter-&gt;flags |= IGB_FLAG_WOL_SUPPORTED;</span><br><span class="line">			adapter-&gt;wol = <span class="number">0</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">if</span> (pdev-&gt;subsystem_device == <span class="number">0x1F52</span>)</span><br><span class="line">			adapter-&gt;flags |= IGB_FLAG_WOL_SUPPORTED;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	device_set_wakeup_enable(&amp;adapter-&gt;pdev-&gt;dev,</span><br><span class="line">				 adapter-&gt;flags &amp; IGB_FLAG_WOL_SUPPORTED);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* reset the hardware with the new settings */</span></span><br><span class="line">	<span class="comment">//复位网卡</span></span><br><span class="line">	igb_reset(adapter);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Init the I2C interface */</span></span><br><span class="line">	err = igb_init_i2c(adapter);</span><br><span class="line">	<span class="keyword">if</span> (err) &#123;</span><br><span class="line">		dev_err(&amp;pdev-&gt;dev, <span class="string">&quot;failed to init i2c interface\n&quot;</span>);</span><br><span class="line">		<span class="keyword">goto</span> err_eeprom;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* let the f/w know that the h/w is now under the control of the</span></span><br><span class="line"><span class="comment">	 * driver.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//通知固件硬件由驱动控制</span></span><br><span class="line">	igb_get_hw_control(adapter);</span><br><span class="line">	<span class="comment">//这里虽然是eth0  但是udev好像会改名字</span></span><br><span class="line">	<span class="built_in">strcpy</span>(netdev-&gt;name, <span class="string">&quot;eth%d&quot;</span>);</span><br><span class="line">	<span class="comment">//真正的注册设备</span></span><br><span class="line">	err = register_netdev(netdev);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> err_register;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* carrier off reporting is important to ethtool even BEFORE open */</span></span><br><span class="line">	<span class="comment">//注意这里先告诉协议栈网卡link还是down的状态！！！</span></span><br><span class="line">	netif_carrier_off(netdev);</span><br><span class="line">	<span class="comment">//让设备DMA时候，把数据送到cpu cache 相关位置？</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (dca_add_requester(&amp;pdev-&gt;dev) == <span class="number">0</span>) &#123;</span><br><span class="line">		adapter-&gt;flags |= IGB_FLAG_DCA_ENABLED;</span><br><span class="line">		dev_info(&amp;pdev-&gt;dev, <span class="string">&quot;DCA enabled\n&quot;</span>);</span><br><span class="line">		igb_setup_dca(adapter);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Initialize the thermal sensor on i350 devices. */</span></span><br><span class="line">	<span class="keyword">if</span> (hw-&gt;mac.type == e1000_i350 &amp;&amp; hw-&gt;bus.func == <span class="number">0</span>) &#123;</span><br><span class="line">		u16 ets_word;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Read the NVM to determine if this i350 device supports an</span></span><br><span class="line"><span class="comment">		 * external thermal sensor.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		hw-&gt;nvm.ops.read(hw, NVM_ETS_CFG, <span class="number">1</span>, &amp;ets_word);</span><br><span class="line">		<span class="keyword">if</span> (ets_word != <span class="number">0x0000</span> &amp;&amp; ets_word != <span class="number">0xFFFF</span>)</span><br><span class="line">			adapter-&gt;ets = <span class="literal">true</span>;</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			adapter-&gt;ets = <span class="literal">false</span>;</span><br><span class="line">		<span class="comment">/* Only enable I2C bit banging if an external thermal</span></span><br><span class="line"><span class="comment">		 * sensor is supported.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="keyword">if</span> (adapter-&gt;ets)</span><br><span class="line">			igb_set_i2c_bb(hw);</span><br><span class="line">		hw-&gt;mac.ops.init_thermal_sensor_thresh(hw);</span><br><span class="line">		<span class="keyword">if</span> (igb_sysfs_init(adapter))</span><br><span class="line">			dev_err(&amp;pdev-&gt;dev,</span><br><span class="line">				<span class="string">&quot;failed to allocate sysfs resources\n&quot;</span>);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		adapter-&gt;ets = <span class="literal">false</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Check if Media Autosense is enabled */</span></span><br><span class="line">	adapter-&gt;ei = *ei;</span><br><span class="line">	<span class="keyword">if</span> (hw-&gt;dev_spec._82575.mas_capable)</span><br><span class="line">		igb_init_mas(adapter);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* do hw tstamp init after resetting */</span></span><br><span class="line">	<span class="comment">//ptp相关</span></span><br><span class="line">	igb_ptp_init(adapter);</span><br><span class="line"></span><br><span class="line">	dev_info(&amp;pdev-&gt;dev, <span class="string">&quot;Intel(R) Gigabit Ethernet Network Connection\n&quot;</span>);</span><br><span class="line">	<span class="comment">/* print bus type/speed/width info, not applicable to i354 */</span></span><br><span class="line">	<span class="keyword">if</span> (hw-&gt;mac.type != e1000_i354) &#123;</span><br><span class="line">		dev_info(&amp;pdev-&gt;dev, <span class="string">&quot;%s: (PCIe:%s:%s) %pM\n&quot;</span>,</span><br><span class="line">			 netdev-&gt;name,</span><br><span class="line">			 ((hw-&gt;bus.speed == e1000_bus_speed_2500) ? <span class="string">&quot;2.5Gb/s&quot;</span> :</span><br><span class="line">			  (hw-&gt;bus.speed == e1000_bus_speed_5000) ? <span class="string">&quot;5.0Gb/s&quot;</span> :</span><br><span class="line">			   <span class="string">&quot;unknown&quot;</span>),</span><br><span class="line">			 ((hw-&gt;bus.width == e1000_bus_width_pcie_x4) ?</span><br><span class="line">			  <span class="string">&quot;Width x4&quot;</span> :</span><br><span class="line">			  (hw-&gt;bus.width == e1000_bus_width_pcie_x2) ?</span><br><span class="line">			  <span class="string">&quot;Width x2&quot;</span> :</span><br><span class="line">			  (hw-&gt;bus.width == e1000_bus_width_pcie_x1) ?</span><br><span class="line">			  <span class="string">&quot;Width x1&quot;</span> : <span class="string">&quot;unknown&quot;</span>), netdev-&gt;dev_addr);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> ((hw-&gt;mac.type == e1000_82576 &amp;&amp;</span><br><span class="line">	     rd32(E1000_EECD) &amp; E1000_EECD_PRES) ||</span><br><span class="line">	    (hw-&gt;mac.type &gt;= e1000_i210 ||</span><br><span class="line">	     igb_get_flash_presence_i210(hw))) &#123;</span><br><span class="line">		ret_val = igb_read_part_string(hw, part_str,</span><br><span class="line">					       E1000_PBANUM_LENGTH);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		ret_val = -E1000_ERR_INVM_VALUE_NOT_FOUND;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (ret_val)</span><br><span class="line">		<span class="built_in">strcpy</span>(part_str, <span class="string">&quot;Unknown&quot;</span>);</span><br><span class="line">	dev_info(&amp;pdev-&gt;dev, <span class="string">&quot;%s: PBA No: %s\n&quot;</span>, netdev-&gt;name, part_str);</span><br><span class="line">	dev_info(&amp;pdev-&gt;dev,</span><br><span class="line">		<span class="string">&quot;Using %s interrupts. %d rx queue(s), %d tx queue(s)\n&quot;</span>,</span><br><span class="line">		(adapter-&gt;flags &amp; IGB_FLAG_HAS_MSIX) ? <span class="string">&quot;MSI-X&quot;</span> :</span><br><span class="line">		(adapter-&gt;flags &amp; IGB_FLAG_HAS_MSI) ? <span class="string">&quot;MSI&quot;</span> : <span class="string">&quot;legacy&quot;</span>,</span><br><span class="line">		adapter-&gt;num_rx_queues, adapter-&gt;num_tx_queues);</span><br><span class="line">	<span class="keyword">if</span> (hw-&gt;phy.media_type == e1000_media_type_copper) &#123;</span><br><span class="line">		<span class="keyword">switch</span> (hw-&gt;mac.type) &#123;</span><br><span class="line">		<span class="keyword">case</span> e1000_i350:</span><br><span class="line">		<span class="keyword">case</span> e1000_i210:</span><br><span class="line">		<span class="keyword">case</span> e1000_i211:</span><br><span class="line">			<span class="comment">/* Enable EEE for internal copper PHY devices */</span></span><br><span class="line">			err = igb_set_eee_i350(hw, <span class="literal">true</span>, <span class="literal">true</span>);</span><br><span class="line">			<span class="keyword">if</span> ((!err) &amp;&amp;</span><br><span class="line">			    (!hw-&gt;dev_spec._82575.eee_disable)) &#123;</span><br><span class="line">				adapter-&gt;eee_advert =</span><br><span class="line">					MDIO_EEE_100TX | MDIO_EEE_1000T;</span><br><span class="line">				adapter-&gt;flags |= IGB_FLAG_EEE;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">case</span> e1000_i354:</span><br><span class="line">			<span class="keyword">if</span> ((rd32(E1000_CTRL_EXT) &amp;</span><br><span class="line">			    E1000_CTRL_EXT_LINK_MODE_SGMII)) &#123;</span><br><span class="line">				err = igb_set_eee_i354(hw, <span class="literal">true</span>, <span class="literal">true</span>);</span><br><span class="line">				<span class="keyword">if</span> ((!err) &amp;&amp;</span><br><span class="line">					(!hw-&gt;dev_spec._82575.eee_disable)) &#123;</span><br><span class="line">					adapter-&gt;eee_advert =</span><br><span class="line">					   MDIO_EEE_100TX | MDIO_EEE_1000T;</span><br><span class="line">					adapter-&gt;flags |= IGB_FLAG_EEE;</span><br><span class="line">				&#125;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">default</span>:</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	dev_pm_set_driver_flags(&amp;pdev-&gt;dev, DPM_FLAG_NO_DIRECT_COMPLETE);</span><br><span class="line"></span><br><span class="line">	pm_runtime_put_noidle(&amp;pdev-&gt;dev);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">err_register:</span><br><span class="line">	igb_release_hw_control(adapter);</span><br><span class="line">	<span class="built_in">memset</span>(&amp;adapter-&gt;i2c_adap, <span class="number">0</span>, <span class="keyword">sizeof</span>(adapter-&gt;i2c_adap));</span><br><span class="line">err_eeprom:</span><br><span class="line">	<span class="keyword">if</span> (!igb_check_reset_block(hw))</span><br><span class="line">		igb_reset_phy(hw);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (hw-&gt;flash_address)</span><br><span class="line">		iounmap(hw-&gt;flash_address);</span><br><span class="line">err_sw_init:</span><br><span class="line">	kfree(adapter-&gt;mac_table);</span><br><span class="line">	kfree(adapter-&gt;shadow_vfta);</span><br><span class="line">	igb_clear_interrupt_scheme(adapter);</span><br><span class="line"></span><br><span class="line">	igb_disable_sriov(pdev, <span class="literal">false</span>);</span><br><span class="line"></span><br><span class="line">	pci_iounmap(pdev, adapter-&gt;io_addr);</span><br><span class="line">err_ioremap:</span><br><span class="line">	free_netdev(netdev);</span><br><span class="line">err_alloc_etherdev:</span><br><span class="line">	pci_release_mem_regions(pdev);</span><br><span class="line">err_pci_reg:</span><br><span class="line">err_dma:</span><br><span class="line">	pci_disable_device(pdev);</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>igb_probe()</code> 是 igb 驱动接管一块 Intel PCI 网卡的入口函数。它首先会做 PCI 设备层面的初始化：检查当前设备不能是 VF，调用 <code>pci_enable_device_mem()</code> 使能 PCI memory 设备，设置 DMA mask，申请 PCI BAR 资源，并通过 <code>pci_iomap()</code> 把 BAR0 映射到内核虚拟地址。到这一步，驱动才具备访问网卡 MMIO 寄存器的能力。</p>
+<p>接着，驱动会分配并初始化 Linux 网络设备对象。<code>alloc_etherdev_mq()</code> 会分配 <code>net_device</code>，同时预留 <code>igb_adapter</code> 作为驱动私有数据。随后驱动把 <code>pdev</code>、<code>netdev</code>、<code>adapter</code>、<code>e1000_hw</code> 这些结构关联起来，并设置 <code>netdev_ops</code>、<code>ethtool_ops</code>、watchdog 超时时间、BAR 地址范围等信息。这里完成的是“Linux 网络设备对象”和“PCI 硬件设备对象”之间的绑定。</p>
+<p>然后，<code>igb_probe()</code> 会根据 PCI device id 找到对应的硬件信息表 <code>e1000_info</code>，拷贝 MAC、PHY、NVM 的操作函数，并调用 <code>get_invariants()</code> 获取具体芯片的不变量信息，比如 MAC 类型、PHY 类型、介质类型、硬件能力等。之后调用 <code>igb_sw_init()</code> 初始化驱动软件状态，包括队列数量、RSS、中断能力、ring 参数、feature 标志等，为后续收发队列和中断初始化做准备。</p>
+<p>再往后，驱动开始配置 <code>net_device</code> 支持的各种硬件能力，例如 SG、TSO、TSO6、RX checksum、HW checksum、SCTP CRC、UDP GSO、VLAN offload、GSO partial、NTUPLE、XDP redirect 等。同时设置 MTU 范围、VLAN&#x2F;MPLS&#x2F;封装场景下的 offload 能力。这一部分决定了用户态通过 <code>ethtool -k</code> 能看到哪些网卡卸载能力，也决定了协议栈后续能不能把某些工作交给硬件处理。</p>
+<p>在真正注册网卡之前，驱动会先 reset 一次控制器，让硬件处于一个已知状态，然后校验 NVM&#x2F;EEPROM，读取 MAC 地址并设置到 <code>netdev-&gt;dev_addr</code>，同时把默认 MAC 地址写入硬件过滤表。随后初始化固件版本、packet buffer、watchdog 定时器、PHY 信息定时器、reset work 和 watchdog work，并设置链路自协商、流控、MDI&#x2F;MDI-X、WoL 网络唤醒等默认配置。</p>
+<p>完成这些配置后，驱动调用 <code>igb_reset()</code> 根据前面设置重新复位并初始化硬件，使 packet buffer、流控、EEE、VLAN、PTP、MAC filter 等配置真正写入硬件。接着初始化 I2C 接口，通知管理固件当前硬件已经由操作系统驱动接管，然后调用 <code>register_netdev()</code> 把这个网卡正式注册到 Linux 网络子系统。注册成功后，用户态就能通过 <code>ip link</code>、<code>ethtool</code> 等工具看到这个网卡。</p>
+<p>最后，驱动会先调用 <code>netif_carrier_off()</code>，表示虽然网卡已经注册成功，但当前还不能直接认为物理链路是 up 的，真正的 link 状态要等后续 open 和 watchdog 检测后再通过 <code>netif_carrier_on()</code> 更新。后面还会继续初始化 DCA、温度传感器、Media Autosense、PTP、EEE 等附加功能，并打印 PCIe 速率、宽度、中断模式、队列数量、PBA 编号等信息。整体来看，<code>igb_probe()</code> 的作用就是把一块 PCI 网卡从“被系统枚举到的硬件设备”，一步步初始化成 Linux 网络子系统里可见、可配置、后续可打开收发包的 <code>net_device</code>。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" rel="tag"># 网卡驱动</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/06/03/VFIO(%E4%B8%83)/" rel="prev" title="vfio_pci（二）">
+      <i class="fa fa-chevron-left"></i> vfio_pci（二）
+    </a></div>
+      <div class="post-nav-item">
+    <a href="/2026/06/16/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%EF%BC%88%E4%B8%80%EF%BC%89/" rel="next" title="IGB网卡驱动初始化（二）">
+      IGB网卡驱动初始化（二） <i class="fa fa-chevron-right"></i>
+    </a></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">135</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">30</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

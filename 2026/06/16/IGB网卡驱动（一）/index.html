@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="igb_get_invariants_82575() 是 igb 驱动在 probe 早期调用的硬件识别函数。当 PCI 子系统发现一块和 igb 驱动匹配的网卡后，会调用 igb_probe()。在 igb_probe() 中，驱动先分配并初始化 net_device、igb_adapter 和 e1000_hw 等基础结构，然后调用 igb_get_invariants_82575() 读取">
+<meta property="og:type" content="article">
+<meta property="og:title" content="IGB网卡驱动初始化（二）">
+<meta property="og:url" content="http://example.com/2026/06/16/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%EF%BC%88%E4%B8%80%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="igb_get_invariants_82575() 是 igb 驱动在 probe 早期调用的硬件识别函数。当 PCI 子系统发现一块和 igb 驱动匹配的网卡后，会调用 igb_probe()。在 igb_probe() 中，驱动先分配并初始化 net_device、igb_adapter 和 e1000_hw 等基础结构，然后调用 igb_get_invariants_82575() 读取">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-06-16T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-06-16T12:42:53.758Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="网卡驱动">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/06/16/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%EF%BC%88%E4%B8%80%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>IGB网卡驱动初始化（二） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/06/16/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%EF%BC%88%E4%B8%80%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          IGB网卡驱动初始化（二）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-06-16 22:00:00 / 修改时间：20:42:53" itemprop="dateCreated datePublished" datetime="2026-06-16T22:00:00+08:00">2026-06-16</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" itemprop="url" rel="index"><span itemprop="name">IGB网卡驱动</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/06/16/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%EF%BC%88%E4%B8%80%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/06/16/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%EF%BC%88%E4%B8%80%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p><code>igb_get_invariants_82575()</code> 是 <code>igb</code> 驱动在 probe 早期调用的硬件识别函数。当 PCI 子系统发现一块和 <code>igb</code> 驱动匹配的网卡后，会调用 <code>igb_probe()</code>。在 <code>igb_probe()</code> 中，驱动先分配并初始化 <code>net_device</code>、<code>igb_adapter</code> 和 <code>e1000_hw</code> 等基础结构，然后调用 <code>igb_get_invariants_82575()</code> 读取 PCI device id 和相关硬件寄存器，判断当前网卡属于 82575、82576、82580、i350、i210 还是 i211 等型号，并设置 MAC、PHY、NVM、链路模式等固定属性。这里识别出来的信息会作为后续软件初始化、队列配置、中断初始化和链路初始化的基础。</p>
+<p>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> s32 <span class="title function_">igb_get_invariants_82575</span><span class="params">(<span class="keyword">struct</span> e1000_hw *hw)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">e1000_mac_info</span> *<span class="title">mac</span> =</span> &amp;hw-&gt;mac;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">e1000_dev_spec_82575</span> *<span class="title">dev_spec</span> =</span> &amp;hw-&gt;dev_spec._82575;</span><br><span class="line">	s32 ret_val;</span><br><span class="line">	u32 ctrl_ext = <span class="number">0</span>;</span><br><span class="line">	u32 link_mode = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//根据 device_id 判断 MAC 类型</span></span><br><span class="line">	<span class="keyword">switch</span> (hw-&gt;device_id) &#123;</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82575EB_COPPER:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82575EB_FIBER_SERDES:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82575GB_QUAD_COPPER:</span><br><span class="line">		mac-&gt;type = e1000_82575;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82576:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82576_NS:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82576_NS_SERDES:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82576_FIBER:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82576_SERDES:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82576_QUAD_COPPER:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82576_QUAD_COPPER_ET2:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82576_SERDES_QUAD:</span><br><span class="line">		mac-&gt;type = e1000_82576;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82580_COPPER:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82580_FIBER:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82580_QUAD_FIBER:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82580_SERDES:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82580_SGMII:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_82580_COPPER_DUAL:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_DH89XXCC_SGMII:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_DH89XXCC_SERDES:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_DH89XXCC_BACKPLANE:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_DH89XXCC_SFP:</span><br><span class="line">		mac-&gt;type = e1000_82580;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_I350_COPPER:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_I350_FIBER:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_I350_SERDES:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_I350_SGMII:</span><br><span class="line">		mac-&gt;type = e1000_i350;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_I210_COPPER:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_I210_FIBER:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_I210_SERDES:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_I210_SGMII:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_I210_COPPER_FLASHLESS:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_I210_SERDES_FLASHLESS:</span><br><span class="line">		mac-&gt;type = e1000_i210;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_I211_COPPER:</span><br><span class="line">		mac-&gt;type = e1000_i211;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_I354_BACKPLANE_1GBPS:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_I354_SGMII:</span><br><span class="line">	<span class="keyword">case</span> E1000_DEV_ID_I354_BACKPLANE_2_5GBPS:</span><br><span class="line">		mac-&gt;type = e1000_i354;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		<span class="keyword">return</span> -E1000_ERR_MAC_INIT;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Set media type */</span></span><br><span class="line">	<span class="comment">/* The 82575 uses bits 22:23 for link mode. The mode can be changed</span></span><br><span class="line"><span class="comment">	 * based on the EEPROM. We cannot rely upon device ID. There</span></span><br><span class="line"><span class="comment">	 * is no distinguishable difference between fiber and internal</span></span><br><span class="line"><span class="comment">	 * SerDes mode on the 82575. There can be an external PHY attached</span></span><br><span class="line"><span class="comment">	 * on the SGMII interface. For this, we&#x27;ll set sgmii_active to true.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//默认先认为认按 RJ45</span></span><br><span class="line">	hw-&gt;phy.media_type = e1000_media_type_copper;</span><br><span class="line">	dev_spec-&gt;sgmii_active = <span class="literal">false</span>;</span><br><span class="line">	dev_spec-&gt;module_plugged = <span class="literal">false</span>;</span><br><span class="line">	<span class="comment">//读寄存器判断MAC和PHY的连接方式</span></span><br><span class="line">	ctrl_ext = rd32(E1000_CTRL_EXT);</span><br><span class="line">	<span class="comment">//根据 link mode 设置 media_type</span></span><br><span class="line">	link_mode = ctrl_ext &amp; E1000_CTRL_EXT_LINK_MODE_MASK;</span><br><span class="line">	<span class="keyword">switch</span> (link_mode) &#123;</span><br><span class="line">	<span class="keyword">case</span> E1000_CTRL_EXT_LINK_MODE_1000BASE_KX:  <span class="comment">//不是连接到外部 RJ45 插座或 SFP 笼子</span></span><br><span class="line">		hw-&gt;phy.media_type = e1000_media_type_internal_serdes; <span class="comment">//不是RJ45 通过背板serdes连接</span></span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> E1000_CTRL_EXT_LINK_MODE_SGMII:</span><br><span class="line">		<span class="comment">/* Get phy control interface type set (MDIO vs. I2C)*/</span></span><br><span class="line">		<span class="keyword">if</span> (igb_sgmii_uses_mdio_82575(hw)) &#123;  <span class="comment">//通过MDIO 管理phy</span></span><br><span class="line">			hw-&gt;phy.media_type = e1000_media_type_copper;<span class="comment">//走RJ45 ，通常是这个吧</span></span><br><span class="line">			dev_spec-&gt;sgmii_active = <span class="literal">true</span>;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		fallthrough; <span class="comment">/* for I2C based SGMII */</span> <span class="comment">//这里fall through</span></span><br><span class="line">	<span class="keyword">case</span> E1000_CTRL_EXT_LINK_MODE_PCIE_SERDES:  <span class="comment">//是 SFP/SerDes 类型（可插拔光模块或铜缆直连模块）</span></span><br><span class="line">		<span class="comment">/* read media type from SFP EEPROM */</span></span><br><span class="line">		ret_val = igb_set_sfp_media_type_82575(hw); <span class="comment">//读寄存器判断模块类型</span></span><br><span class="line">		<span class="keyword">if</span> ((ret_val != <span class="number">0</span>) ||    <span class="comment">//没读到，设置成默认的</span></span><br><span class="line">		    (hw-&gt;phy.media_type == e1000_media_type_unknown)) &#123;</span><br><span class="line">			<span class="comment">/* If media type was not identified then return media</span></span><br><span class="line"><span class="comment">			 * type defined by the CTRL_EXT settings.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			hw-&gt;phy.media_type = e1000_media_type_internal_serdes;</span><br><span class="line"></span><br><span class="line">			<span class="keyword">if</span> (link_mode == E1000_CTRL_EXT_LINK_MODE_SGMII) &#123;</span><br><span class="line">				hw-&gt;phy.media_type = e1000_media_type_copper;</span><br><span class="line">				dev_spec-&gt;sgmii_active = <span class="literal">true</span>;</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* change current link mode setting */</span></span><br><span class="line">		<span class="comment">//清掉 ctrl_ext 里的旧 link mode 位</span></span><br><span class="line">		ctrl_ext &amp;= ~E1000_CTRL_EXT_LINK_MODE_MASK;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (dev_spec-&gt;sgmii_active)</span><br><span class="line">			ctrl_ext |= E1000_CTRL_EXT_LINK_MODE_SGMII; <span class="comment">//走 SGMII</span></span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			ctrl_ext |= E1000_CTRL_EXT_LINK_MODE_PCIE_SERDES;<span class="comment">//SerDes</span></span><br><span class="line"></span><br><span class="line">		wr32(E1000_CTRL_EXT, ctrl_ext);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* mac initialization and operations */</span></span><br><span class="line">	<span class="comment">//初始化mac 挂上ops 比如复位的ops</span></span><br><span class="line">	ret_val = igb_init_mac_params_82575(hw);</span><br><span class="line">	<span class="keyword">if</span> (ret_val)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* NVM initialization */</span></span><br><span class="line">	<span class="comment">//初始化nvm</span></span><br><span class="line">	ret_val = igb_init_nvm_params_82575(hw);</span><br><span class="line">	<span class="keyword">switch</span> (hw-&gt;mac.type) &#123;</span><br><span class="line">	<span class="keyword">case</span> e1000_i210:</span><br><span class="line">	<span class="keyword">case</span> e1000_i211:</span><br><span class="line">		ret_val = igb_init_nvm_params_i210(hw);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (ret_val)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* if part supports SR-IOV then initialize mailbox parameters */</span></span><br><span class="line">	<span class="comment">//初始化mbx的一系列ops</span></span><br><span class="line">	<span class="keyword">switch</span> (mac-&gt;type) &#123;</span><br><span class="line">	<span class="keyword">case</span> e1000_82576:</span><br><span class="line">	<span class="keyword">case</span> e1000_i350:</span><br><span class="line">		igb_init_mbx_params_pf(hw);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* setup PHY parameters */</span></span><br><span class="line">	<span class="comment">//设置phy的ops</span></span><br><span class="line">	ret_val = igb_init_phy_params_82575(hw);</span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">return</span> ret_val;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>igb_get_invariants_82575()</code> 是 <code>igb</code> 驱动在 <code>igb_probe()</code> 早期调用的硬件识别函数。它首先根据 PCI <code>device_id</code> 判断当前网卡属于 82575、82576、82580、i350、i210、i211 还是 i354，并把结果保存到 <code>hw-&gt;mac.type</code>。这个类型后面会影响很多初始化逻辑，比如 MAC、NVM、PHY、SR-IOV 等不同硬件模块该走哪套处理方式。</p>
+<p>接着函数读取 <code>E1000_CTRL_EXT</code> 寄存器，根据里面的 link mode 判断物理接口类型。默认先认为是普通铜口，如果发现是 <code>1000BASE_KX</code>，就认为是背板 SerDes；如果是 <code>SGMII</code>，还要判断后面是 MDIO 管理的外部 PHY，还是 I2C&#x2F;SFP 模块；如果是 <code>PCIE_SERDES</code> 或 I2C 类型 SGMII，就会尝试读取 SFP EEPROM 确认介质类型。最后它会初始化 MAC、NVM、PHY 的参数和 ops；对于 82576、i350 这类支持 SR-IOV 的设备，还会初始化 mailbox。</p>
+<p><code>igb_get_invariants_82575()</code> 识别出网卡型号和接口类型后，驱动接下来就需要根据这些硬件信息初始化 MAC 层和PHY层的回调函数集合，这里重点关注MAC层的初始化，对应的代码为<code>igb_init_mac_params_82575</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> s32 <span class="title function_">igb_init_mac_params_82575</span><span class="params">(<span class="keyword">struct</span> e1000_hw *hw)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">e1000_mac_info</span> *<span class="title">mac</span> =</span> &amp;hw-&gt;mac;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">e1000_dev_spec_82575</span> *<span class="title">dev_spec</span> =</span> &amp;hw-&gt;dev_spec._82575;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Set mta register count */</span></span><br><span class="line">	<span class="comment">//多播地址过滤表</span></span><br><span class="line">	mac-&gt;mta_reg_count = <span class="number">128</span>;</span><br><span class="line">	<span class="comment">/* Set uta register count */</span></span><br><span class="line">	<span class="comment">//单播地址过滤表,hash匹配</span></span><br><span class="line">	mac-&gt;uta_reg_count = (hw-&gt;mac.type == e1000_82575) ? <span class="number">0</span> : <span class="number">128</span>;</span><br><span class="line">	<span class="comment">/* Set rar entry count */</span></span><br><span class="line">	<span class="comment">//精确 MAC 地址匹配</span></span><br><span class="line">	<span class="keyword">switch</span> (mac-&gt;type) &#123;</span><br><span class="line">	<span class="keyword">case</span> e1000_82576:</span><br><span class="line">		mac-&gt;rar_entry_count = E1000_RAR_ENTRIES_82576;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> e1000_82580:</span><br><span class="line">		mac-&gt;rar_entry_count = E1000_RAR_ENTRIES_82580;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> e1000_i350:</span><br><span class="line">	<span class="keyword">case</span> e1000_i354:</span><br><span class="line">		mac-&gt;rar_entry_count = E1000_RAR_ENTRIES_I350;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		mac-&gt;rar_entry_count = E1000_RAR_ENTRIES_82575;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">/* reset */</span></span><br><span class="line">	<span class="comment">//设置复位函数</span></span><br><span class="line">	<span class="keyword">if</span> (mac-&gt;type &gt;= e1000_82580)</span><br><span class="line">		mac-&gt;ops.reset_hw = igb_reset_hw_82580;</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		mac-&gt;ops.reset_hw = igb_reset_hw_82575;</span><br><span class="line">	<span class="comment">//保证驱动和固件同步的函数</span></span><br><span class="line">	<span class="keyword">if</span> (mac-&gt;type &gt;= e1000_i210) &#123;</span><br><span class="line">		mac-&gt;ops.acquire_swfw_sync = igb_acquire_swfw_sync_i210;</span><br><span class="line">		mac-&gt;ops.release_swfw_sync = igb_release_swfw_sync_i210;</span><br><span class="line"></span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		mac-&gt;ops.acquire_swfw_sync = igb_acquire_swfw_sync_82575;</span><br><span class="line">		mac-&gt;ops.release_swfw_sync = igb_release_swfw_sync_82575;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//设置VLAN过滤表</span></span><br><span class="line">	<span class="keyword">if</span> ((hw-&gt;mac.type == e1000_i350) || (hw-&gt;mac.type == e1000_i354))</span><br><span class="line">		mac-&gt;ops.write_vfta = igb_write_vfta_i350;</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		mac-&gt;ops.write_vfta = igb_write_vfta;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Set if part includes ASF firmware */</span></span><br><span class="line">	mac-&gt;asf_firmware_present = <span class="literal">true</span>;</span><br><span class="line">	<span class="comment">/* Set if manageability features are enabled. */</span></span><br><span class="line">	mac-&gt;arc_subsystem_valid =</span><br><span class="line">		(rd32(E1000_FWSM) &amp; E1000_FWSM_MODE_MASK)</span><br><span class="line">			? <span class="literal">true</span> : <span class="literal">false</span>;</span><br><span class="line">	<span class="comment">/* enable EEE on i350 parts and later parts */</span></span><br><span class="line">	<span class="comment">//根据 MAC 类型决定是否启用 EEE,好像是低功耗相关</span></span><br><span class="line">	<span class="keyword">if</span> (mac-&gt;type &gt;= e1000_i350)</span><br><span class="line">		dev_spec-&gt;eee_disable = <span class="literal">false</span>;</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		dev_spec-&gt;eee_disable = <span class="literal">true</span>;</span><br><span class="line">	<span class="comment">/* Allow a single clear of the SW semaphore on I210 and newer */</span></span><br><span class="line">	<span class="keyword">if</span> (mac-&gt;type &gt;= e1000_i210)</span><br><span class="line">		dev_spec-&gt;clear_semaphore_once = <span class="literal">true</span>;</span><br><span class="line">	<span class="comment">/* physical interface link setup */</span></span><br><span class="line">	<span class="comment">//配置 MAC 内部的 SerDes/PCS 模块的回调</span></span><br><span class="line">	mac-&gt;ops.setup_physical_interface =</span><br><span class="line">		(hw-&gt;phy.media_type == e1000_media_type_copper)</span><br><span class="line">			? igb_setup_copper_link_82575<span class="comment">//rj45</span></span><br><span class="line">			: igb_setup_serdes_link_82575; <span class="comment">//SerDes 光口</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (mac-&gt;type == e1000_82580 || mac-&gt;type == e1000_i350) &#123;</span><br><span class="line">		<span class="keyword">switch</span> (hw-&gt;device_id) &#123;</span><br><span class="line">		<span class="comment">/* feature not supported on these id&#x27;s */</span></span><br><span class="line">		<span class="keyword">case</span> E1000_DEV_ID_DH89XXCC_SGMII:</span><br><span class="line">		<span class="keyword">case</span> E1000_DEV_ID_DH89XXCC_SERDES:</span><br><span class="line">		<span class="keyword">case</span> E1000_DEV_ID_DH89XXCC_BACKPLANE:</span><br><span class="line">		<span class="keyword">case</span> E1000_DEV_ID_DH89XXCC_SFP:</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="keyword">default</span>:</span><br><span class="line">			hw-&gt;dev_spec._82575.mas_capable = <span class="literal">true</span>;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>这段 <code>igb_init_mac_params_82575()</code> 的作用是根据前面已经识别出来的 <code>mac-&gt;type</code>，初始化 MAC 层的一些固定参数和操作函数。它首先设置多播过滤表、单播 hash 过滤表，以及精确 MAC 地址表，然后函给 <code>mac-&gt;ops</code> 挂上对应的硬件操作函数，比如不同芯片使用不同的 reset 函数，最后，函数根据前面识别出来的 <code>media_type</code> 选择链路初始化函数。</p>
+<p>回到<code>igb_probe</code>中，获取硬件型号并绑定具体的ops之后，会调用<code>igb_sw_init</code>根据具体的型号，设置队列数以及申请中断向量等操作，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">igb_sw_init</span><span class="params">(<span class="keyword">struct</span> igb_adapter *adapter)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">e1000_hw</span> *<span class="title">hw</span> =</span> &amp;adapter-&gt;hw;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">netdev</span> =</span> adapter-&gt;netdev;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">pci_dev</span> *<span class="title">pdev</span> =</span> adapter-&gt;pdev;</span><br><span class="line">	<span class="comment">//把 PCI 设备当前的 command 配置保存下来</span></span><br><span class="line">	pci_read_config_word(pdev, PCI_COMMAND, &amp;hw-&gt;bus.pci_cmd_word);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* set default ring sizes */</span></span><br><span class="line">	<span class="comment">//设置默认 TX/RX ring 大小</span></span><br><span class="line">	adapter-&gt;tx_ring_count = IGB_DEFAULT_TXD;</span><br><span class="line">	adapter-&gt;rx_ring_count = IGB_DEFAULT_RXD;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* set default ITR values */</span></span><br><span class="line">	<span class="comment">//中断节流 意思是不要每收到一个包就触发一次中断</span></span><br><span class="line">	adapter-&gt;rx_itr_setting = IGB_DEFAULT_ITR;</span><br><span class="line">	adapter-&gt;tx_itr_setting = IGB_DEFAULT_ITR;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* set default work limits */</span></span><br><span class="line">	<span class="comment">//一次最多清理多少个 TX 完成描述符</span></span><br><span class="line">	adapter-&gt;tx_work_limit = IGB_DEFAULT_TX_WORK;</span><br><span class="line"></span><br><span class="line">	adapter-&gt;max_frame_size = netdev-&gt;mtu + IGB_ETH_PKT_HDR_PAD;</span><br><span class="line">	adapter-&gt;min_frame_size = ETH_ZLEN + ETH_FCS_LEN;</span><br><span class="line">	<span class="comment">//设置最大帧大小</span></span><br><span class="line">	spin_lock_init(&amp;adapter-&gt;nfc_lock);</span><br><span class="line">	spin_lock_init(&amp;adapter-&gt;stats64_lock);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* init spinlock to avoid concurrency of VF resources */</span></span><br><span class="line">	<span class="comment">//SR-IOV VF 数量</span></span><br><span class="line">	spin_lock_init(&amp;adapter-&gt;vfs_lock);</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_PCI_IOV</span></span><br><span class="line">	<span class="keyword">switch</span> (hw-&gt;mac.type) &#123;</span><br><span class="line">	<span class="keyword">case</span> e1000_82576:</span><br><span class="line">	<span class="keyword">case</span> e1000_i350:</span><br><span class="line">		<span class="keyword">if</span> (max_vfs &gt; <span class="number">7</span>) &#123;</span><br><span class="line">			dev_warn(&amp;pdev-&gt;dev,</span><br><span class="line">				 <span class="string">&quot;Maximum of 7 VFs per PF, using max\n&quot;</span>);</span><br><span class="line">			max_vfs = adapter-&gt;vfs_allocated_count = <span class="number">7</span>;</span><br><span class="line">		&#125; <span class="keyword">else</span></span><br><span class="line">			adapter-&gt;vfs_allocated_count = max_vfs;</span><br><span class="line">		<span class="keyword">if</span> (adapter-&gt;vfs_allocated_count)</span><br><span class="line">			dev_warn(&amp;pdev-&gt;dev,</span><br><span class="line">				 <span class="string">&quot;Enabling SR-IOV VFs using the module parameter is deprecated - please use the pci sysfs interface.\n&quot;</span>);</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span> <span class="comment">/* CONFIG_PCI_IOV */</span></span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Assume MSI-X interrupts, will be checked during IRQ allocation */</span></span><br><span class="line">	<span class="comment">//支持 MSI-X</span></span><br><span class="line">	adapter-&gt;flags |= IGB_FLAG_HAS_MSIX;</span><br><span class="line">	<span class="comment">//分配 MAC 地址表</span></span><br><span class="line">	adapter-&gt;mac_table = kcalloc(hw-&gt;mac.rar_entry_count,</span><br><span class="line">				     <span class="keyword">sizeof</span>(<span class="keyword">struct</span> igb_mac_addr),</span><br><span class="line">				     GFP_KERNEL);</span><br><span class="line">	<span class="keyword">if</span> (!adapter-&gt;mac_table)</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">	<span class="comment">//sriov相关</span></span><br><span class="line">	igb_probe_vfs(adapter);</span><br><span class="line">	<span class="comment">//计算队列数量根据cpu和芯片类型</span></span><br><span class="line">	igb_init_queue_configuration(adapter);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Setup and initialize a copy of the hw vlan table array */</span></span><br><span class="line">	<span class="comment">//vlan过滤表</span></span><br><span class="line">	adapter-&gt;shadow_vfta = kcalloc(E1000_VLAN_FILTER_TBL_SIZE, <span class="keyword">sizeof</span>(u32),</span><br><span class="line">				       GFP_KERNEL);</span><br><span class="line">	<span class="keyword">if</span> (!adapter-&gt;shadow_vfta)</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* This call may decrease the number of queues */</span></span><br><span class="line">	<span class="comment">//申请中断向量</span></span><br><span class="line">	<span class="keyword">if</span> (igb_init_interrupt_scheme(adapter, <span class="literal">true</span>)) &#123;</span><br><span class="line">		dev_err(&amp;pdev-&gt;dev, <span class="string">&quot;Unable to allocate memory for queues\n&quot;</span>);</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Explicitly disable IRQ since the NIC can be in any state. */</span></span><br><span class="line">	<span class="comment">//关闭中断</span></span><br><span class="line">	igb_irq_disable(adapter);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (hw-&gt;mac.type &gt;= e1000_i350)</span><br><span class="line">		adapter-&gt;flags &amp;= ~IGB_FLAG_DMAC;</span><br><span class="line">	<span class="comment">//先设置为down</span></span><br><span class="line">	set_bit(__IGB_DOWN, &amp;adapter-&gt;state);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">igb_init_queue_configuration</span><span class="params">(<span class="keyword">struct</span> igb_adapter *adapter)</span></span><br><span class="line">&#123;</span><br><span class="line">	u32 max_rss_queues;</span><br><span class="line">	<span class="comment">//根据不同的芯片返回不同的队列数</span></span><br><span class="line">	max_rss_queues = igb_get_max_rss_queues(adapter);</span><br><span class="line">	<span class="comment">//根据cpu数在限制一下</span></span><br><span class="line">	adapter-&gt;rss_queues = <span class="type">min_t</span>(u32, max_rss_queues, num_online_cpus());</span><br><span class="line">	<span class="comment">//计算是否需要节省中断向量</span></span><br><span class="line">	igb_set_flag_queue_pairs(adapter, max_rss_queues);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>igb_sw_init</code>主要负责 软件资源初始化。它会先设置默认的 TX&#x2F;RX ring 大小、中断节流 ITR、TX 清理上限、最大&#x2F;最小帧长度，并初始化一些自旋锁。然后根据前面识别出来的硬件类型处理 SR-IOV VF 数量，默认标记支持 MSI-X，分配驱动维护的 MAC 地址表和 VLAN 过滤表。接着调用 <code>igb_init_queue_configuration</code>和 <code>igb_init_interrupt_scheme</code>，队列数量和中断&#x2F;ring 资源的初始化。最后关闭中断。</p>
+<p>上述代码的核心是调用<code>igb_init_interrupt_scheme</code>，完成了中断向量的申请，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">igb_init_interrupt_scheme</span><span class="params">(<span class="keyword">struct</span> igb_adapter *adapter, <span class="type">bool</span> msix)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">pci_dev</span> *<span class="title">pdev</span> =</span> adapter-&gt;pdev;</span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="comment">//申请中断向量</span></span><br><span class="line">	igb_set_interrupt_capability(adapter, msix);</span><br><span class="line">	<span class="comment">//申请管理队列的结构 qvector</span></span><br><span class="line">	err = igb_alloc_q_vectors(adapter);</span><br><span class="line">	<span class="keyword">if</span> (err) &#123;</span><br><span class="line">		dev_err(&amp;pdev-&gt;dev, <span class="string">&quot;Unable to allocate memory for vectors\n&quot;</span>);</span><br><span class="line">		<span class="keyword">goto</span> err_alloc_q_vectors;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//记录队列编号</span></span><br><span class="line">	igb_cache_ring_register(adapter);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">err_alloc_q_vectors:</span><br><span class="line">	igb_reset_interrupt_capability(adapter);</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">igb_set_interrupt_capability</span><span class="params">(<span class="keyword">struct</span> igb_adapter *adapter, <span class="type">bool</span> msix)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="type">int</span> numvecs, i;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!msix)</span><br><span class="line">		<span class="keyword">goto</span> msi_only;</span><br><span class="line">	adapter-&gt;flags |= IGB_FLAG_HAS_MSIX;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Number of supported queues. */</span></span><br><span class="line">	<span class="comment">//确定队列数量</span></span><br><span class="line">	adapter-&gt;num_rx_queues = adapter-&gt;rss_queues;</span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;vfs_allocated_count)</span><br><span class="line">		adapter-&gt;num_tx_queues = <span class="number">1</span>;</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		adapter-&gt;num_tx_queues = adapter-&gt;rss_queues;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* start with one vector for every Rx queue */</span></span><br><span class="line">	numvecs = adapter-&gt;num_rx_queues;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* if Tx handler is separate add 1 for every Tx queue */</span></span><br><span class="line">	<span class="comment">//没启用 queue pair 也就是tx rx没成对儿</span></span><br><span class="line">	<span class="keyword">if</span> (!(adapter-&gt;flags &amp; IGB_FLAG_QUEUE_PAIRS))</span><br><span class="line">		numvecs += adapter-&gt;num_tx_queues;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* store the number of vectors reserved for queues */</span></span><br><span class="line">	<span class="comment">//计算 q_vector 数量</span></span><br><span class="line">	adapter-&gt;num_q_vectors = numvecs;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* add 1 vector for link status interrupts */</span></span><br><span class="line">	numvecs++;</span><br><span class="line">	<span class="comment">//初始化 MSI-X entry 编号</span></span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; numvecs; i++)</span><br><span class="line">		adapter-&gt;msix_entries[i].entry = i;</span><br><span class="line">	<span class="comment">//申请中断向量</span></span><br><span class="line">	<span class="comment">//注意这里面会填写vector 也就是Linux IRQ 号</span></span><br><span class="line">	<span class="comment">//其实是操作系统写了msix table ,后续在up的时候会告诉硬件哪个中断号对应哪个队列</span></span><br><span class="line">	<span class="comment">//因为硬件不知道中断向量的概念，只知道中断向量表 告诉硬件某个 Rx/Tx queue 的中断应该触发哪个msixtable</span></span><br><span class="line">	<span class="comment">//request irq的时候会注册对应的回调</span></span><br><span class="line">	err = pci_enable_msix_range(adapter-&gt;pdev,</span><br><span class="line">				    adapter-&gt;msix_entries,</span><br><span class="line">				    numvecs,</span><br><span class="line">				    numvecs);</span><br><span class="line">					</span><br><span class="line">	<span class="comment">//注意上述返回的是MSIx的数量，下面就直接返回了</span></span><br><span class="line">	<span class="keyword">if</span> (err &gt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">	...</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>igb_init_interrupt_scheme()</code> 先调用 <code>igb_set_interrupt_capability()</code> 申请中断能力，优先尝试 MSI-X；在 MSI-X 模式下，驱动会根据 <code>rss_queues</code> 确定 RX&#x2F;TX 队列数量，如果开启了 VF，TX 队列会限制成 1 个。如果 TX&#x2F;RX 成对共用一个中断向量，就主要按 RX 队列数算；如果 TX&#x2F;RX 分开处理，就 RX 队列数加 TX 队列数。除此之外，还会额外多申请 1 个 MSI-X 向量，用来处理 link status 这类非队列中断。<code>pci_enable_msix_range()</code> 成功后，<strong>内核会给 <code>msix_entries[i].vector</code> 填上真正的 Linux IRQ 号</strong>。随后为这些队列中断分配对应的 <code>q_vector</code> 管理结构，最后记录每个 ring 对应的硬件队列寄存器编号。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" rel="tag"># 网卡驱动</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/06/14/IGB/" rel="prev" title="IGB网卡驱动初始化（一）">
+      <i class="fa fa-chevron-left"></i> IGB网卡驱动初始化（一）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">135</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">30</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

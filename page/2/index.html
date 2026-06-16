@@ -193,6 +193,111 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/05/14/ARP(%E4%BA%94)/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2026/05/14/ARP(%E4%BA%94)/" class="post-title-link" itemprop="url">ARP报文的接收与发送（二）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-05-14 22:00:00" itemprop="dateCreated datePublished" datetime="2026-05-14T22:00:00+08:00">2026-05-14</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-05-13 21:32:47" itemprop="dateModified" datetime="2026-05-13T21:32:47+08:00">2026-05-13</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/05/14/ARP(%E4%BA%94)/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/05/14/ARP(%E4%BA%94)/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <p>回到<code>ip_finish_output2</code>中，查找或创建一个表项后，会通过<code>neigh_output</code>继续向下发送数据包，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> <span class="title function_">neigh_output</span><span class="params">(<span class="keyword">struct</span> neighbour *n, <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">                   <span class="type">bool</span> skip_cache)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">hh_cache</span> *<span class="title">hh</span> =</span> &amp;n-&gt;hh;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* n-&gt;nud_state and hh-&gt;hh_len could be changed under us.</span></span><br><span class="line"><span class="comment">     * neigh_hh_output() is taking care of the race later.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="keyword">if</span> (!skip_cache &amp;&amp;</span><br><span class="line">        (READ_ONCE(n-&gt;nud_state) &amp; NUD_CONNECTED) &amp;&amp;</span><br><span class="line">        READ_ONCE(hh-&gt;hh_len))</span><br><span class="line">        <span class="keyword">return</span> neigh_hh_output(hh, skb);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> READ_ONCE(n-&gt;output)(n, skb);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>neigh_output()</code> 是邻居子系统统一的发包入口，它会根据当前 <code>neighbour</code> 的状态决定 <code>skb</code> 如何发送。如果 <code>neighbour</code> 当前处于 <code>NUD_CONNECTED</code> 状态，并且已经缓存好了二层头部 <code>hh_cache</code>，那么就直接走 <code>neigh_hh_output()</code> <strong>快速发送路径（通常应该走这里）</strong>，否则就调用 <code>neighbour</code> 的 <code>output</code> 函数。对于 ARP 场景来说，这里的 <code>output</code> 通常会指向 <code>neigh_resolve_output()</code>，它会进一步判断当前是否已经解析出 MAC 地址，如果没有解析完成，就触发 ARP 请求并把 <code>skb</code> 挂入 <code>arp_queue</code> 等待后续发送（前文已经分析过）。</p>
+<p>上述<code>neigh_hh_output</code>具体实现如下所示:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> <span class="title function_">neigh_hh_output</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> hh_cache *hh, <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> hh_alen = <span class="number">0</span>;</span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> seq;</span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> hh_len;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">do</span> &#123;</span><br><span class="line">        seq = read_seqbegin(&amp;hh-&gt;hh_lock);</span><br><span class="line">        hh_len = READ_ONCE(hh-&gt;hh_len);</span><br><span class="line">        <span class="keyword">if</span> (likely(hh_len &lt;= HH_DATA_MOD)) &#123;</span><br><span class="line">            hh_alen = HH_DATA_MOD;</span><br><span class="line"></span><br><span class="line">            <span class="comment">/* skb_push() would proceed silently if we have room for</span></span><br><span class="line"><span class="comment">             * the unaligned size but not for the aligned size:</span></span><br><span class="line"><span class="comment">             * check headroom explicitly.</span></span><br><span class="line"><span class="comment">             */</span></span><br><span class="line">            <span class="comment">//这里直接memcpy 二层头到数据包中</span></span><br><span class="line">            <span class="keyword">if</span> (likely(skb_headroom(skb) &gt;= HH_DATA_MOD)) &#123;</span><br><span class="line">                <span class="comment">/* this is inlined by gcc */</span></span><br><span class="line">                <span class="built_in">memcpy</span>(skb-&gt;data - HH_DATA_MOD, hh-&gt;hh_data,</span><br><span class="line">                       HH_DATA_MOD);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            hh_alen = HH_DATA_ALIGN(hh_len);</span><br><span class="line"></span><br><span class="line">            <span class="keyword">if</span> (likely(skb_headroom(skb) &gt;= hh_alen)) &#123;</span><br><span class="line">                <span class="built_in">memcpy</span>(skb-&gt;data - hh_alen, hh-&gt;hh_data,</span><br><span class="line">                       hh_alen);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125; <span class="keyword">while</span> (read_seqretry(&amp;hh-&gt;hh_lock, seq));</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (WARN_ON_ONCE(skb_headroom(skb) &lt; hh_alen)) &#123;</span><br><span class="line">        kfree_skb(skb);</span><br><span class="line">        <span class="keyword">return</span> NET_XMIT_DROP;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//直接调用dev_queue_xmit</span></span><br><span class="line">    __skb_push(skb, hh_len);</span><br><span class="line">    <span class="keyword">return</span> dev_queue_xmit(skb);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>neigh_hh_output()</code> 走的是邻居子系统的快速发送路径。二层头已经缓存在 <code>hh_cache</code> 里，所以这里不需要再走 ARP 解析，也不需要重新拼 Ethernet 头。直接拷贝到 <code>skb</code> 头部空间里，最后<code>dev_queue_xmit()</code> 调用交给 <code>qdisc</code> 。</p>
+<h3 id="ARP报文的接收"><a href="#ARP报文的接收" class="headerlink" title="ARP报文的接收"></a>ARP报文的接收</h3><p>协议栈收到数据包后，若 <code>EtherType</code> 为 <code>ETH_P_ARP (0x6)</code>，内核就会将该 <code>skb</code> 上送给 ARP 模块注册的包处理函数 <code>arp_rcv()</code>。这个函数可以说是 Linux ARP 子系统真正意义上的入口，它负责对 ARP 报文进行合法性校验、过滤异常场景、检查设备状态，并最终调用 <code>arp_process()</code> 对 ARP 请求或响应进行处理。</p>
+<p>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">arp_rcv</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, <span class="keyword">struct</span> net_device *dev,</span></span><br><span class="line"><span class="params">           <span class="keyword">struct</span> packet_type *pt, <span class="keyword">struct</span> net_device *orig_dev)</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">arphdr</span> *<span class="title">arp</span>;</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">/* do not tweak dropwatch on an ARP we will ignore */</span></span><br><span class="line">    <span class="keyword">if</span> (dev-&gt;flags &amp; IFF_NOARP ||</span><br><span class="line">        skb-&gt;pkt_type == PACKET_OTHERHOST ||</span><br><span class="line">        skb-&gt;pkt_type == PACKET_LOOPBACK)</span><br><span class="line">        <span class="keyword">goto</span> consumeskb;</span><br><span class="line"></span><br><span class="line">    skb = skb_share_check(skb, GFP_ATOMIC);</span><br><span class="line">    <span class="keyword">if</span> (!skb)</span><br><span class="line">        <span class="keyword">goto</span> out_of_mem;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* ARP header, plus 2 device addresses, plus 2 IP addresses.  */</span></span><br><span class="line">    <span class="comment">//拉一下arp头</span></span><br><span class="line">    <span class="keyword">if</span> (!pskb_may_pull(skb, arp_hdr_len(dev)))</span><br><span class="line">        <span class="keyword">goto</span> freeskb;</span><br><span class="line">    <span class="comment">//非法检查</span></span><br><span class="line">    arp = arp_hdr(skb);</span><br><span class="line">    <span class="keyword">if</span> (arp-&gt;ar_hln != dev-&gt;addr_len || arp-&gt;ar_pln != <span class="number">4</span>)</span><br><span class="line">        <span class="keyword">goto</span> freeskb;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">memset</span>(NEIGH_CB(skb), <span class="number">0</span>, <span class="keyword">sizeof</span>(<span class="keyword">struct</span> neighbour_cb));</span><br><span class="line">    <span class="comment">//经过netfilter后给arp_process</span></span><br><span class="line">    <span class="keyword">return</span> NF_HOOK(NFPROTO_ARP, NF_ARP_IN,</span><br><span class="line">               dev_net(dev), <span class="literal">NULL</span>, skb, dev, <span class="literal">NULL</span>,</span><br><span class="line">               arp_process);</span><br><span class="line"></span><br><span class="line">consumeskb:</span><br><span class="line">    consume_skb(skb);</span><br><span class="line">    <span class="keyword">return</span> NET_RX_SUCCESS;</span><br><span class="line">freeskb:</span><br><span class="line">    kfree_skb(skb);</span><br><span class="line">out_of_mem:</span><br><span class="line">    <span class="keyword">return</span> NET_RX_DROP;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2026/05/14/ARP(%E4%BA%94)/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2026/05/12/ARP(%E5%9B%9B)/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1166,112 +1271,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/14/%E7%BD%91%E5%8D%A1%E9%98%9F%E5%88%97%E7%9A%84%E9%80%89%E6%8B%A9/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2026/04/14/%E7%BD%91%E5%8D%A1%E9%98%9F%E5%88%97%E7%9A%84%E9%80%89%E6%8B%A9/" class="post-title-link" itemprop="url">网卡TX队列选择</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2026-04-14 22:00:00" itemprop="dateCreated datePublished" datetime="2026-04-14T22:00:00+08:00">2026-04-14</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2026-04-15 20:05:52" itemprop="dateModified" datetime="2026-04-15T20:05:52+08:00">2026-04-15</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2026/04/14/%E7%BD%91%E5%8D%A1%E9%98%9F%E5%88%97%E7%9A%84%E9%80%89%E6%8B%A9/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2026/04/14/%E7%BD%91%E5%8D%A1%E9%98%9F%E5%88%97%E7%9A%84%E9%80%89%E6%8B%A9/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p>在 Linux 内核发包路径中，skb 在进入驱动之前必须先确定一个发送队列（TX queue），对于多队列网卡，这个选择通常在 dev_queue_xmit 过程中通过 netdev_core_pick_tx() 完成，可能基于flow hash以及 XPS 配置等因素计算得到，最终结果写入 <strong>skb-&gt;queue_mapping</strong> 并决定后续使用的 struct netdev_queue。</p>
-<h2 id="netdev-core-pick-tx"><a href="#netdev-core-pick-tx" class="headerlink" title="netdev_core_pick_tx"></a><code>netdev_core_pick_tx</code></h2><p><code>netdev_core_pick_tx</code>在<code>__dev_queue_xmit</code>种被调用，核心思想<strong>是在发包时为 skb 选择一个 TX 队列并记录</strong>，如果网卡是多队列设备，优先调用驱动提供的 <code>ndo_select_queue</code>，否则走内核默认的 <code>netdev_core_pick_tx()</code>（通常基于 flow hash &#x2F; XPS 等），然后对得到的队列索引，最终通过 <code>skb_set_queue_mapping()</code> 写入 <code>skb-&gt;queue_mapping</code>，并返回对应的 <code>struct netdev_queue</code>，后续会把这个队列索引传递给驱动，具体实现如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> netdev_queue *<span class="title function_">netdev_core_pick_tx</span><span class="params">(<span class="keyword">struct</span> net_device *dev,</span></span><br><span class="line"><span class="params">					 <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">					 <span class="keyword">struct</span> net_device *sb_dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> queue_index = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_XPS</span></span><br><span class="line">	u32 sender_cpu = skb-&gt;sender_cpu - <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (sender_cpu &gt;= (u32)NR_CPUS)</span><br><span class="line">		skb-&gt;sender_cpu = raw_smp_processor_id() + <span class="number">1</span>;<span class="comment">//获取当前cpu</span></span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	<span class="comment">//多队列的情况</span></span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;real_num_tx_queues != <span class="number">1</span>) &#123;</span><br><span class="line">		<span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">net_device_ops</span> *<span class="title">ops</span> =</span> dev-&gt;netdev_ops;</span><br><span class="line">		<span class="comment">//网卡如果注册了选择队列的回调</span></span><br><span class="line">		<span class="keyword">if</span> (ops-&gt;ndo_select_queue)</span><br><span class="line">			queue_index = ops-&gt;ndo_select_queue(dev, skb, sb_dev);</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">		<span class="comment">//否则就内核选队列 </span></span><br><span class="line">			queue_index = netdev_pick_tx(dev, skb, sb_dev);</span><br><span class="line">		<span class="comment">//合法性检查</span></span><br><span class="line">		queue_index = netdev_cap_txqueue(dev, queue_index);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//记录，网卡驱动用到就是这个</span></span><br><span class="line">	skb_set_queue_mapping(skb, queue_index);</span><br><span class="line">	<span class="keyword">return</span> netdev_get_tx_queue(dev, queue_index);<span class="comment">//返回对应的队列结构</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<p> 如果网卡驱动没有实现对应选择队列的回调，就会调用<code>netdev_pick_tx</code>让内核来选择一个发送队列，具体实现如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//这里最后一个参数大概率是空</span></span><br><span class="line">u16 <span class="title function_">netdev_pick_tx</span><span class="params">(<span class="keyword">struct</span> net_device *dev, <span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">		     <span class="keyword">struct</span> net_device *sb_dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span> =</span> skb-&gt;sk;</span><br><span class="line">	<span class="comment">//先取 socket 之前记住的发送队列 上次是用的哪个</span></span><br><span class="line">	<span class="type">int</span> queue_index = sk_tx_queue_get(sk);</span><br><span class="line"></span><br><span class="line">	sb_dev = sb_dev ? : dev;</span><br><span class="line">	<span class="comment">//没初始化过或者上层容许重新选择发送队列</span></span><br><span class="line">	<span class="keyword">if</span> (queue_index &lt; <span class="number">0</span> || skb-&gt;ooo_okay ||  <span class="comment">//注意这个ooo_okay是几乎没有流量的时候设置的</span></span><br><span class="line">	    queue_index &gt;= dev-&gt;real_num_tx_queues) &#123; <span class="comment">//队列越界</span></span><br><span class="line">		<span class="type">int</span> new_index = get_xps_queue(dev, sb_dev, skb);<span class="comment">//通过</span></span><br><span class="line">			<span class="comment">//没选出来</span></span><br><span class="line">		<span class="keyword">if</span> (new_index &lt; <span class="number">0</span>)</span><br><span class="line">			<span class="comment">//hash算法选一个</span></span><br><span class="line">			new_index = skb_tx_hash(dev, sb_dev, skb);</span><br><span class="line">		<span class="comment">//新选出出来的和原来的不同</span></span><br><span class="line">		<span class="keyword">if</span> (queue_index != new_index &amp;&amp; sk &amp;&amp;</span><br><span class="line">		    sk_fullsock(sk) &amp;&amp;</span><br><span class="line">		    rcu_access_pointer(sk-&gt;sk_dst_cache))</span><br><span class="line">			<span class="comment">//重新设置</span></span><br><span class="line">			sk_tx_queue_set(sk, new_index);</span><br><span class="line">		<span class="comment">//返回</span></span><br><span class="line">		queue_index = new_index;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> queue_index;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">sk_tx_queue_set</span><span class="params">(<span class="keyword">struct</span> sock *sk, <span class="type">int</span> tx_queue)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/* sk_tx_queue_mapping accept only upto a 16-bit value */</span></span><br><span class="line">	<span class="keyword">if</span> (WARN_ON_ONCE((<span class="type">unsigned</span> <span class="type">short</span>)tx_queue &gt;= USHRT_MAX))</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	sk-&gt;sk_tx_queue_mapping = tx_queue;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> <span class="title function_">sk_tx_queue_get</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> sock *sk)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">if</span> (sk &amp;&amp; sk-&gt;sk_tx_queue_mapping != NO_QUEUE_MAPPING)</span><br><span class="line">		<span class="keyword">return</span> sk-&gt;sk_tx_queue_mapping;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<p>上述代码的核心就是<strong>在复用已有队列和重新选队列之间做决策</strong>，优先从 socket 里取之前缓存的发送队列（<code>sk_tx_queue_get</code>），如果这个队列合法且允许继续用，就直接复用，否则（比如第一次发送、队列越界、或允许乱序 <code>ooo_okay</code>）就重新选择，优先尝试用 XPS，选不到再用 flow hash，如果选出的新队列和旧的不一样，还会把结果缓存回 sk，方便后续复用，最终返回 queue_index。</p>
-<p>上述通过<code>xps</code>选择队列的实现如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//xps_maps是用户通过sys文件写出去的</span></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">get_xps_queue</span><span class="params">(<span class="keyword">struct</span> net_device *dev, <span class="keyword">struct</span> net_device *sb_dev,</span></span><br><span class="line"><span class="params">			 <span class="keyword">struct</span> sk_buff *skb)</span></span><br><span class="line">&#123;</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_XPS</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">xps_dev_maps</span> *<span class="title">dev_maps</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sock</span> *<span class="title">sk</span> =</span> skb-&gt;sk;</span><br><span class="line">	<span class="type">int</span> queue_index = <span class="number">-1</span>;</span><br><span class="line">	<span class="comment">//没开启 直接-1 通过sys开启</span></span><br><span class="line">	<span class="keyword">if</span> (!static_key_false(&amp;xps_needed))</span><br><span class="line">		<span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line"></span><br><span class="line">	rcu_read_lock();</span><br><span class="line">	<span class="comment">//是否启用了 RXQS 类型的 XPS</span></span><br><span class="line">	<span class="keyword">if</span> (!static_key_false(&amp;xps_rxqs_needed))</span><br><span class="line">		<span class="keyword">goto</span> get_cpus_map;</span><br><span class="line">	<span class="comment">//启用的情况</span></span><br><span class="line">	dev_maps = rcu_dereference(sb_dev-&gt;xps_maps[XPS_RXQS]);</span><br><span class="line">	<span class="keyword">if</span> (dev_maps) &#123;</span><br><span class="line">		<span class="type">int</span> tci = sk_rx_queue_get(sk);<span class="comment">//没找到接收方向设置的地方，大概率是-1把</span></span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (tci &gt;= <span class="number">0</span>)<span class="comment">//根据tci 和tc 选一个队列</span></span><br><span class="line">			queue_index = __get_xps_queue_idx(dev, skb, dev_maps,</span><br><span class="line">							  tci);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//没通过rxqs找到对应的队列</span></span><br><span class="line">get_cpus_map:</span><br><span class="line">	<span class="comment">//按 CPU 选 TX 队列。</span></span><br><span class="line">	<span class="keyword">if</span> (queue_index &lt; <span class="number">0</span>) &#123;</span><br><span class="line">		dev_maps = rcu_dereference(sb_dev-&gt;xps_maps[XPS_CPUS]);</span><br><span class="line">		<span class="keyword">if</span> (dev_maps) &#123;</span><br><span class="line">			<span class="type">unsigned</span> <span class="type">int</span> tci = skb-&gt;sender_cpu - <span class="number">1</span>;</span><br><span class="line">			<span class="comment">//同上</span></span><br><span class="line">			queue_index = __get_xps_queue_idx(dev, skb, dev_maps,</span><br><span class="line">							  tci);</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	rcu_read_unlock();</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> queue_index;</span><br><span class="line"><span class="meta">#<span class="keyword">else</span></span></span><br><span class="line">	<span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p>上述代码实现的是 <strong>XPS（Transmit Packet Steering）选队列逻辑</strong>，如果系统没有开启 XPS，直接返回 ，否则优先走 <strong>RXQS 模式</strong>（如果开启了 <code>xps_rxqs_needed</code>），尝试根据 sk 的接收队列去匹配一个对应的 TX 队列，实现收发队列对齐(这里分析代码感觉大概率是返回-1)，再退化为 <strong>按 CPU 选队列</strong>（<code>XPS_CPUS</code>），根据发送的<code>cpu</code>找到该 CPU 绑定的 TX 队列，最终通过 <code>__get_xps_queue_idx</code> 从用户配置的 <code>xps_maps</code> 中选出一个队列。</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2026/04/14/%E7%BD%91%E5%8D%A1%E9%98%9F%E5%88%97%E7%9A%84%E9%80%89%E6%8B%A9/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1341,7 +1340,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">134</span>
+          <span class="site-state-item-count">135</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
