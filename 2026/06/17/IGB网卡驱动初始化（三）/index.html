@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="完成网卡基本资源初始化之后，驱动还需要建立一些异步处理机制，像链路状态变化、发送队列是否hang住、是否需要复位，这些都需要看门狗机制进行检查。igb 驱动这里就初始化了watchdog_timer 定时触发 igb_watchdog，再由它调度真正干活的 igb_watchdog_task。具体代码如下所示： 1234567891011121314151617181920212223242526">
+<meta property="og:type" content="article">
+<meta property="og:title" content="IGB网卡驱动初始化（三）">
+<meta property="og:url" content="http://example.com/2026/06/17/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%89%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="完成网卡基本资源初始化之后，驱动还需要建立一些异步处理机制，像链路状态变化、发送队列是否hang住、是否需要复位，这些都需要看门狗机制进行检查。igb 驱动这里就初始化了watchdog_timer 定时触发 igb_watchdog，再由它调度真正干活的 igb_watchdog_task。具体代码如下所示： 1234567891011121314151617181920212223242526">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-06-17T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-06-17T14:19:52.214Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="网卡驱动">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/06/17/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%89%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>IGB网卡驱动初始化（三） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/06/17/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%89%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          IGB网卡驱动初始化（三）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-06-17 22:00:00 / 修改时间：22:19:52" itemprop="dateCreated datePublished" datetime="2026-06-17T22:00:00+08:00">2026-06-17</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" itemprop="url" rel="index"><span itemprop="name">IGB网卡驱动</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/06/17/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%89%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/06/17/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%89%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>完成网卡基本资源初始化之后，驱动还需要建立一些异步处理机制，像链路状态变化、发送队列是否<code>hang</code>住、是否需要复位，这些都需要看门狗机制进行检查。igb 驱动这里就初始化了watchdog_timer 定时触发 igb_watchdog，再由它调度真正干活的 igb_watchdog_task。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br><span class="line">217</span><br><span class="line">218</span><br><span class="line">219</span><br><span class="line">220</span><br><span class="line">221</span><br><span class="line">222</span><br><span class="line">223</span><br><span class="line">224</span><br><span class="line">225</span><br><span class="line">226</span><br><span class="line">227</span><br><span class="line">228</span><br><span class="line">229</span><br><span class="line">230</span><br><span class="line">231</span><br><span class="line">232</span><br><span class="line">233</span><br><span class="line">234</span><br><span class="line">235</span><br><span class="line">236</span><br><span class="line">237</span><br><span class="line">238</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">igb_watchdog_task</span><span class="params">(<span class="keyword">struct</span> work_struct *work)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">igb_adapter</span> *<span class="title">adapter</span> =</span> container_of(work,</span><br><span class="line">						   <span class="keyword">struct</span> igb_adapter,</span><br><span class="line">						   watchdog_task);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">e1000_hw</span> *<span class="title">hw</span> =</span> &amp;adapter-&gt;hw;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">e1000_phy_info</span> *<span class="title">phy</span> =</span> &amp;hw-&gt;phy;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">netdev</span> =</span> adapter-&gt;netdev;</span><br><span class="line">	u32 link;</span><br><span class="line">	<span class="type">int</span> i;</span><br><span class="line">	u32 connsw;</span><br><span class="line">	u16 phy_data, retry_count = <span class="number">20</span>;</span><br><span class="line">	<span class="comment">//通过读取phy的寄存器，检测是否link</span></span><br><span class="line">	link = igb_has_link(adapter);</span><br><span class="line">	<span class="comment">//I210的特殊处理</span></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;flags &amp; IGB_FLAG_NEED_LINK_UPDATE) &#123;</span><br><span class="line">		<span class="keyword">if</span> (time_after(jiffies, (adapter-&gt;link_check_timeout + HZ)))</span><br><span class="line">			adapter-&gt;flags &amp;= ~IGB_FLAG_NEED_LINK_UPDATE;</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			link = <span class="literal">false</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Force link down if we have fiber to swap to */</span></span><br><span class="line">	<span class="comment">//NVM相关</span></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;flags &amp; IGB_FLAG_MAS_ENABLE) &#123;</span><br><span class="line">		<span class="keyword">if</span> (hw-&gt;phy.media_type == e1000_media_type_copper) &#123;</span><br><span class="line">			connsw = rd32(E1000_CONNSW);</span><br><span class="line">			<span class="keyword">if</span> (!(connsw &amp; E1000_CONNSW_AUTOSENSE_EN))</span><br><span class="line">				link = <span class="number">0</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> (link) &#123;</span><br><span class="line">		<span class="comment">/* Perform a reset if the media type changed. */</span></span><br><span class="line">		<span class="comment">//如果从铜口变成光纤，直接复位</span></span><br><span class="line">		<span class="keyword">if</span> (hw-&gt;dev_spec._82575.media_changed) &#123;</span><br><span class="line">			hw-&gt;dev_spec._82575.media_changed = <span class="literal">false</span>;</span><br><span class="line">			adapter-&gt;flags |= IGB_FLAG_MEDIA_RESET;</span><br><span class="line">			igb_reset(adapter);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">/* Cancel scheduled suspend requests. */</span></span><br><span class="line">		pm_runtime_resume(netdev-&gt;dev.parent);</span><br><span class="line">		<span class="comment">//如果之前是link down的情况</span></span><br><span class="line">		<span class="keyword">if</span> (!netif_carrier_ok(netdev)) &#123;</span><br><span class="line">			u32 ctrl;</span><br><span class="line">			<span class="comment">//读寄存器获取速率</span></span><br><span class="line">			hw-&gt;mac.ops.get_speed_and_duplex(hw,</span><br><span class="line">							 &amp;adapter-&gt;link_speed,</span><br><span class="line">							 &amp;adapter-&gt;link_duplex);</span><br><span class="line"></span><br><span class="line">			ctrl = rd32(E1000_CTRL);</span><br><span class="line">			<span class="comment">/* Links status message must follow this format */</span></span><br><span class="line">			netdev_info(netdev,</span><br><span class="line">			       <span class="string">&quot;igb: %s NIC Link is Up %d Mbps %s Duplex, Flow Control: %s\n&quot;</span>,</span><br><span class="line">			       netdev-&gt;name,</span><br><span class="line">			       adapter-&gt;link_speed,</span><br><span class="line">			       adapter-&gt;link_duplex == FULL_DUPLEX ?</span><br><span class="line">			       <span class="string">&quot;Full&quot;</span> : <span class="string">&quot;Half&quot;</span>,</span><br><span class="line">			       (ctrl &amp; E1000_CTRL_TFCE) &amp;&amp;</span><br><span class="line">			       (ctrl &amp; E1000_CTRL_RFCE) ? <span class="string">&quot;RX/TX&quot;</span> :</span><br><span class="line">			       (ctrl &amp; E1000_CTRL_RFCE) ?  <span class="string">&quot;RX&quot;</span> :</span><br><span class="line">			       (ctrl &amp; E1000_CTRL_TFCE) ?  <span class="string">&quot;TX&quot;</span> : <span class="string">&quot;None&quot;</span>);</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* disable EEE if enabled */</span></span><br><span class="line">			<span class="comment">//半双工模式下不支持 EEE</span></span><br><span class="line">			<span class="keyword">if</span> ((adapter-&gt;flags &amp; IGB_FLAG_EEE) &amp;&amp;</span><br><span class="line">				(adapter-&gt;link_duplex == HALF_DUPLEX)) &#123;</span><br><span class="line">				dev_info(&amp;adapter-&gt;pdev-&gt;dev,</span><br><span class="line">				<span class="string">&quot;EEE Disabled: unsupported at half duplex. Re-enable using ethtool when at full duplex.\n&quot;</span>);</span><br><span class="line">				adapter-&gt;hw.dev_spec._82575.eee_disable = <span class="literal">true</span>;</span><br><span class="line">				adapter-&gt;flags &amp;= ~IGB_FLAG_EEE;</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* check if SmartSpeed worked */</span></span><br><span class="line">			<span class="comment">//读取寄存器 判断是否信号不好 主动降速了</span></span><br><span class="line">			igb_check_downshift(hw);</span><br><span class="line">			<span class="keyword">if</span> (phy-&gt;speed_downgraded)</span><br><span class="line">				netdev_warn(netdev, <span class="string">&quot;Link Speed was downgraded by SmartSpeed\n&quot;</span>);</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* check for thermal sensor event */</span></span><br><span class="line">			<span class="keyword">if</span> (igb_thermal_sensor_event(hw,</span><br><span class="line">			    E1000_THSTAT_LINK_THROTTLE))</span><br><span class="line">				netdev_info(netdev, <span class="string">&quot;The network adapter link speed was downshifted because it overheated\n&quot;</span>);</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* adjust timeout factor according to speed/duplex */</span></span><br><span class="line">			adapter-&gt;tx_timeout_factor = <span class="number">1</span>;</span><br><span class="line">			<span class="keyword">switch</span> (adapter-&gt;link_speed) &#123;</span><br><span class="line">			<span class="keyword">case</span> SPEED_10:</span><br><span class="line">				adapter-&gt;tx_timeout_factor = <span class="number">14</span>;</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			<span class="keyword">case</span> SPEED_100:</span><br><span class="line">				<span class="comment">/* maybe add some timeout factor ? */</span></span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			<span class="keyword">if</span> (adapter-&gt;link_speed != SPEED_1000 ||</span><br><span class="line">			    !hw-&gt;phy.ops.read_reg)</span><br><span class="line">				<span class="keyword">goto</span> no_wait;</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* wait for Remote receiver status OK */</span></span><br><span class="line">retry_read_status:</span><br><span class="line"><span class="comment">//不是只要本地检测到 1000M link up 就立刻告诉内核。</span></span><br><span class="line"><span class="comment">//驱动还要确认对端 receiver 状态 OK</span></span><br><span class="line">		<span class="keyword">if</span> (!igb_read_phy_reg(hw, PHY_1000T_STATUS,</span><br><span class="line">					      &amp;phy_data)) &#123;</span><br><span class="line">				<span class="keyword">if</span> (!(phy_data &amp; SR_1000T_REMOTE_RX_STATUS) &amp;&amp;</span><br><span class="line">				    retry_count) &#123;</span><br><span class="line">					msleep(<span class="number">100</span>);</span><br><span class="line">					retry_count--;</span><br><span class="line">					<span class="keyword">goto</span> retry_read_status;</span><br><span class="line">				&#125; <span class="keyword">else</span> <span class="keyword">if</span> (!retry_count) &#123;</span><br><span class="line">					dev_err(&amp;adapter-&gt;pdev-&gt;dev, <span class="string">&quot;exceed max 2 second\n&quot;</span>);</span><br><span class="line">				&#125;</span><br><span class="line">			&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">				dev_err(&amp;adapter-&gt;pdev-&gt;dev, <span class="string">&quot;read 1000Base-T Status Reg\n&quot;</span>);</span><br><span class="line">			&#125;</span><br><span class="line">no_wait:</span><br><span class="line">			<span class="comment">//通知内核link up 很关键， 这时候内核才能把数据包交给驱动</span></span><br><span class="line">			netif_carrier_on(netdev);</span><br><span class="line">			<span class="comment">//vf相关</span></span><br><span class="line">			igb_ping_all_vfs(adapter);</span><br><span class="line">			igb_check_vf_rate_limit(adapter);</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* link state has changed, schedule phy info update */</span></span><br><span class="line">			<span class="keyword">if</span> (!test_bit(__IGB_DOWN, &amp;adapter-&gt;state))</span><br><span class="line">				mod_timer(&amp;adapter-&gt;phy_info_timer,</span><br><span class="line">					  round_jiffies(jiffies + <span class="number">2</span> * HZ));</span><br><span class="line">		&#125;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;<span class="comment">//如果之前是up的 现在要变成down</span></span><br><span class="line">		<span class="keyword">if</span> (netif_carrier_ok(netdev)) &#123;</span><br><span class="line">			adapter-&gt;link_speed = <span class="number">0</span>;</span><br><span class="line">			adapter-&gt;link_duplex = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* check for thermal sensor event */</span></span><br><span class="line">			<span class="comment">//过热导致设备停止 读寄存器</span></span><br><span class="line">			<span class="keyword">if</span> (igb_thermal_sensor_event(hw,</span><br><span class="line">			    E1000_THSTAT_PWR_DOWN)) &#123;</span><br><span class="line">				netdev_err(netdev, <span class="string">&quot;The network adapter was stopped because it overheated\n&quot;</span>);</span><br><span class="line">			&#125;</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* Links status message must follow this format */</span></span><br><span class="line">			netdev_info(netdev, <span class="string">&quot;igb: %s NIC Link is Down\n&quot;</span>,</span><br><span class="line">			       netdev-&gt;name);</span><br><span class="line">			<span class="comment">//通知协议栈</span></span><br><span class="line">			netif_carrier_off(netdev);</span><br><span class="line">			<span class="comment">//通知 VF</span></span><br><span class="line">			igb_ping_all_vfs(adapter);</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* link state has changed, schedule phy info update */</span></span><br><span class="line">			<span class="keyword">if</span> (!test_bit(__IGB_DOWN, &amp;adapter-&gt;state))</span><br><span class="line">				mod_timer(&amp;adapter-&gt;phy_info_timer,</span><br><span class="line">					  round_jiffies(jiffies + <span class="number">2</span> * HZ));</span><br><span class="line"></span><br><span class="line">			<span class="comment">/* link is down, time to check for alternate media */</span></span><br><span class="line">			<span class="comment">//是否需要在rj45和光纤切换</span></span><br><span class="line">			<span class="keyword">if</span> (adapter-&gt;flags &amp; IGB_FLAG_MAS_ENABLE) &#123;</span><br><span class="line">				igb_check_swap_media(adapter);</span><br><span class="line">				<span class="keyword">if</span> (adapter-&gt;flags &amp; IGB_FLAG_MEDIA_RESET) &#123;</span><br><span class="line">					schedule_work(&amp;adapter-&gt;reset_task);</span><br><span class="line">					<span class="comment">/* return immediately */</span></span><br><span class="line">					<span class="keyword">return</span>;</span><br><span class="line">				&#125;</span><br><span class="line">			&#125;</span><br><span class="line">			pm_schedule_suspend(netdev-&gt;dev.parent,</span><br><span class="line">					    MSEC_PER_SEC * <span class="number">5</span>);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* also check for alternate media here */</span></span><br><span class="line">		<span class="comment">//本来就是down的</span></span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> (!netif_carrier_ok(netdev) &amp;&amp;</span><br><span class="line">		<span class="comment">//也尝试切换介质</span></span><br><span class="line">			   (adapter-&gt;flags &amp; IGB_FLAG_MAS_ENABLE)) &#123;</span><br><span class="line">			igb_check_swap_media(adapter);</span><br><span class="line">			<span class="keyword">if</span> (adapter-&gt;flags &amp; IGB_FLAG_MEDIA_RESET) &#123;</span><br><span class="line">				schedule_work(&amp;adapter-&gt;reset_task);</span><br><span class="line">				<span class="comment">/* return immediately */</span></span><br><span class="line">				<span class="keyword">return</span>;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//更新ifconfig看到的统计信息</span></span><br><span class="line">	spin_lock(&amp;adapter-&gt;stats64_lock);</span><br><span class="line">	igb_update_stats(adapter);</span><br><span class="line">	spin_unlock(&amp;adapter-&gt;stats64_lock);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; adapter-&gt;num_tx_queues; i++) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">igb_ring</span> *<span class="title">tx_ring</span> =</span> adapter-&gt;tx_ring[i];</span><br><span class="line">		<span class="comment">//如果link down了 但是tx队列还有未完成的描述符，需要复位</span></span><br><span class="line">		<span class="keyword">if</span> (!netif_carrier_ok(netdev)) &#123;</span><br><span class="line">			<span class="comment">/* We&#x27;ve lost link, so the controller stops DMA,</span></span><br><span class="line"><span class="comment">			 * but we&#x27;ve got queued Tx work that&#x27;s never going</span></span><br><span class="line"><span class="comment">			 * to get done, so reset controller to flush Tx.</span></span><br><span class="line"><span class="comment">			 * (Do the reset outside of interrupt context).</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="keyword">if</span> (igb_desc_unused(tx_ring) + <span class="number">1</span> &lt; tx_ring-&gt;count) &#123;</span><br><span class="line">				adapter-&gt;tx_timeout_count++;</span><br><span class="line">				schedule_work(&amp;adapter-&gt;reset_task);</span><br><span class="line">				<span class="comment">/* return immediately since reset is imminent */</span></span><br><span class="line">				<span class="keyword">return</span>;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Force detection of hung controller every watchdog period */</span></span><br><span class="line">		<span class="comment">//设置检查tx hang住的标志</span></span><br><span class="line">		set_bit(IGB_RING_FLAG_TX_DETECT_HANG, &amp;tx_ring-&gt;flags);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Cause software interrupt to ensure Rx ring is cleaned */</span></span><br><span class="line">	<span class="comment">//主动触发软中断， 清rx描述符</span></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;flags &amp; IGB_FLAG_HAS_MSIX) &#123;</span><br><span class="line">		u32 eics = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; adapter-&gt;num_q_vectors; i++)</span><br><span class="line">			eics |= adapter-&gt;q_vector[i]-&gt;eims_value;</span><br><span class="line">		wr32(E1000_EICS, eics);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		wr32(E1000_ICS, E1000_ICS_RXDMT0);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//VF spoof check</span></span><br><span class="line">	igb_spoof_check(adapter);</span><br><span class="line">	igb_ptp_rx_hang(adapter);</span><br><span class="line">	igb_ptp_tx_hang(adapter);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Check LVMMC register on i350/i354 only */</span></span><br><span class="line">	<span class="keyword">if</span> ((adapter-&gt;hw.mac.type == e1000_i350) ||</span><br><span class="line">	    (adapter-&gt;hw.mac.type == e1000_i354))</span><br><span class="line">		igb_check_lvmmc(adapter);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Reset the timer */</span></span><br><span class="line">	<span class="comment">//重新启动定时器</span></span><br><span class="line">	<span class="keyword">if</span> (!test_bit(__IGB_DOWN, &amp;adapter-&gt;state)) &#123;</span><br><span class="line">		<span class="keyword">if</span> (adapter-&gt;flags &amp; IGB_FLAG_NEED_LINK_UPDATE)</span><br><span class="line">			mod_timer(&amp;adapter-&gt;watchdog_timer,</span><br><span class="line">				  round_jiffies(jiffies +  HZ));</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			mod_timer(&amp;adapter-&gt;watchdog_timer,</span><br><span class="line">				  round_jiffies(jiffies + <span class="number">2</span> * HZ));</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>igb_watchdog_task()</code> 是 igb 驱动中的周期性状态维护任务，主要负责链路状态检测、carrier 状态同步以及异常恢复处理。函数开始会通过 <code>igb_has_link()</code> 检查当前物理链路状态，并根据 等场景对 link 结果做修正。如果检测到链路处于 up 状态，并且内核当前认为 carrier 仍然是 down，说明链路刚刚恢复，此时驱动会读取网卡速率和双工模式，打印 link up 信息，检查 EEE、SmartSpeed 降速、温度降速等状态，然后调用 <code>netif_carrier_on()</code> 通知网络栈该设备已经具备发送能力。相反，如果检测到链路 down，而内核当前 carrier 仍然是 up，说明链路刚刚断开，驱动会清空速率和双工信息，打印 link down 日志，并调用 <code>netif_carrier_off()</code> 通知网络栈停止继续向该设备下发数据，同时根据需要进行介质切换或调度复位任务。链路状态处理完成后，watchdog 还会更新设备统计信息，检查 Tx ring 是否存在未完成描述符，设置 Tx hang 检测标志，主动触发一次软件中断以推动 Rx ring 清理，最后，如果设备没有处于 down 状态，则重新设置 <code>watchdog_timer</code>。</p>
+<p>完成上述一些列流程后，最后需要调用 <code>register_netdevice()</code> 将之前申请的网络设备正式注册到内核网络子系统中，只有完成这一步，内核才能通过统一的网络设备框架管理它，用户态也才能看到对应的网卡接口。</p>
+<p><code>register_netdevice</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">register_netdevice</span><span class="params">(<span class="keyword">struct</span> net_device *dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">int</span> ret;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net</span> *<span class="title">net</span> =</span> dev_net(dev);</span><br><span class="line"></span><br><span class="line">	BUILD_BUG_ON(<span class="keyword">sizeof</span>(<span class="type">netdev_features_t</span>) * BITS_PER_BYTE &lt;</span><br><span class="line">		     NETDEV_FEATURE_COUNT);</span><br><span class="line">	BUG_ON(dev_boot_phase);</span><br><span class="line">	ASSERT_RTNL();</span><br><span class="line"></span><br><span class="line">	might_sleep();</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* When net_device&#x27;s are persistent, this will be fatal. */</span></span><br><span class="line">	<span class="comment">//没注册过</span></span><br><span class="line">	BUG_ON(dev-&gt;reg_state != NETREG_UNINITIALIZED);</span><br><span class="line">	BUG_ON(!net);</span><br><span class="line"></span><br><span class="line">	ret = ethtool_check_ops(dev-&gt;ethtool_ops);</span><br><span class="line">	<span class="keyword">if</span> (ret)</span><br><span class="line">		<span class="keyword">return</span> ret;</span><br><span class="line"></span><br><span class="line">	spin_lock_init(&amp;dev-&gt;addr_list_lock);</span><br><span class="line">	netdev_set_addr_lockdep_class(dev);</span><br><span class="line">	<span class="comment">//设备名称合法性检查</span></span><br><span class="line">	ret = dev_get_valid_name(net, dev, dev-&gt;name);</span><br><span class="line">	<span class="keyword">if</span> (ret &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	ret = -ENOMEM;</span><br><span class="line">	<span class="comment">//分配一个名称节点</span></span><br><span class="line">	dev-&gt;name_node = netdev_name_node_head_alloc(dev);</span><br><span class="line">	<span class="keyword">if</span> (!dev-&gt;name_node)</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Init, if this function is available */</span></span><br><span class="line">	<span class="comment">//调用驱动的初始化回调，通常没有吧</span></span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;netdev_ops-&gt;ndo_init) &#123;</span><br><span class="line">		ret = dev-&gt;netdev_ops-&gt;ndo_init(dev);</span><br><span class="line">		<span class="keyword">if</span> (ret) &#123;</span><br><span class="line">			<span class="keyword">if</span> (ret &gt; <span class="number">0</span>)</span><br><span class="line">				ret = -EIO;</span><br><span class="line">			<span class="keyword">goto</span> err_free_name;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//如果声明的有vlan卸载的能力，那必须有vlan回调</span></span><br><span class="line">	<span class="keyword">if</span> (((dev-&gt;hw_features | dev-&gt;features) &amp;</span><br><span class="line">	     NETIF_F_HW_VLAN_CTAG_FILTER) &amp;&amp;</span><br><span class="line">	    (!dev-&gt;netdev_ops-&gt;ndo_vlan_rx_add_vid ||</span><br><span class="line">	     !dev-&gt;netdev_ops-&gt;ndo_vlan_rx_kill_vid)) &#123;</span><br><span class="line">		netdev_WARN(dev, <span class="string">&quot;Buggy VLAN acceleration in driver!\n&quot;</span>);</span><br><span class="line">		ret = -EINVAL;</span><br><span class="line">		<span class="keyword">goto</span> err_uninit;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//分配ifindex</span></span><br><span class="line">	ret = dev_index_reserve(net, dev-&gt;ifindex);</span><br><span class="line">	<span class="keyword">if</span> (ret &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> err_uninit;</span><br><span class="line">	dev-&gt;ifindex = ret;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Transfer changeable features to wanted_features and enable</span></span><br><span class="line"><span class="comment">	 * software offloads (GSO and GRO).</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//设置硬件特性</span></span><br><span class="line">	dev-&gt;hw_features |= (NETIF_F_SOFT_FEATURES | NETIF_F_SOFT_FEATURES_OFF);</span><br><span class="line">	dev-&gt;features |= NETIF_F_SOFT_FEATURES;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;udp_tunnel_nic_info) &#123;</span><br><span class="line">		dev-&gt;features |= NETIF_F_RX_UDP_TUNNEL_PORT;</span><br><span class="line">		dev-&gt;hw_features |= NETIF_F_RX_UDP_TUNNEL_PORT;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//这里很关键 前者是当前设备开启的，后者是硬件支持的，所以这里需要取交集</span></span><br><span class="line">	dev-&gt;wanted_features = dev-&gt;features &amp; dev-&gt;hw_features;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!(dev-&gt;flags &amp; IFF_LOOPBACK))</span><br><span class="line">		dev-&gt;hw_features |= NETIF_F_NOCACHE_COPY;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* If IPv4 TCP segmentation offload is supported we should also</span></span><br><span class="line"><span class="comment">	 * allow the device to enable segmenting the frame with the option</span></span><br><span class="line"><span class="comment">	 * of ignoring a static IP ID value.  This doesn&#x27;t enable the</span></span><br><span class="line"><span class="comment">	 * feature itself but allows the user to enable it later.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;hw_features &amp; NETIF_F_TSO)</span><br><span class="line">		dev-&gt;hw_features |= NETIF_F_TSO_MANGLEID;</span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;vlan_features &amp; NETIF_F_TSO)</span><br><span class="line">		dev-&gt;vlan_features |= NETIF_F_TSO_MANGLEID;</span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;mpls_features &amp; NETIF_F_TSO)</span><br><span class="line">		dev-&gt;mpls_features |= NETIF_F_TSO_MANGLEID;</span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;hw_enc_features &amp; NETIF_F_TSO)</span><br><span class="line">		dev-&gt;hw_enc_features |= NETIF_F_TSO_MANGLEID;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Make NETIF_F_HIGHDMA inheritable to VLAN devices.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	dev-&gt;vlan_features |= NETIF_F_HIGHDMA;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Make NETIF_F_SG inheritable to tunnel devices.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	dev-&gt;hw_enc_features |= NETIF_F_SG | NETIF_F_GSO_PARTIAL;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Make NETIF_F_SG inheritable to MPLS.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	dev-&gt;mpls_features |= NETIF_F_SG;</span><br><span class="line">	<span class="comment">//通知链机制</span></span><br><span class="line">	ret = call_netdevice_notifiers(NETDEV_POST_INIT, dev);</span><br><span class="line">	ret = notifier_to_errno(ret);</span><br><span class="line">	<span class="keyword">if</span> (ret)</span><br><span class="line">		<span class="keyword">goto</span> err_ifindex_release;</span><br><span class="line">	<span class="comment">//在 sysfs 中创建设备节点，里面注册一系列sys/class/net/相关的文件</span></span><br><span class="line">	<span class="comment">//比如说协商的速率，本质是调用了ethtool的接口</span></span><br><span class="line">	ret = netdev_register_kobject(dev);</span><br><span class="line">	write_lock(&amp;dev_base_lock);</span><br><span class="line">	dev-&gt;reg_state = ret ? NETREG_UNREGISTERED : NETREG_REGISTERED;</span><br><span class="line">	write_unlock(&amp;dev_base_lock);</span><br><span class="line">	<span class="keyword">if</span> (ret)</span><br><span class="line">		<span class="keyword">goto</span> err_uninit_notify;</span><br><span class="line">	<span class="comment">//ethtool也会调用这个函数  调用驱动的ndo_set_features</span></span><br><span class="line">	__netdev_update_features(dev);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	Default initial state at registry is that the</span></span><br><span class="line"><span class="comment">	 *	device is present.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line"></span><br><span class="line">	set_bit(__LINK_STATE_PRESENT, &amp;dev-&gt;state);</span><br><span class="line"></span><br><span class="line">	linkwatch_init_dev(dev);</span><br><span class="line">	<span class="comment">//这里很关键，这里是给每个注册的队列挂上一个qdisc！！</span></span><br><span class="line">	<span class="comment">//还注册了netdev层的看门狗</span></span><br><span class="line">	dev_init_scheduler(dev);</span><br><span class="line"></span><br><span class="line">	netdev_hold(dev, &amp;dev-&gt;dev_registered_tracker, GFP_KERNEL);</span><br><span class="line">	<span class="comment">//这里把设备加入全局管理的结构</span></span><br><span class="line">	<span class="comment">//加入网络命名空间的链表</span></span><br><span class="line">	<span class="comment">//按名称加入hash表</span></span><br><span class="line">	<span class="comment">//按接口索引加入hash表</span></span><br><span class="line">	list_netdevice(dev);</span><br><span class="line">	<span class="comment">//把mac地址作为内核的一个随机数</span></span><br><span class="line">	add_device_randomness(dev-&gt;dev_addr, dev-&gt;addr_len);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* If the device has permanent device address, driver should</span></span><br><span class="line"><span class="comment">	 * set dev_addr and also addr_assign_type should be set to</span></span><br><span class="line"><span class="comment">	 * NET_ADDR_PERM (default value).</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;addr_assign_type == NET_ADDR_PERM)</span><br><span class="line">		<span class="built_in">memcpy</span>(dev-&gt;perm_addr, dev-&gt;dev_addr, dev-&gt;addr_len);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Notify protocols, that a new device appeared. */</span></span><br><span class="line">	<span class="comment">//通知有设备注册了，很关键</span></span><br><span class="line">	ret = call_netdevice_notifiers(NETDEV_REGISTER, dev);</span><br><span class="line">	ret = notifier_to_errno(ret);</span><br><span class="line">	<span class="keyword">if</span> (ret) &#123;</span><br><span class="line">		<span class="comment">/* Expect explicit free_netdev() on failure */</span></span><br><span class="line">		dev-&gt;needs_free_netdev = <span class="literal">false</span>;</span><br><span class="line">		unregister_netdevice_queue(dev, <span class="literal">NULL</span>);</span><br><span class="line">		<span class="keyword">goto</span> out;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 *	Prevent userspace races by waiting until the network</span></span><br><span class="line"><span class="comment">	 *	device is fully setup before sending notifications.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">if</span> (!dev-&gt;rtnl_link_ops ||</span><br><span class="line">	    dev-&gt;rtnl_link_state == RTNL_LINK_INITIALIZED)</span><br><span class="line">		rtmsg_ifinfo(RTM_NEWLINK, dev, ~<span class="number">0U</span>, GFP_KERNEL, <span class="number">0</span>, <span class="literal">NULL</span>);</span><br><span class="line"></span><br><span class="line">out:</span><br><span class="line">	<span class="keyword">return</span> ret;</span><br><span class="line"></span><br><span class="line">err_uninit_notify:</span><br><span class="line">	call_netdevice_notifiers(NETDEV_PRE_UNINIT, dev);</span><br><span class="line">err_ifindex_release:</span><br><span class="line">	dev_index_release(net, dev-&gt;ifindex);</span><br><span class="line">err_uninit:</span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;netdev_ops-&gt;ndo_uninit)</span><br><span class="line">		dev-&gt;netdev_ops-&gt;ndo_uninit(dev);</span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;priv_destructor)</span><br><span class="line">		dev-&gt;priv_destructor(dev);</span><br><span class="line">err_free_name:</span><br><span class="line">	netdev_name_node_free(dev-&gt;name_node);</span><br><span class="line">	<span class="keyword">goto</span> out;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>register_netdevice()</code> 开始会先做一些基本检查，比如确认设备还没有被注册过、设备所属的网络命名空间有效， ethtool 操作是否合法。随后检查并分配合法的网卡名称，接下来，内核会检查驱动声明的 VLAN 硬件卸载能力是否和对应回调匹配，然后为设备分配 <code>ifindex</code>，并整理 <code>features</code>、<code>hw_features</code>、<code>wanted_features</code> 等特性字段：其中 <code>features</code> 表示当前启用的能力，<code>hw_features</code> 表示硬件可支持的能力，<code>wanted_features</code> 则表示用户期望开启且硬件支持的能力集合。完成这些准备后，内核会发送 <code>NETDEV_POST_INIT</code> 通知，并通过 <code>netdev_register_kobject()</code> 在 sysfs 下创建 <code>/sys/class/net/&lt;dev&gt;</code> 相关节点，使用户态可以查看和配置该网卡。随后调用 <code>__netdev_update_features()</code> 更新设备特性，初始化 linkwatch，并通过 <code>dev_init_scheduler()</code> 为设备初始化 qdisc 和网络设备层的发送 watchdog。最后，<code>list_netdevice()</code> 会把设备加入当前网络命名空间的设备链表、<strong>按名称的 hash 表和按 ifindex 的 hash 表，这样协议栈后续才能通过名字、索引或遍历找到该设备。</strong></p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" rel="tag"># 网卡驱动</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/06/14/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%EF%BC%88%E4%B8%80%EF%BC%89/" rel="prev" title="IGB网卡驱动初始化（二）">
+      <i class="fa fa-chevron-left"></i> IGB网卡驱动初始化（二）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">136</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">30</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

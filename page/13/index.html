@@ -193,6 +193,307 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/05/%E5%A4%84%E7%90%86%E5%99%A8%E4%BD%93%E7%B3%BB%E7%BB%93%E6%9E%84%EF%BC%88%E4%B8%80%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2025/06/05/%E5%A4%84%E7%90%86%E5%99%A8%E4%BD%93%E7%B3%BB%E7%BB%93%E6%9E%84%EF%BC%88%E4%B8%80%EF%BC%89/" class="post-title-link" itemprop="url">处理器体系结构</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2025-06-05 22:00:00" itemprop="dateCreated datePublished" datetime="2025-06-05T22:00:00+08:00">2025-06-05</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2025-06-08 15:17:26" itemprop="dateModified" datetime="2025-06-08T15:17:26+08:00">2025-06-08</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%B3%BB%E7%BB%9F%E3%80%8B/" itemprop="url" rel="index"><span itemprop="name">《深入理解计算机系统》</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2025/06/05/%E5%A4%84%E7%90%86%E5%99%A8%E4%BD%93%E7%B3%BB%E7%BB%93%E6%9E%84%EF%BC%88%E4%B8%80%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2025/06/05/%E5%A4%84%E7%90%86%E5%99%A8%E4%BD%93%E7%B3%BB%E7%BB%93%E6%9E%84%EF%BC%88%E4%B8%80%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h1 id="处理器体系结构"><a href="#处理器体系结构" class="headerlink" title="处理器体系结构"></a>处理器体系结构</h1><p>一个处理器支持的指令和指令的字节级编码称为它的指令集体系结构(Instruction-Set Architecture, <strong>ISA</strong>) </p>
+<p>本章将简要介绍处理器硬件的设计，学习一个硬件系统执行某种 ISA指令的方式，以更好地理解计算机是如何工作的。</p>
+<p>本章首先定义一个简单的指令集，作为处理器实现的运行示例。因为受 x86-64 指令集的启发，它被俗称为 “x86”, 所以我们称我们的指令集为 “Y86-64” 指令集。 与 x86-64 相比， Y86-64 指令集的数据类型、指令和寻址方式都要少一些。它的字节级编码也比较简单，虽然 Y86-64 指令集很简单，它仍然足够完整，能让我们写一些处理整数的程序。</p>
+<h2 id="Y86-64-的寄存器"><a href="#Y86-64-的寄存器" class="headerlink" title="Y86-64 的寄存器"></a>Y86-64 的寄存器</h2><ul>
+<li><p><strong>寄存器</strong>：Y86-64 有 15 个通用寄存器（与 x86-64 类似），如 <code>%rax</code>、<code>%rsp</code>、<code>%rbp</code> 等，每个存储 64 位数据。<code>%rsp</code> 主要用作栈指针。</p>
+</li>
+<li><p><strong>条件码</strong>：ZF、SF、OF 用于保存最近计算的结果信息。</p>
+</li>
+<li><p><strong>程序计数器（PC）</strong>：存储当前将要执行的指令地址。</p>
+</li>
+</ul>
+<h2 id="Y86-64-指令"><a href="#Y86-64-指令" class="headerlink" title="Y86-64 指令"></a>Y86-64 指令</h2><ul>
+<li>y86-64 的 movq 指令分成了 4 个不同的指令：irmovq、rrmovq、mrmovq 和 rmmovq，分别显示地指明源和目的的格式。源可以是立即数（i）、寄存器（r）或内存（m）。指令名字的第一个字母就表明了源的类型，目前可以是寄存器（r）或内存（m）。指令名字的第二个字母指明了目的的类型。它决定如何实现数据传送时，显式地指明数据传送的路径。</li>
+<li>有 4 个整数操作指令，如图它们是 addq、subq、andq 和 xorq。它们只对寄存器数据进行操作，而 Y86-64 还允许对内存数据进行这些操作。这些指令会设置 3 个条件码 ZF、SF 和 OF（零、符号和溢出）。</li>
+<li>7 个跳转指令是 jmp、jle、jl、je、jne、jge 和 jg。根据分支指令的类型和条件代码的设置来选择分支。分支条件和 x86-64 的一样）。</li>
+<li>有 6 个条件传送指令：cmovle、cmovl、cmove、cmovne、cmovge 和 cmovg。这些指令的格式与寄存器-寄存器传送指令 rrmovq 一样，但是只有当条件码满足所需的要求时，才会更新目的寄存器的值。</li>
+<li>call 指令将返回地址入栈，然后跳到目的地址。ret 指令从栈中调用出返回。</li>
+<li>pushq 和 popq 指令实现了入栈和出栈，和 x86-64 中一样。</li>
+<li>Y86-64 只有一条与主机操作相关的指令 halt。x86-64 的应用程序不允许使用这条指令，因为它会导致整个系统停止运行。对于 Y86-64 来说，执行 halt 指令会导致处理器终止，并将状态设置为 HLT。</li>
+</ul>
+<p>指令和对应的编码如下所示：</p>
+<table>
+<thead>
+<tr>
+<th>指令</th>
+<th>字节 0</th>
+<th>字节 1</th>
+<th>字节 2</th>
+<th>字节 3</th>
+<th>字节 4</th>
+<th>字节 5</th>
+<th>字节 6</th>
+<th>字节 7</th>
+<th>字节 8</th>
+<th>字节 9</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>halt</td>
+<td>00</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>nop</td>
+<td>10</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>rrmovq rA, rB</td>
+<td>20</td>
+<td>rA rB</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>irmovq V, rB</td>
+<td>30</td>
+<td>F rB</td>
+<td>V</td>
+<td>V</td>
+<td>V</td>
+<td>V</td>
+<td>V</td>
+<td>V</td>
+<td>V</td>
+<td>V</td>
+</tr>
+<tr>
+<td>rmmovq rA, D(rB)</td>
+<td>40</td>
+<td>rA rB</td>
+<td>D</td>
+<td>D</td>
+<td>D</td>
+<td>D</td>
+<td>D</td>
+<td>D</td>
+<td>D</td>
+<td>D</td>
+</tr>
+<tr>
+<td>mrmovq D(rB), rA</td>
+<td>50</td>
+<td>rA rB</td>
+<td>D</td>
+<td>D</td>
+<td>D</td>
+<td>D</td>
+<td>D</td>
+<td>D</td>
+<td>D</td>
+<td>D</td>
+</tr>
+<tr>
+<td>OPq rA, rB</td>
+<td>6 fn</td>
+<td>rA rB</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>jXX Dest</td>
+<td>7 fn</td>
+<td>Dest</td>
+<td>Dest</td>
+<td>Dest</td>
+<td>Dest</td>
+<td>Dest</td>
+<td>Dest</td>
+<td>Dest</td>
+<td>Dest</td>
+<td>Dest</td>
+</tr>
+<tr>
+<td>cmovXX rA, rB</td>
+<td>2 fn</td>
+<td>rA rB</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>call Dest</td>
+<td>80</td>
+<td>Dest</td>
+<td>Dest</td>
+<td>Dest</td>
+<td>Dest</td>
+<td>Dest</td>
+<td>Dest</td>
+<td>Dest</td>
+<td>Dest</td>
+<td>Dest</td>
+</tr>
+<tr>
+<td>ret</td>
+<td>90</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>pushq rA</td>
+<td>A0</td>
+<td>rA F</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>popq rA</td>
+<td>B0</td>
+<td>rA F</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody></table>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2025/06/05/%E5%A4%84%E7%90%86%E5%99%A8%E4%BD%93%E7%B3%BB%E7%BB%93%E6%9E%84%EF%BC%88%E4%B8%80%EF%BC%89/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2025/06/04/x86%E6%B1%87%E7%BC%96%E5%AD%A6%E4%B9%A0%EF%BC%88%E5%9B%9B%EF%BC%89/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1263,120 +1564,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2025/05/23/%E7%BD%91%E5%8D%A1%E7%A1%AC%E4%BB%B6%E6%A8%A1%E5%9D%97/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2025/05/23/%E7%BD%91%E5%8D%A1%E7%A1%AC%E4%BB%B6%E6%A8%A1%E5%9D%97/" class="post-title-link" itemprop="url">网卡硬件各组件</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2025-05-23 22:00:00" itemprop="dateCreated datePublished" datetime="2025-05-23T22:00:00+08:00">2025-05-23</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2025-05-26 21:17:21" itemprop="dateModified" datetime="2025-05-26T21:17:21+08:00">2025-05-26</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E5%85%B6%E4%BB%96/" itemprop="url" rel="index"><span itemprop="name">其他</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2025/05/23/%E7%BD%91%E5%8D%A1%E7%A1%AC%E4%BB%B6%E6%A8%A1%E5%9D%97/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2025/05/23/%E7%BD%91%E5%8D%A1%E7%A1%AC%E4%BB%B6%E6%A8%A1%E5%9D%97/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h3 id="网卡核心硬件组成"><a href="#网卡核心硬件组成" class="headerlink" title="网卡核心硬件组成"></a>网卡核心硬件组成</h3><p>现代有线以太网卡中，MAC、PHY、DMA、PCIe 是网卡最核心的硬件模块，这些模块构成了数据通信的基础框架。以下是它们的详细分工和协作关系，具体的架构图如下所示：<br><img src="/images/%E7%BD%91%E5%8D%A1/%E7%BD%91%E5%8D%A1%E7%BB%93%E6%9E%84.drawio.png" alt="网卡结构"></p>
-<h4 id="PHY"><a href="#PHY" class="headerlink" title="PHY"></a><strong>PHY</strong></h4><p>PHY 层属于 OSI 物理层（Layer 1），主要负责 数字信号 ↔ 模拟信号 的转换，具体包括：</p>
-<ol>
-<li>链路管理</li>
-</ol>
-<ul>
-<li>自动协商​​：与对端设备协商速率（如10&#x2F;100&#x2F;1000 Mbps）和双工模式。</li>
-<li>链路检测​​：监测连接状态（如网线是否插入）。</li>
-</ul>
-<ol start="2">
-<li>信号转换​</li>
-</ol>
-<ul>
-<li>数模转换​​：将MAC层生成的数字信号转换为适合线缆（如双绞线、光纤）传输的模拟信号（如电信号或光信号）。</li>
-<li>模数转换​​：将接收到的模拟信号还原为数字信号供上层处理。</li>
-</ul>
-<ol start="3">
-<li>物理介质适配​</li>
-</ol>
-<p>支持不同介质标准（如以太网的RJ-45接口、光纤接口），适应电压、阻抗等物理特性,例如：100BASE-TX（双绞线）、1000BASE-SX（光纤）等。</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2025/05/23/%E7%BD%91%E5%8D%A1%E7%A1%AC%E4%BB%B6%E6%A8%A1%E5%9D%97/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1446,7 +1633,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">135</span>
+          <span class="site-state-item-count">136</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
