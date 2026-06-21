@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="在网络设备注册过程中，最终会进入 register_netdevice()，把驱动初始化好的 net_device 正式加入内核网络子系统。除了注册名字、地址、状态等基础信息外，内核还需要整理这个设备支持和当前启用的各种 offload 能力，也就是 dev-&gt;features。 这些 feature 不能只看驱动设置，因为它们之间存在依赖关系，比如 TSO 需要 SG 和 checksum">
+<meta property="og:type" content="article">
+<meta property="og:title" content="IGB网卡驱动初始化（四）">
+<meta property="og:url" content="http://example.com/2026/06/21/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%9B%9B%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="在网络设备注册过程中，最终会进入 register_netdevice()，把驱动初始化好的 net_device 正式加入内核网络子系统。除了注册名字、地址、状态等基础信息外，内核还需要整理这个设备支持和当前启用的各种 offload 能力，也就是 dev-&gt;features。 这些 feature 不能只看驱动设置，因为它们之间存在依赖关系，比如 TSO 需要 SG 和 checksum">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-06-21T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-06-21T08:07:10.900Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="网卡驱动">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/06/21/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%9B%9B%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>IGB网卡驱动初始化（四） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/06/21/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%9B%9B%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          IGB网卡驱动初始化（四）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-06-21 22:00:00 / 修改时间：16:07:10" itemprop="dateCreated datePublished" datetime="2026-06-21T22:00:00+08:00">2026-06-21</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" itemprop="url" rel="index"><span itemprop="name">IGB网卡驱动</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/06/21/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%9B%9B%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/06/21/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%9B%9B%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>在网络设备注册过程中，最终会进入 <code>register_netdevice()</code>，把驱动初始化好的 <code>net_device</code> 正式加入内核网络子系统。除了注册名字、地址、状态等基础信息外，内核还需要整理这个设备支持和当前启用的各种 offload 能力，也就是 <code>dev-&gt;features</code>。</p>
+<p>这些 feature 不能只看驱动设置，因为它们之间存在依赖关系，比如 TSO 需要 SG 和 checksum offload；同时它们还可能受到 bridge、bond等设备关系的影响。所以注册过程中会调用<code>__netdev_update_features()</code>，修正并应用最终的 feature 集合。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> __netdev_update_features(<span class="keyword">struct</span> net_device *dev)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">upper</span>, *<span class="title">lower</span>;</span></span><br><span class="line">	<span class="type">netdev_features_t</span> features;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">list_head</span> *<span class="title">iter</span>;</span></span><br><span class="line">	<span class="type">int</span> err = <span class="number">-1</span>;</span><br><span class="line"></span><br><span class="line">	ASSERT_RTNL();</span><br><span class="line">	<span class="comment">//先拿到最终需要开启的feature //(dev-&gt;features &amp; ~dev-&gt;hw_features)</span></span><br><span class="line">	features = netdev_get_wanted_features(dev);</span><br><span class="line">	<span class="comment">//先让驱动根据这个feature设置一下，igb基本上没干什么</span></span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;netdev_ops-&gt;ndo_fix_features)</span><br><span class="line">		features = dev-&gt;netdev_ops-&gt;ndo_fix_features(dev, features);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* driver might be less strict about feature dependencies */</span></span><br><span class="line">	<span class="comment">//内核再次修正一下这个feature  比如tso 依赖 sg 如果开了tso 但没开sg就关闭tso</span></span><br><span class="line">	features = netdev_fix_features(dev, features);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* some features can&#x27;t be enabled if they&#x27;re off on an upper device */</span></span><br><span class="line">	<span class="comment">//如果master关闭了 某些特性，那slave也不能开</span></span><br><span class="line">	netdev_for_each_upper_dev_rcu(dev, upper, iter)</span><br><span class="line">		features = netdev_sync_upper_features(dev, upper, features);</span><br><span class="line">	<span class="comment">//如果feature没变</span></span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;features == features)</span><br><span class="line">		<span class="keyword">goto</span> sync_lower;</span><br><span class="line">	<span class="comment">//发生变化了 打印日志</span></span><br><span class="line">	netdev_dbg(dev, <span class="string">&quot;Features changed: %pNF -&gt; %pNF\n&quot;</span>,</span><br><span class="line">		&amp;dev-&gt;features, &amp;features);</span><br><span class="line">	<span class="comment">//重新设置硬件</span></span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;netdev_ops-&gt;ndo_set_features)</span><br><span class="line">		err = dev-&gt;netdev_ops-&gt;ndo_set_features(dev, features);</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line">		err = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (unlikely(err &lt; <span class="number">0</span>)) &#123;</span><br><span class="line">		netdev_err(dev,</span><br><span class="line">			<span class="string">&quot;set_features() failed (%d); wanted %pNF, left %pNF\n&quot;</span>,</span><br><span class="line">			err, &amp;features, &amp;dev-&gt;features);</span><br><span class="line">		<span class="comment">/* return non-0 since some features might have changed and</span></span><br><span class="line"><span class="comment">		 * it&#x27;s better to fire a spurious notification than miss it</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">sync_lower:</span><br><span class="line">	<span class="comment">/* some features must be disabled on lower devices when disabled</span></span><br><span class="line"><span class="comment">	 * on an upper device (think: bonding master or bridge)</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//feature 没变的情况 ，同步slave设备</span></span><br><span class="line">	netdev_for_each_lower_dev(dev, lower, iter)</span><br><span class="line">		netdev_sync_lower_features(dev, lower, features);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!err) &#123;<span class="comment">//表示set feature 成功</span></span><br><span class="line">		<span class="type">netdev_features_t</span> diff = features ^ dev-&gt;features;</span><br><span class="line">		<span class="comment">//处理 dup隧道相关的卸载</span></span><br><span class="line">		<span class="keyword">if</span> (diff &amp; NETIF_F_RX_UDP_TUNNEL_PORT) &#123;</span><br><span class="line">			<span class="comment">/* udp_tunnel_&#123;get,drop&#125;_rx_info both need</span></span><br><span class="line"><span class="comment">			 * NETIF_F_RX_UDP_TUNNEL_PORT enabled on the</span></span><br><span class="line"><span class="comment">			 * device, or they won&#x27;t do anything.</span></span><br><span class="line"><span class="comment">			 * Thus we need to update dev-&gt;features</span></span><br><span class="line"><span class="comment">			 * *before* calling udp_tunnel_get_rx_info,</span></span><br><span class="line"><span class="comment">			 * but *after* calling udp_tunnel_drop_rx_info.</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="keyword">if</span> (features &amp; NETIF_F_RX_UDP_TUNNEL_PORT) &#123;</span><br><span class="line">				dev-&gt;features = features;</span><br><span class="line">				udp_tunnel_get_rx_info(dev);</span><br><span class="line">			&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">				udp_tunnel_drop_rx_info(dev);</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//处理 vlan ctag</span></span><br><span class="line">		<span class="keyword">if</span> (diff &amp; NETIF_F_HW_VLAN_CTAG_FILTER) &#123;</span><br><span class="line">			<span class="keyword">if</span> (features &amp; NETIF_F_HW_VLAN_CTAG_FILTER) &#123;</span><br><span class="line">				dev-&gt;features = features;</span><br><span class="line">				err |= vlan_get_rx_ctag_filter_info(dev);</span><br><span class="line">			&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">				vlan_drop_rx_ctag_filter_info(dev);</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//处理 vlan stag</span></span><br><span class="line">		<span class="keyword">if</span> (diff &amp; NETIF_F_HW_VLAN_STAG_FILTER) &#123;</span><br><span class="line">			<span class="keyword">if</span> (features &amp; NETIF_F_HW_VLAN_STAG_FILTER) &#123;</span><br><span class="line">				dev-&gt;features = features;</span><br><span class="line">				err |= vlan_get_rx_stag_filter_info(dev);</span><br><span class="line">			&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">				vlan_drop_rx_stag_filter_info(dev);</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//更新feature</span></span><br><span class="line">		dev-&gt;features = features;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> err &lt; <span class="number">0</span> ? <span class="number">0</span> : <span class="number">1</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>_netdev_update_features()</code> 的作用是重新计算并更新设备最终生效的 <code>dev-&gt;features</code>。它先通过 <code>netdev_get_wanted_features()</code> 得到当前希望开启的 feature，然后依次经过驱动的 <code>ndo_fix_features()</code> 和内核通用的 <code>netdev_fix_features()</code> 修正，处理 feature 之间的依赖关系，比如 TSO 依赖 SG 和 checksum offload。接着它会根据 upper 设备的状态继续修正，保证上层设备关闭的某些能力，下层设备不能单独开启。如果最终 features 和当前 <code>dev-&gt;features</code> 不同，就调用驱动的 <code>ndo_set_features()</code> 重新配置硬件；如果没变，也会继续同步 lower 设备。最后针对 UDP tunnel offload、VLAN C-tag&#x2F;S-tag filter 这些特殊 feature 做额外同步，并把结果写回 <code>dev-&gt;features</code>。</p>
+<p>回到<code>register_netdevice</code>中设置完设备的的<code>feature</code>之后会调用重新计算并更新 <code>dev-&gt;operstate</code>（也就是用户是否看到设备是否up）具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">linkwatch_init_dev</span><span class="params">(<span class="keyword">struct</span> net_device *dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/* Handle pre-registration link state changes */</span></span><br><span class="line">	<span class="comment">//如果当前还没有link up</span></span><br><span class="line">	<span class="keyword">if</span> (!netif_carrier_ok(dev) || netif_dormant(dev) ||</span><br><span class="line">	<span class="comment">//设备正在处于testing状态</span></span><br><span class="line">	    netif_testing(dev))</span><br><span class="line">		rfc2863_policy(dev);<span class="comment">//满足三个条件之一就调用</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上述代码可以看到，如果设备当前没有 carrier、处于 dormant 或 testing 状态，就调用 <code>rfc2863_policy()</code> 重新计算并更新 <code>dev-&gt;operstate</code>。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">rfc2863_policy</span><span class="params">(<span class="keyword">struct</span> net_device *dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//根据当前设备的状态设置一个默认的运行状态</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">char</span> operstate = default_operstate(dev);</span><br><span class="line">	<span class="comment">//状态没改变，直接返回</span></span><br><span class="line">	<span class="keyword">if</span> (operstate == dev-&gt;operstate)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">	write_lock(&amp;dev_base_lock);</span><br><span class="line">	<span class="comment">//根据link_mode 修改状态，注意这是用户设置的</span></span><br><span class="line">	<span class="keyword">switch</span>(dev-&gt;link_mode) &#123;</span><br><span class="line">	<span class="keyword">case</span> IF_LINK_MODE_TESTING:</span><br><span class="line">		<span class="keyword">if</span> (operstate == IF_OPER_UP)</span><br><span class="line">			operstate = IF_OPER_TESTING;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">case</span> IF_LINK_MODE_DORMANT:</span><br><span class="line">		<span class="keyword">if</span> (operstate == IF_OPER_UP)</span><br><span class="line">			operstate = IF_OPER_DORMANT;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> IF_LINK_MODE_DEFAULT:</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//重新设置</span></span><br><span class="line">	dev-&gt;operstate = operstate;</span><br><span class="line"></span><br><span class="line">	write_unlock(&amp;dev_base_lock);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">unsigned</span> <span class="type">char</span> <span class="title function_">default_operstate</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> net_device *dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//testing 直接返回</span></span><br><span class="line">	<span class="keyword">if</span> (netif_testing(dev))</span><br><span class="line">		<span class="keyword">return</span> IF_OPER_TESTING;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Some uppers (DSA) have additional sources for being down, so</span></span><br><span class="line"><span class="comment">	 * first check whether lower is indeed the source of its down state.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//没有link的情况</span></span><br><span class="line">	<span class="keyword">if</span> (!netif_carrier_ok(dev)) &#123;</span><br><span class="line">		<span class="comment">//通常返回if index</span></span><br><span class="line">		<span class="type">int</span> iflink = dev_get_iflink(dev);</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">peer</span>;</span></span><br><span class="line">		<span class="comment">//直接返回</span></span><br><span class="line">		<span class="keyword">if</span> (iflink == dev-&gt;ifindex)</span><br><span class="line">			<span class="keyword">return</span> IF_OPER_DOWN;</span><br><span class="line"></span><br><span class="line">		peer = __dev_get_by_index(dev_net(dev), iflink);</span><br><span class="line">		<span class="keyword">if</span> (!peer)</span><br><span class="line">			<span class="keyword">return</span> IF_OPER_DOWN;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">return</span> netif_carrier_ok(peer) ? IF_OPER_DOWN :</span><br><span class="line">						IF_OPER_LOWERLAYERDOWN;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//link up的情况 802.1x</span></span><br><span class="line">	<span class="keyword">if</span> (netif_dormant(dev))</span><br><span class="line">		<span class="keyword">return</span> IF_OPER_DORMANT;</span><br><span class="line">	<span class="comment">//正常可用的</span></span><br><span class="line">	<span class="keyword">return</span> IF_OPER_UP;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>default_operstate()</code> 先根据当前设备状态算一个结果：如果设备在 testing，就返回 <code>TESTING</code>；如果没有 carrier，就说明链路没起来，再看它有没有下层设备，如果是普通网卡自己没链路，就返回 <code>DOWN</code>，如果是 VLAN、bond 这类上层设备，并且下层设备也没链路，就返回 <code>LOWERLAYERDOWN</code>；如果链路已经起来了，但还处于 dormant 状态，比如 802.1X 认证没完成，就返回 <code>DORMANT</code>；否则就返回 <code>UP</code>。</p>
+<p><code>rfc2863_policy()</code> 拿到这个结果后，如果变了，就更新它。另外它还会看一下 <code>dev-&gt;link_mode</code>，这个一般是用户态设置的，最后写回 <code>dev-&gt;operstate</code>。</p>
+<p>之后在<code>register_netdevice</code>中会调用<code>dev_init_scheduler</code>给每个<code>netdevice</code>初始化<code>tc</code>的<code>qdisc</code>(这里在前文中已经分析过，这里不在重复分析)，这里重点关注会挂一个看门狗定时器，用于检查tx方向的队列是否hang住，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br></pre></td><td class="code"><pre><span class="line">timer_setup(&amp;dev-&gt;watchdog_timer, dev_watchdog, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line"><span class="comment">// 注意 只有驱动注册了 tx time out回调才会启动这个定时器</span></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">dev_watchdog</span><span class="params">(<span class="keyword">struct</span> timer_list *t)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span> =</span> from_timer(dev, t, watchdog_timer);</span><br><span class="line">	<span class="type">bool</span> release = <span class="literal">true</span>;</span><br><span class="line"></span><br><span class="line">	spin_lock(&amp;dev-&gt;tx_global_lock);</span><br><span class="line">	<span class="comment">//如果qdis 是noop就不检查了</span></span><br><span class="line">	<span class="keyword">if</span> (!qdisc_tx_is_noop(dev)) &#123;</span><br><span class="line">		<span class="comment">//设备必须逻辑和链路up</span></span><br><span class="line">		<span class="keyword">if</span> (netif_device_present(dev) &amp;&amp;</span><br><span class="line">		    netif_running(dev) &amp;&amp;</span><br><span class="line">		    netif_carrier_ok(dev)) &#123;</span><br><span class="line">			<span class="type">unsigned</span> <span class="type">int</span> timedout_ms = <span class="number">0</span>;</span><br><span class="line">			<span class="type">unsigned</span> <span class="type">int</span> i;</span><br><span class="line">			<span class="type">unsigned</span> <span class="type">long</span> trans_start;</span><br><span class="line">			<span class="comment">//遍历所有TX队列</span></span><br><span class="line">			<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; dev-&gt;num_tx_queues; i++) &#123;</span><br><span class="line">				<span class="class"><span class="keyword">struct</span> <span class="title">netdev_queue</span> *<span class="title">txq</span>;</span></span><br><span class="line">				<span class="comment">//拿到txq</span></span><br><span class="line">				txq = netdev_get_tx_queue(dev, i);</span><br><span class="line">				trans_start = READ_ONCE(txq-&gt;trans_start); <span class="comment">//netdev_start_xmit中会设置法宝时间戳</span></span><br><span class="line">				<span class="keyword">if</span> (netif_xmit_stopped(txq) &amp;&amp;   <span class="comment">//驱动置位过 ，并且超过了驱动注册的超时时间 igb是5s</span></span><br><span class="line">				    time_after(jiffies, (trans_start +</span><br><span class="line">							 dev-&gt;watchdog_timeo))) &#123;</span><br><span class="line">					<span class="comment">//更新统计信息</span></span><br><span class="line">					timedout_ms = jiffies_to_msecs(jiffies - trans_start);</span><br><span class="line">					atomic_long_inc(&amp;txq-&gt;trans_timeout);</span><br><span class="line">					<span class="keyword">break</span>;</span><br><span class="line">				&#125;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="comment">//打印日志，调用驱动注册的txtimeout回调</span></span><br><span class="line">			<span class="keyword">if</span> (unlikely(timedout_ms)) &#123;</span><br><span class="line">				trace_net_dev_xmit_timeout(dev, i);</span><br><span class="line">				WARN_ONCE(<span class="number">1</span>, <span class="string">&quot;NETDEV WATCHDOG: %s (%s): transmit queue %u timed out %u ms\n&quot;</span>,</span><br><span class="line">					  dev-&gt;name, netdev_drivername(dev), i, timedout_ms);</span><br><span class="line">				netif_freeze_queues(dev);</span><br><span class="line">				dev-&gt;netdev_ops-&gt;ndo_tx_timeout(dev, i);</span><br><span class="line">				netif_unfreeze_queues(dev);</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="comment">//重新挂上看门狗定时器</span></span><br><span class="line">			<span class="keyword">if</span> (!mod_timer(&amp;dev-&gt;watchdog_timer,</span><br><span class="line">				       round_jiffies(jiffies +</span><br><span class="line">						     dev-&gt;watchdog_timeo)))</span><br><span class="line">				release = <span class="literal">false</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	spin_unlock(&amp;dev-&gt;tx_global_lock);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (release)</span><br><span class="line">		netdev_put(dev, &amp;dev-&gt;watchdog_dev_tracker);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>dev_watchdog()</code> 就是网络设备的<strong>发送超时看门狗</strong>。它会在设备已经打开、链路也是 up、qdisc 正常的情况下，遍历所有 TX 队列，检查<code>netif_xmit_stopped(txq)</code> 为真(驱动设置的)，并且距离上次发包时间 <code>txq-&gt;trans_start</code> 已经超过 <code>dev-&gt;watchdog_timeo</code>。如果发现超时，就调用驱动的 <code>ndo_tx_timeout()</code> 回调（<strong>本质就是复位网卡</strong>）。最后它会重新挂上定时器，继续下一轮检查。</p>
+<h3 id="netif-carrier-on"><a href="#netif-carrier-on" class="headerlink" title="netif_carrier_on"></a>netif_carrier_on</h3><p><code>netif_carrier_on()</code> <strong>是驱动在检测到物理链路已经起来时调用的接口，用于通知协议栈网卡已经<code>link up</code></strong>，只有调用这个接口之后，协议栈才会把包交给网卡驱动，否者在down的情况下，数据包都被<code>tc</code>的<code>noop qdisc</code>给丢弃了。<code>netif_carrier_on</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">netif_carrier_on</span><span class="params">(<span class="keyword">struct</span> net_device *dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//表示link up了 清掉bit</span></span><br><span class="line">	<span class="keyword">if</span> (test_and_clear_bit(__LINK_STATE_NOCARRIER, &amp;dev-&gt;state)) &#123;</span><br><span class="line">		<span class="keyword">if</span> (dev-&gt;reg_state == NETREG_UNINITIALIZED) <span class="comment">//设备还没注册完成，直接返回</span></span><br><span class="line">			<span class="keyword">return</span>;</span><br><span class="line">		<span class="type">atomic_inc</span>(&amp;dev-&gt;carrier_up_count);<span class="comment">//增加 up的计数 通过sys目录可以看到</span></span><br><span class="line">		<span class="comment">//调度linkwatch事件</span></span><br><span class="line">		linkwatch_fire_event(dev);</span><br><span class="line">		<span class="comment">//启动tx 的看门狗</span></span><br><span class="line">		<span class="keyword">if</span> (netif_running(dev))</span><br><span class="line">			__netdev_watchdog_up(dev);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> <span class="title function_">linkwatch_fire_event</span><span class="params">(<span class="keyword">struct</span> net_device *dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//判断是不是紧急事件</span></span><br><span class="line">	<span class="type">bool</span> urgent = linkwatch_urgent_event(dev);</span><br><span class="line">	<span class="comment">//是否已经有 pending 的 linkwatch 事件</span></span><br><span class="line">	<span class="keyword">if</span> (!test_and_set_bit(__LINK_STATE_LINKWATCH_PENDING, &amp;dev-&gt;state)) &#123;</span><br><span class="line">		linkwatch_add_event(dev); <span class="comment">//加入linkwatch事件队列，其实就是挂到链表中</span></span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (!urgent) <span class="comment">//已经pending了 但是不紧急，直接返回</span></span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//紧急的 已经pending 那就重新调度</span></span><br><span class="line">	<span class="comment">//其实就是根据是否紧急，决定什么时候调度linkwatch_event</span></span><br><span class="line">	linkwatch_schedule_work(urgent);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>netif_carrier_on()</code> 先通过 <code>test_and_clear_bit(__LINK_STATE_NOCARRIER, &amp;dev-&gt;state)</code> 清掉 <code>NOCARRIER</code> 标志，表示设备已经 up了；然后调用 <code>linkwatch_fire_event(dev)</code> 调度 linkwatch。最后，如果设备已经处于 running 状态，也就是被 <code>ip link set up</code> 打开了，就调用 <code>__netdev_watchdog_up(dev)</code> 启动看门狗。</p>
+<p><code>linkwatch_fire_event</code>最终调度<code>linkwatch_event</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">linkwatch_event</span><span class="params">(<span class="keyword">struct</span> work_struct *dummy)</span></span><br><span class="line">&#123;</span><br><span class="line">	rtnl_lock();</span><br><span class="line">	__linkwatch_run_queue(time_after(linkwatch_nextevent, jiffies));</span><br><span class="line">	rtnl_unlock();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> __linkwatch_run_queue(<span class="type">int</span> urgent_only)</span><br><span class="line">&#123;</span><br><span class="line"><span class="meta">#<span class="keyword">define</span> MAX_DO_DEV_PER_LOOP	100</span></span><br><span class="line">	<span class="comment">//一次最多处理多少个设备</span></span><br><span class="line">	<span class="type">int</span> do_dev = MAX_DO_DEV_PER_LOOP;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">dev</span>;</span></span><br><span class="line">	LIST_HEAD(wrk);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Give urgent case more budget */</span></span><br><span class="line">	<span class="comment">//紧急的话变成200个</span></span><br><span class="line">	<span class="keyword">if</span> (urgent_only)</span><br><span class="line">		do_dev += MAX_DO_DEV_PER_LOOP;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * Limit the number of linkwatch events to one</span></span><br><span class="line"><span class="comment">	 * per second so that a runaway driver does not</span></span><br><span class="line"><span class="comment">	 * cause a storm of messages on the netlink</span></span><br><span class="line"><span class="comment">	 * socket.  This limit does not apply to up events</span></span><br><span class="line"><span class="comment">	 * while the device qdisc is down.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//下次linkwatch事件在1s后</span></span><br><span class="line">	<span class="keyword">if</span> (!urgent_only)</span><br><span class="line">		linkwatch_nextevent = jiffies + HZ;</span><br><span class="line">	<span class="comment">/* Limit wrap-around effect on delay. */</span></span><br><span class="line">	<span class="keyword">else</span> <span class="keyword">if</span> (time_after(linkwatch_nextevent, jiffies + HZ))</span><br><span class="line">		linkwatch_nextevent = jiffies;</span><br><span class="line"></span><br><span class="line">	clear_bit(LW_URGENT, &amp;linkwatch_flags);</span><br><span class="line"></span><br><span class="line">	spin_lock_irq(&amp;lweventlist_lock);</span><br><span class="line">	<span class="comment">//把全局 lweventlist 里的所有事件一次性搬到本地 wrk</span></span><br><span class="line">	list_splice_init(&amp;lweventlist, &amp;wrk);</span><br><span class="line">	<span class="comment">//循环处理每个设备</span></span><br><span class="line">	<span class="keyword">while</span> (!list_empty(&amp;wrk) &amp;&amp; do_dev &gt; <span class="number">0</span>) &#123;</span><br><span class="line"></span><br><span class="line">		dev = list_first_entry(&amp;wrk, <span class="keyword">struct</span> net_device, link_watch_list);</span><br><span class="line">		list_del_init(&amp;dev-&gt;link_watch_list);</span><br><span class="line">		<span class="comment">//跳过不需要处理的设备</span></span><br><span class="line">		<span class="keyword">if</span> (!netif_device_present(dev) ||</span><br><span class="line">		    (urgent_only &amp;&amp; !linkwatch_urgent_event(dev))) &#123;</span><br><span class="line">			list_add_tail(&amp;dev-&gt;link_watch_list, &amp;lweventlist);</span><br><span class="line">			<span class="keyword">continue</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">/* We must free netdev tracker under</span></span><br><span class="line"><span class="comment">		 * the spinlock protection.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		netdev_tracker_free(dev, &amp;dev-&gt;linkwatch_dev_tracker);</span><br><span class="line">		spin_unlock_irq(&amp;lweventlist_lock);</span><br><span class="line">		linkwatch_do_dev(dev); <span class="comment">//真正的核心</span></span><br><span class="line">		do_dev--;</span><br><span class="line">		spin_lock_irq(&amp;lweventlist_lock);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Add the remaining work back to lweventlist */</span></span><br><span class="line">	<span class="comment">//在重新挂回去</span></span><br><span class="line">	list_splice_init(&amp;wrk, &amp;lweventlist);</span><br><span class="line">	<span class="comment">//如果没空，继续调度</span></span><br><span class="line">	<span class="keyword">if</span> (!list_empty(&amp;lweventlist))</span><br><span class="line">		linkwatch_schedule_work(<span class="number">0</span>);</span><br><span class="line">	spin_unlock_irq(&amp;lweventlist_lock);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>__linkwatch_run_queue()</code> 是 linkwatch 真正消费事件队列的地方。前面 <code>netif_carrier_on/off()</code> 只是把发生链路变化的设备挂到全局 <code>lweventlist</code>，这个函数会把队列里的设备取出来批量处理。处理时会跳过当前不适合处理的设备，真正需要处理的设备则调用 <code>linkwatch_do_dev(dev)</code>，由它去更新 <code>operstate</code>、激活或停用发送队列，并通知用户态。最后如果队列里还有没处理完的设备，就继续调度下一次 linkwatch work。</p>
+<p>上述<code>linkwatch_do_dev</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">linkwatch_do_dev</span><span class="params">(<span class="keyword">struct</span> net_device *dev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/*</span></span><br><span class="line"><span class="comment">	 * Make sure the above read is complete since it can be</span></span><br><span class="line"><span class="comment">	 * rewritten as soon as we clear the bit below.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	smp_mb__before_atomic();</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* We are about to handle this device,</span></span><br><span class="line"><span class="comment">	 * so new events can be accepted</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//清除pending位</span></span><br><span class="line">	clear_bit(__LINK_STATE_LINKWATCH_PENDING, &amp;dev-&gt;state);</span><br><span class="line">	<span class="comment">//更新 operstate 也就是用户看到的是否up</span></span><br><span class="line">	rfc2863_policy(dev);</span><br><span class="line">	<span class="comment">//设备逻辑上up了</span></span><br><span class="line">	<span class="keyword">if</span> (dev-&gt;flags &amp; IFF_UP) &#123;</span><br><span class="line">		<span class="comment">//link up</span></span><br><span class="line">		<span class="keyword">if</span> (netif_carrier_ok(dev))</span><br><span class="line">			dev_activate(dev);<span class="comment">//激活发送队列</span></span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			dev_deactivate(dev);<span class="comment">//这里把tc队列 替换成noop 所以发包都被noop丢弃了(如果是link down的话)</span></span><br><span class="line">		<span class="comment">//关键！ 这里是 netdev  的 change的的通知链 </span></span><br><span class="line">		<span class="comment">//因为change表示link up link down</span></span><br><span class="line">		netdev_state_change(dev);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">/* Note: our callers are responsible for calling netdev_tracker_free().</span></span><br><span class="line"><span class="comment">	 * This is the reason we use __dev_put() instead of dev_put().</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	__dev_put(dev);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>linkwatch_do_dev()</code>先清除 <code>__LINK_STATE_LINKWATCH_PENDING</code>，表示这个设备当前的 linkwatch 事件开始处理了，接着调用 根据当前 carrier等状态更新 <code>dev-&gt;operstate</code>。如果设备本身是 <code>IFF_UP</code>，说明逻辑上已经打开，那么就根据 carrier 状态决定发送队列是否可用：link up 时调用 <code>dev_activate()</code> 激活 qdisc&#x2F;发送队列，link down 时调用 <code>dev_deactivate()</code>（在前文分析<code>tc</code>的逻辑中已经分析过，这里不在重复分析。） 停用发送队列，通常会让发送路径变成 noop，后续发包会被丢掉。最后调用 <code>netdev_state_change(dev)</code> 走 netdev 通知链，把 link up&#x2F;down 变化通知内核其他模块和用户态。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" rel="tag"># 网卡驱动</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/06/17/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%89%EF%BC%89/" rel="prev" title="IGB网卡驱动初始化（三）">
+      <i class="fa fa-chevron-left"></i> IGB网卡驱动初始化（三）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#netif-carrier-on"><span class="nav-number">1.</span> <span class="nav-text">netif_carrier_on</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">137</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">30</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
