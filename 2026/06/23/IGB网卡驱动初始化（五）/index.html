@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="igb_open在前面分析 igb_probe 的时候，已经知道 igb 驱动是如何被 PCI 子系统匹配到、如何分配并初始化 net_device，最后通过 register_netdev() 把网卡注册到内核网络子系统中的。但是probe 完成并不代表网卡已经真正开始收发数据。此时驱动只是把设备“注册好了”，用户态能够看到这个网卡设备，例如通过 ip link 或 ifconfig -a 查看">
+<meta property="og:type" content="article">
+<meta property="og:title" content="IGB网卡驱动初始化（五）">
+<meta property="og:url" content="http://example.com/2026/06/23/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%BA%94%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="igb_open在前面分析 igb_probe 的时候，已经知道 igb 驱动是如何被 PCI 子系统匹配到、如何分配并初始化 net_device，最后通过 register_netdev() 把网卡注册到内核网络子系统中的。但是probe 完成并不代表网卡已经真正开始收发数据。此时驱动只是把设备“注册好了”，用户态能够看到这个网卡设备，例如通过 ip link 或 ifconfig -a 查看">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-06-23T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-06-23T15:48:40.094Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="网卡驱动">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/06/23/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%BA%94%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>IGB网卡驱动初始化（五） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/06/23/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%BA%94%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          IGB网卡驱动初始化（五）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-06-23 22:00:00 / 修改时间：23:48:40" itemprop="dateCreated datePublished" datetime="2026-06-23T22:00:00+08:00">2026-06-23</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" itemprop="url" rel="index"><span itemprop="name">IGB网卡驱动</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/06/23/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%BA%94%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/06/23/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%BA%94%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="igb-open"><a href="#igb-open" class="headerlink" title="igb_open"></a><code>igb_open</code></h2><p>在前面分析 <code>igb_probe</code> 的时候，已经知道 <code>igb</code> 驱动是如何被 PCI 子系统匹配到、如何分配并初始化 <code>net_device</code>，最后通过 <code>register_netdev()</code> 把网卡注册到内核网络子系统中的。但是<code>probe</code> 完成并不代表网卡已经真正开始收发数据。此时驱动只是把设备“注册好了”，用户态能够看到这个网卡设备，例如通过 <code>ip link</code> 或 <code>ifconfig -a</code> 查看它。只有当用户执行 <code>ip link set ethX up</code>，或者系统网络服务拉起该网卡时，内核才会调用驱动提供的 <code>ndo_open</code> 回调，也就是 <code>igb</code> 驱动中的 <code>igb_open()</code>。它会完成真正运行前的一系列准备工作：申请和初始化描述符资源、配置硬件队列、注册中断、使能NAPI、使能发送接收路径，并最终让网卡具备收发报文的能力。<code>igb_open</code>具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> __igb_open(<span class="keyword">struct</span> net_device *netdev, <span class="type">bool</span> resuming)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">igb_adapter</span> *<span class="title">adapter</span> =</span> netdev_priv(netdev);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">e1000_hw</span> *<span class="title">hw</span> =</span> &amp;adapter-&gt;hw;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">pci_dev</span> *<span class="title">pdev</span> =</span> adapter-&gt;pdev;</span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="type">int</span> i;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* disallow open during test */</span></span><br><span class="line">	<span class="comment">//禁止在测试期间open， 这个标志位是ethtool中设置的</span></span><br><span class="line">	<span class="keyword">if</span> (test_bit(__IGB_TESTING, &amp;adapter-&gt;state)) &#123;</span><br><span class="line">		WARN_ON(resuming);</span><br><span class="line">		<span class="keyword">return</span> -EBUSY;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//电源管理相关</span></span><br><span class="line">	<span class="keyword">if</span> (!resuming)</span><br><span class="line">		pm_runtime_get_sync(&amp;pdev-&gt;dev);</span><br><span class="line">	<span class="comment">//告诉内核当前是link down ，替换tc qdisc的对立</span></span><br><span class="line">	<span class="comment">//后续看门狗任务检测会告诉内核 link up</span></span><br><span class="line">	netif_carrier_off(netdev);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* allocate transmit descriptors */</span></span><br><span class="line">	<span class="comment">//分配tx描述符资源</span></span><br><span class="line">	err = igb_setup_all_tx_resources(adapter);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> err_setup_tx;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* allocate receive descriptors */</span></span><br><span class="line">	<span class="comment">//分配rx描述符资源</span></span><br><span class="line">	err = igb_setup_all_rx_resources(adapter);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> err_setup_rx;</span><br><span class="line">	<span class="comment">//复位并配置phy</span></span><br><span class="line">	igb_power_up_link(adapter);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* before we allocate an interrupt, we must be ready to handle it.</span></span><br><span class="line"><span class="comment">	 * Setting DEBUG_SHIRQ in the kernel makes it fire an interrupt</span></span><br><span class="line"><span class="comment">	 * as soon as we call pci_request_irq, so we have to setup our</span></span><br><span class="line"><span class="comment">	 * clean_rx handler before we do so.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//设置rx mode  混杂，单播 配置 使能tx rx</span></span><br><span class="line">	<span class="comment">//配置rss N元组过滤</span></span><br><span class="line">	<span class="comment">//分配rx buffer</span></span><br><span class="line">	igb_configure(adapter);</span><br><span class="line">	<span class="comment">//注册中断响应函数</span></span><br><span class="line">	err = igb_request_irq(adapter);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> err_req_irq;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Notify the stack of the actual queue counts. */</span></span><br><span class="line">	<span class="comment">//告诉协议栈 tx rx 队列的实际数量</span></span><br><span class="line">	err = netif_set_real_num_tx_queues(adapter-&gt;netdev,</span><br><span class="line">					   adapter-&gt;num_tx_queues);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> err_set_queues;</span><br><span class="line"></span><br><span class="line">	err = netif_set_real_num_rx_queues(adapter-&gt;netdev,</span><br><span class="line">					   adapter-&gt;num_rx_queues);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> err_set_queues;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* From here on the code is the same as igb_up() */</span></span><br><span class="line">	clear_bit(__IGB_DOWN, &amp;adapter-&gt;state);</span><br><span class="line">	<span class="comment">//使能 napi 注意此时还没有告诉协议栈link</span></span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; adapter-&gt;num_q_vectors; i++)</span><br><span class="line">		napi_enable(&amp;(adapter-&gt;q_vector[i]-&gt;napi));</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Clear any pending interrupts. */</span></span><br><span class="line">	<span class="comment">//清楚挂起的中断</span></span><br><span class="line">	rd32(E1000_TSICR);</span><br><span class="line">	rd32(E1000_ICR);</span><br><span class="line">	<span class="comment">//使能网卡硬件的终端能力</span></span><br><span class="line">	igb_irq_enable(adapter);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* notify VFs that reset has been completed */</span></span><br><span class="line">	<span class="comment">//vf相关</span></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;vfs_allocated_count) &#123;</span><br><span class="line">		u32 reg_data = rd32(E1000_CTRL_EXT);</span><br><span class="line"></span><br><span class="line">		reg_data |= E1000_CTRL_EXT_PFRSTD;</span><br><span class="line">		wr32(E1000_CTRL_EXT, reg_data);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//clear  __QUEUE_STATE_DRV_XOFF 标志</span></span><br><span class="line">	netif_tx_start_all_queues(netdev);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (!resuming)</span><br><span class="line">		pm_runtime_put(&amp;pdev-&gt;dev);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* start the watchdog. */</span></span><br><span class="line">	<span class="comment">//调度igb自己的看门狗任务，检测link状态</span></span><br><span class="line">	hw-&gt;mac.get_link_status = <span class="number">1</span>;</span><br><span class="line">	schedule_work(&amp;adapter-&gt;watchdog_task);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">err_set_queues:</span><br><span class="line">	igb_free_irq(adapter);</span><br><span class="line">err_req_irq:</span><br><span class="line">	igb_release_hw_control(adapter);</span><br><span class="line">	igb_power_down_link(adapter);</span><br><span class="line">	igb_free_all_rx_resources(adapter);</span><br><span class="line">err_setup_rx:</span><br><span class="line">	igb_free_all_tx_resources(adapter);</span><br><span class="line">err_setup_tx:</span><br><span class="line">	igb_reset(adapter);</span><br><span class="line">	<span class="keyword">if</span> (!resuming)</span><br><span class="line">		pm_runtime_put(&amp;pdev-&gt;dev);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>__igb_open()</code> 是 首先检查当前网卡是否处于测试状态，避免 <code>ethtool</code> 自检等场景下被错误打开；随后调用 <code>netif_carrier_off()</code> 告诉协议栈当前链路还不可用。接着调用<code>igb_setup_all_tx_resources</code>和<code>igb_setup_all_rx_resources</code>依次分配 TX&#x2F;RX 描述符资源，拉起 PHY 链路，调用 <code>igb_configure()</code> 完成网卡硬件配置，包括收发路径、RX buffer、RSS、过滤规则等内容，再调用 <code>igb_request_irq()</code> 注册中断处理函数。之后，驱动把实际可用的 TX&#x2F;RX 队列数量通知给网络协议栈，清除 <code>__IGB_DOWN</code> 状态位，开启 NAPI，清除历史挂起中断，并真正使能网卡中断。最后，驱动启动发送队列，并调度 watchdog 任务去异步检测真实链路状态；只有后续 watchdog 确认 link up 后，才会通过 <code>netif_carrier_on()</code> 通知协议栈链路可用。</p>
+<h3 id="igb-setup-all-tx-resources"><a href="#igb-setup-all-tx-resources" class="headerlink" title="igb_setup_all_tx_resources"></a><code>igb_setup_all_tx_resources</code></h3><p>上述申请<code>tx</code>方向的描述符资源相关代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">igb_setup_all_tx_resources</span><span class="params">(<span class="keyword">struct</span> igb_adapter *adapter)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">pci_dev</span> *<span class="title">pdev</span> =</span> adapter-&gt;pdev;</span><br><span class="line">	<span class="type">int</span> i, err = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//遍历每个队列</span></span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; adapter-&gt;num_tx_queues; i++) &#123;</span><br><span class="line">		<span class="comment">//位每个队列分配描述符资源</span></span><br><span class="line">		err = igb_setup_tx_resources(adapter-&gt;tx_ring[i]);</span><br><span class="line">		<span class="keyword">if</span> (err) &#123;</span><br><span class="line">			dev_err(&amp;pdev-&gt;dev,</span><br><span class="line">				<span class="string">&quot;Allocation for Tx Queue %u failed\n&quot;</span>, i);</span><br><span class="line">			<span class="keyword">for</span> (i--; i &gt;= <span class="number">0</span>; i--)</span><br><span class="line">				igb_free_tx_resources(adapter-&gt;tx_ring[i]);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">int</span> <span class="title function_">igb_setup_tx_resources</span><span class="params">(<span class="keyword">struct</span> igb_ring *tx_ring)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">device</span> *<span class="title">dev</span> =</span> tx_ring-&gt;dev;</span><br><span class="line">	<span class="type">int</span> size;</span><br><span class="line">	<span class="comment">//tx buffer使用的数组记录每个 TX 描述符对应的 skb/DMA 映射等信息</span></span><br><span class="line">	size = <span class="keyword">sizeof</span>(<span class="keyword">struct</span> igb_tx_buffer) * tx_ring-&gt;count;</span><br><span class="line">	<span class="comment">//vmalloc 方式申请</span></span><br><span class="line">	tx_ring-&gt;tx_buffer_info = vmalloc(size);</span><br><span class="line">	<span class="keyword">if</span> (!tx_ring-&gt;tx_buffer_info)</span><br><span class="line">		<span class="keyword">goto</span> err;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* round up to nearest 4K */</span></span><br><span class="line">	<span class="comment">//描述符的大小</span></span><br><span class="line">	tx_ring-&gt;size = tx_ring-&gt;count * <span class="keyword">sizeof</span>(<span class="keyword">union</span> e1000_adv_tx_desc);</span><br><span class="line">	<span class="comment">//4k对齐</span></span><br><span class="line">	tx_ring-&gt;size = ALIGN(tx_ring-&gt;size, <span class="number">4096</span>);</span><br><span class="line">	<span class="comment">//注意这里是一致性dma映射 PCIe 设备 DMA 和 CPU cache 之间可以通过硬件协议保持一致性！！！！！！！！！</span></span><br><span class="line">	<span class="comment">//区别和流式dma  区别是是否长期共享， cache一致性的处理方式不同，流式的需要驱动手动去cache sync</span></span><br><span class="line">	<span class="comment">//一致性式分配加映射一起完成的</span></span><br><span class="line">	tx_ring-&gt;desc = dma_alloc_coherent(dev, tx_ring-&gt;size,</span><br><span class="line">					   &amp;tx_ring-&gt;dma, GFP_KERNEL);</span><br><span class="line">	<span class="keyword">if</span> (!tx_ring-&gt;desc)</span><br><span class="line">		<span class="keyword">goto</span> err;</span><br><span class="line">	<span class="comment">//下一个待使用的描述符的位置</span></span><br><span class="line">	tx_ring-&gt;next_to_use = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//指向下一个准备清描述符的位置</span></span><br><span class="line">	tx_ring-&gt;next_to_clean = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">err:</span><br><span class="line">	vfree(tx_ring-&gt;tx_buffer_info);</span><br><span class="line">	tx_ring-&gt;tx_buffer_info = <span class="literal">NULL</span>;</span><br><span class="line">	dev_err(dev, <span class="string">&quot;Unable to allocate memory for the Tx descriptor ring\n&quot;</span>);</span><br><span class="line">	<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>igb_setup_all_tx_resources()</code> 负责为 <code>igb</code> 网卡的所有发送队列分配软件和硬件所需的 TX 资源。它会遍历 <code>adapter-&gt;num_tx_queues</code> 个发送队列，并对每个 <code>tx_ring</code> 调用 <code>igb_setup_tx_resources()</code>。真正的资源分配发生在 <code>igb_setup_tx_resources()</code> 中：首先根据描述符数量 <code>tx_ring-&gt;count</code> 分配一组 <code>struct igb_tx_buffer</code> 软件数组，这个数组由驱动使用，用来记录每个 TX 描述符对应的 <code>skb</code>、DMA 地址、长度等软件状态；然后根据 TX 描述符数量计算硬件描述符环的大小。接着通过 <code>dma_alloc_coherent()</code> 分配一块 DMA 一致性内存作为 TX 描述符环，<strong>这块内存同时会返回 CPU 可访问的虚拟地址 <code>tx_ring-&gt;desc</code> 和网卡硬件可访问的 DMA 地址</strong> <code>tx_ring-&gt;dma</code>。因为描述符环是 CPU 和网卡长期共享的数据结构，CPU 要写描述符，网卡要读描述符并回写状态，所以这里使用一致性 DMA 内存。最后驱动把 <code>next_to_use</code> 和 <code>next_to_clean</code> 都初始化为 0，表示发送环从头开始使用。</p>
+<h3 id="igb-setup-all-tx-resources-1"><a href="#igb-setup-all-tx-resources-1" class="headerlink" title="igb_setup_all_tx_resources"></a><code>igb_setup_all_tx_resources</code></h3><p>申请<code>rx</code>方向描述符相关资源的代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">igb_setup_all_rx_resources</span><span class="params">(<span class="keyword">struct</span> igb_adapter *adapter)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">pci_dev</span> *<span class="title">pdev</span> =</span> adapter-&gt;pdev;</span><br><span class="line">	<span class="type">int</span> i, err = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; adapter-&gt;num_rx_queues; i++) &#123;</span><br><span class="line">		err = igb_setup_rx_resources(adapter-&gt;rx_ring[i]);</span><br><span class="line">		<span class="keyword">if</span> (err) &#123;</span><br><span class="line">			dev_err(&amp;pdev-&gt;dev,</span><br><span class="line">				<span class="string">&quot;Allocation for Rx Queue %u failed\n&quot;</span>, i);</span><br><span class="line">			<span class="keyword">for</span> (i--; i &gt;= <span class="number">0</span>; i--)</span><br><span class="line">				igb_free_rx_resources(adapter-&gt;rx_ring[i]);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">int</span> <span class="title function_">igb_setup_rx_resources</span><span class="params">(<span class="keyword">struct</span> igb_ring *rx_ring)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">igb_adapter</span> *<span class="title">adapter</span> =</span> netdev_priv(rx_ring-&gt;netdev);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">device</span> *<span class="title">dev</span> =</span> rx_ring-&gt;dev;</span><br><span class="line">	<span class="type">int</span> size, res;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* XDP RX-queue info */</span></span><br><span class="line">	<span class="keyword">if</span> (xdp_rxq_info_is_reg(&amp;rx_ring-&gt;xdp_rxq))</span><br><span class="line">		xdp_rxq_info_unreg(&amp;rx_ring-&gt;xdp_rxq);</span><br><span class="line">	<span class="comment">//这里注意是传入传入xdp_rxq_info  这个结构，这个结构式xdp用于识别rx队列的元信息</span></span><br><span class="line">	res = xdp_rxq_info_reg(&amp;rx_ring-&gt;xdp_rxq, rx_ring-&gt;netdev,</span><br><span class="line">			       rx_ring-&gt;queue_index, <span class="number">0</span>);</span><br><span class="line">	<span class="keyword">if</span> (res &lt; <span class="number">0</span>) &#123;</span><br><span class="line">		dev_err(dev, <span class="string">&quot;Failed to register xdp_rxq index %u\n&quot;</span>,</span><br><span class="line">			rx_ring-&gt;queue_index);</span><br><span class="line">		<span class="keyword">return</span> res;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//软件使用的rx buffer</span></span><br><span class="line">	size = <span class="keyword">sizeof</span>(<span class="keyword">struct</span> igb_rx_buffer) * rx_ring-&gt;count;</span><br><span class="line">	<span class="comment">//申请</span></span><br><span class="line">	rx_ring-&gt;rx_buffer_info = vmalloc(size);</span><br><span class="line">	<span class="keyword">if</span> (!rx_ring-&gt;rx_buffer_info)</span><br><span class="line">		<span class="keyword">goto</span> err;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Round up to nearest 4K */</span></span><br><span class="line">	<span class="comment">//计算描述符需要大小</span></span><br><span class="line">	rx_ring-&gt;size = rx_ring-&gt;count * <span class="keyword">sizeof</span>(<span class="keyword">union</span> e1000_adv_rx_desc);</span><br><span class="line">	rx_ring-&gt;size = ALIGN(rx_ring-&gt;size, <span class="number">4096</span>);</span><br><span class="line">	<span class="comment">//一致性dma映射</span></span><br><span class="line">	rx_ring-&gt;desc = dma_alloc_coherent(dev, rx_ring-&gt;size,</span><br><span class="line">					   &amp;rx_ring-&gt;dma, GFP_KERNEL);</span><br><span class="line">	<span class="keyword">if</span> (!rx_ring-&gt;desc)</span><br><span class="line">		<span class="keyword">goto</span> err;</span><br><span class="line">	<span class="comment">//下一个待分配的，下一个</span></span><br><span class="line">	rx_ring-&gt;next_to_alloc = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//NAPI poll 里从 next_to_clean 开始看</span></span><br><span class="line">	rx_ring-&gt;next_to_clean = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//哪些 descriptor 已经准备好，可以交给硬件</span></span><br><span class="line">	rx_ring-&gt;next_to_use = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	rx_ring-&gt;xdp_prog = adapter-&gt;xdp_prog;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">err:</span><br><span class="line">	xdp_rxq_info_unreg(&amp;rx_ring-&gt;xdp_rxq);</span><br><span class="line">	vfree(rx_ring-&gt;rx_buffer_info);</span><br><span class="line">	rx_ring-&gt;rx_buffer_info = <span class="literal">NULL</span>;</span><br><span class="line">	dev_err(dev, <span class="string">&quot;Unable to allocate memory for the Rx descriptor ring\n&quot;</span>);</span><br><span class="line">	<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>igb_setup_rx_resources()</code> 负责为单个 RX 队列分配接收方向所需的软件和硬件资源。调用 <code>xdp_rxq_info_reg()</code> 注册当前 RX 队列的元信息，包括所属 <code>net_device</code>、队列编号 <code>queue_index</code> 等，这样后续 XDP 程序在 RX 路径中就能知道自己运行在哪个接收队列上。接着驱动根据 <code>rx_ring-&gt;count</code> 分配 <code>struct igb_rx_buffer</code> 软件数组，然后驱动计算 RX 描述符环需要的大小， 分配一块一致性 DMA 内存作为 RX 描述符环。资源分配完成后，驱动把 <code>next_to_alloc</code>、<code>next_to_clean</code>、<code>next_to_use</code> 都初始化为 0，表示 RX 环从头开始使用，其中 <code>next_to_use</code> 表示下一个准备交给硬件的描述符位置，<code>next_to_clean</code> 表示 NAPI poll 接收路径下一个要检查和清理的位置，<code>next_to_alloc</code> 则用于管理 RX buffer 的分配进度。最后，驱动把当前 adapter 上挂载的 XDP 程序记录到 <code>rx_ring-&gt;xdp_prog</code>，这样后续该 RX 队列收包时就可以执行对应的 XDP 逻辑。</p>
+<h3 id="igb-configure"><a href="#igb-configure" class="headerlink" title="igb_configure"></a><code>igb_configure</code></h3><p>分配完<code>tx/rx</code>方向的资源并拉起PHY后，会调用<code>igb_configure</code>完成对网卡<code>tx/rx</code>队列，RX buffer、RSS等配置。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">igb_configure</span><span class="params">(<span class="keyword">struct</span> igb_adapter *adapter)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">netdev</span> =</span> adapter-&gt;netdev;</span><br><span class="line">	<span class="type">int</span> i;</span><br><span class="line">	<span class="comment">//告诉固件现在由硬件由驱动接管，本质就是写一个寄存器</span></span><br><span class="line">	igb_get_hw_control(adapter);</span><br><span class="line">	<span class="comment">//配置rx 接收模式混杂多播等</span></span><br><span class="line">	igb_set_rx_mode(netdev);</span><br><span class="line">	<span class="comment">//i210 特有，配置tx方向的硬件接收缓冲区</span></span><br><span class="line">	igb_setup_tx_mode(adapter);</span><br><span class="line">	<span class="comment">//把驱动里记录的 VLAN 配置重新写回硬件</span></span><br><span class="line">	igb_restore_vlan(adapter);</span><br><span class="line">	<span class="comment">//设置tx 方向padding</span></span><br><span class="line">	igb_setup_tctl(adapter);</span><br><span class="line">	<span class="comment">//配置rss</span></span><br><span class="line">	igb_setup_mrqc(adapter);</span><br><span class="line">	<span class="comment">//开启接收模块，设置广播接收 CRC 剥离 jumbo 支持</span></span><br><span class="line">	igb_setup_rctl(adapter);</span><br><span class="line">	<span class="comment">//重新配置N元组过滤</span></span><br><span class="line">	igb_nfc_filter_restore(adapter);</span><br><span class="line">	<span class="comment">//把 Tx ring 的 DMA 地址、长度、head/tail、队列控制参数写进网卡寄存器</span></span><br><span class="line">	igb_configure_tx(adapter);</span><br><span class="line">	igb_configure_rx(adapter);</span><br><span class="line"></span><br><span class="line">	igb_rx_fifo_flush_82575(&amp;adapter-&gt;hw);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* call igb_desc_unused which always leaves</span></span><br><span class="line"><span class="comment">	 * at least 1 descriptor unused to make sure</span></span><br><span class="line"><span class="comment">	 * next_to_use != next_to_clean</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; adapter-&gt;num_rx_queues; i++) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">igb_ring</span> *<span class="title">ring</span> =</span> adapter-&gt;rx_ring[i];</span><br><span class="line">		igb_alloc_rx_buffers(ring, igb_desc_unused(ring));</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>igb_configure()</code> 负责把前面已经分配好的软件资源真正配置到网卡硬件中。它首先通过 <code>igb_get_hw_control()</code> 告诉固件当前设备由驱动接管，然后配置接收模式、VLAN、TX 控制、RSS、RX 控制以及 N 元组过滤等硬件功能。接着 <code>igb_configure_tx()</code> 和 <code>igb_configure_rx()</code> 会把 TX&#x2F;RX 描述符环的 DMA 地址、长度、head&#x2F;tail 指针以及队列控制参数写入网卡寄存器，使硬件知道每个收发队列的描述符环在哪里。最后，驱动会遍历所有 RX 队列，通过 <code>igb_alloc_rx_buffers()</code> 预先分配接收 buffer，并把 buffer 地址填入 RX 描述符中，这样网卡在真正收到报文时就可以直接 DMA 到这些 buffer 里。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" rel="tag"># 网卡驱动</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/06/21/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%9B%9B%EF%BC%89/" rel="prev" title="IGB网卡驱动初始化（四）">
+      <i class="fa fa-chevron-left"></i> IGB网卡驱动初始化（四）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#igb-open"><span class="nav-number">1.</span> <span class="nav-text">igb_open</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#igb-setup-all-tx-resources"><span class="nav-number">1.1.</span> <span class="nav-text">igb_setup_all_tx_resources</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#igb-setup-all-tx-resources-1"><span class="nav-number">1.2.</span> <span class="nav-text">igb_setup_all_tx_resources</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#igb-configure"><span class="nav-number">1.3.</span> <span class="nav-text">igb_configure</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">138</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">30</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
