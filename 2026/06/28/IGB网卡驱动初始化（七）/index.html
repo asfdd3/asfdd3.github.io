@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="igb_alloc_rx_buffers在 RX ring 初始化或 NAPI 清理完已使用的接收描述符后，驱动需要把这些空出来的描述符重新挂上可 DMA 的接收缓冲区，具体代码如下所示： 123456789101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657">
+<meta property="og:type" content="article">
+<meta property="og:title" content="IGB 网卡启动流程-igb_open（七）">
+<meta property="og:url" content="http://example.com/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%83%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="igb_alloc_rx_buffers在 RX ring 初始化或 NAPI 清理完已使用的接收描述符后，驱动需要把这些空出来的描述符重新挂上可 DMA 的接收缓冲区，具体代码如下所示： 123456789101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-06-28T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-06-28T15:56:15.656Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="网卡驱动">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%83%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>IGB 网卡启动流程-igb_open（七） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%83%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          IGB 网卡启动流程-igb_open（七）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-06-28 22:00:00 / 修改时间：23:56:15" itemprop="dateCreated datePublished" datetime="2026-06-28T22:00:00+08:00">2026-06-28</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" itemprop="url" rel="index"><span itemprop="name">IGB网卡驱动</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%83%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%83%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h3 id="igb-alloc-rx-buffers"><a href="#igb-alloc-rx-buffers" class="headerlink" title="igb_alloc_rx_buffers"></a><code>igb_alloc_rx_buffers</code></h3><p>在 RX ring 初始化或 NAPI 清理完已使用的接收描述符后，驱动需要把这些空出来的描述符重新挂上可 DMA 的接收缓冲区，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">igb_alloc_rx_buffers</span><span class="params">(<span class="keyword">struct</span> igb_ring *rx_ring, u16 cleaned_count)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">union</span> <span class="title">e1000_adv_rx_desc</span> *<span class="title">rx_desc</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">igb_rx_buffer</span> *<span class="title">bi</span>;</span></span><br><span class="line">	u16 i = rx_ring-&gt;next_to_use;<span class="comment">//下一个要填填描述符的位置</span></span><br><span class="line">	u16 bufsz;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* nothing to do */</span></span><br><span class="line">	<span class="keyword">if</span> (!cleaned_count)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//下一个待填写的描述符</span></span><br><span class="line">	rx_desc = IGB_RX_DESC(rx_ring, i);</span><br><span class="line">	<span class="comment">//软件维护的buffer</span></span><br><span class="line">	bi = &amp;rx_ring-&gt;rx_buffer_info[i];</span><br><span class="line">	<span class="comment">//下面等于0的时候 便于用于判断是否回绕</span></span><br><span class="line">	i -= rx_ring-&gt;count;</span><br><span class="line">	<span class="comment">//通常返回1536</span></span><br><span class="line">	bufsz = igb_rx_bufsz(rx_ring);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">do</span> &#123;</span><br><span class="line">		<span class="comment">//申请一个page，并且进行dma映射</span></span><br><span class="line">		<span class="keyword">if</span> (!igb_alloc_mapped_page(rx_ring, bi))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* sync the buffer for use by the device */</span></span><br><span class="line">		<span class="comment">//同步给设备让设备可以看见</span></span><br><span class="line">		dma_sync_single_range_for_device(rx_ring-&gt;dev, bi-&gt;dma,</span><br><span class="line">						 bi-&gt;page_offset, bufsz,</span><br><span class="line">						 DMA_FROM_DEVICE);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Refresh the desc even if buffer_addrs didn&#x27;t change</span></span><br><span class="line"><span class="comment">		 * because each write-back erases this info.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//写到描述符里</span></span><br><span class="line">		rx_desc-&gt;read.pkt_addr = cpu_to_le64(bi-&gt;dma + bi-&gt;page_offset);</span><br><span class="line">		<span class="comment">//更新索引</span></span><br><span class="line">		rx_desc++;</span><br><span class="line">		bi++;</span><br><span class="line">		i++;</span><br><span class="line">		<span class="keyword">if</span> (unlikely(!i)) &#123;</span><br><span class="line">			rx_desc = IGB_RX_DESC(rx_ring, <span class="number">0</span>);</span><br><span class="line">			bi = rx_ring-&gt;rx_buffer_info;</span><br><span class="line">			i -= rx_ring-&gt;count;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* clear the length for the next_to_use descriptor */</span></span><br><span class="line">		<span class="comment">//数据包长度清0</span></span><br><span class="line">		rx_desc-&gt;wb.upper.length = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">		cleaned_count--;</span><br><span class="line">	&#125; <span class="keyword">while</span> (cleaned_count);</span><br><span class="line">	<span class="comment">//恢复成正常的下标</span></span><br><span class="line">	i += rx_ring-&gt;count;</span><br><span class="line">	<span class="comment">//填了新的描述符</span></span><br><span class="line">	<span class="keyword">if</span> (rx_ring-&gt;next_to_use != i) &#123;</span><br><span class="line">		<span class="comment">/* record the next descriptor to use */</span></span><br><span class="line">		rx_ring-&gt;next_to_use = i;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* update next to alloc since we have filled the ring */</span></span><br><span class="line">		rx_ring-&gt;next_to_alloc = i;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Force memory writes to complete before letting h/w</span></span><br><span class="line"><span class="comment">		 * know there are new descriptors to fetch.  (Only</span></span><br><span class="line"><span class="comment">		 * applicable for weak-ordered memory model archs,</span></span><br><span class="line"><span class="comment">		 * such as IA-64).</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		dma_wmb();</span><br><span class="line">		<span class="comment">//通知硬件填写到哪了</span></span><br><span class="line">		writel(i, rx_ring-&gt;tail);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>igb_alloc_rx_buffers()</code> 先从 <code>next_to_use</code> 指向的位置开始，找到对应的 RX 描述符 <code>rx_desc</code> ，然后循环补充 <code>cleaned_count</code> 个描述符。每补一个位置，就先通过 <code>igb_alloc_mapped_page()</code> 确保这个 <code>bi</code> 里有可用的 page，接着把这段 buffer 同步给设备使用；然后把 <code>bi-&gt;dma + bi-&gt;page_offset</code> 写入 RX 描述符的 <code>pkt_addr</code>，告诉网卡后续可以把收到的数据 DMA 到这里。写完一个描述符后，软件指针往后推进，循环结束后，如果确实补了新的描述符，就更新 <code>next_to_use</code> 和 <code>next_to_alloc</code>，再通过 <code>dma_wmb()</code> 保证前面对描述符的写入先完成，最后 <code>writel(i, rx_ring-&gt;tail)</code> 把新的 tail 写给硬件。</p>
+<p>上述<code>igb_alloc_mapped_page</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">bool</span> <span class="title function_">igb_alloc_mapped_page</span><span class="params">(<span class="keyword">struct</span> igb_ring *rx_ring,</span></span><br><span class="line"><span class="params">				  <span class="keyword">struct</span> igb_rx_buffer *bi)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">page</span> *<span class="title">page</span> =</span> bi-&gt;page;</span><br><span class="line">	<span class="type">dma_addr_t</span> dma;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* since we are recycling buffers we should seldom need to alloc */</span></span><br><span class="line">	<span class="comment">//page已经存在，复用的逻辑，大概率可以复用</span></span><br><span class="line">	<span class="keyword">if</span> (likely(page))</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* alloc new page for storage */</span></span><br><span class="line">	<span class="comment">//申请page，第二个参数表示申请几个连续页，这里大概率是0</span></span><br><span class="line">	page = dev_alloc_pages(igb_rx_pg_order(rx_ring));</span><br><span class="line">	<span class="keyword">if</span> (unlikely(!page)) &#123;</span><br><span class="line">		rx_ring-&gt;rx_stats.alloc_failed++;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* map page for use */</span></span><br><span class="line">	<span class="comment">//DMA 映射</span></span><br><span class="line">	dma = dma_map_page_attrs(rx_ring-&gt;dev, page, <span class="number">0</span>,</span><br><span class="line">				 igb_rx_pg_size(rx_ring),</span><br><span class="line">				 DMA_FROM_DEVICE,</span><br><span class="line">				 IGB_RX_DMA_ATTR);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* if mapping failed free memory back to system since</span></span><br><span class="line"><span class="comment">	 * there isn&#x27;t much point in holding memory we can&#x27;t use</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//映射失败的处理</span></span><br><span class="line">	<span class="keyword">if</span> (dma_mapping_error(rx_ring-&gt;dev, dma)) &#123;</span><br><span class="line">		__free_pages(page, igb_rx_pg_order(rx_ring));</span><br><span class="line"></span><br><span class="line">		rx_ring-&gt;rx_stats.alloc_failed++;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//保存dma地址</span></span><br><span class="line">	bi-&gt;dma = dma;</span><br><span class="line">	<span class="comment">//这个page</span></span><br><span class="line">	bi-&gt;page = page;</span><br><span class="line">	<span class="comment">//192左右</span></span><br><span class="line">	bi-&gt;page_offset = igb_rx_offset(rx_ring);</span><br><span class="line">	<span class="comment">//一次性给 page 加一个很大的引用计数，然后驱动自己用 pagecnt_bias 在本地记账</span></span><br><span class="line">	<span class="comment">//这里很关键，这里是复用page的关键</span></span><br><span class="line">	<span class="comment">//dev_alloc_pages() 返回的 page 本身已经有 1 个引用</span></span><br><span class="line">	page_ref_add(page, USHRT_MAX - <span class="number">1</span>);</span><br><span class="line">	bi-&gt;pagecnt_bias = USHRT_MAX;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>igb_alloc_mapped_page()</code> 的作用就是<strong>确保当前 <code>bi</code> 有一块网卡可 DMA 写入的 page</strong>。如果 <code>bi-&gt;page</code> 已经存在，说明这个 buffer 可以复用，直接返回；如果没有，就申请新的 page，普通 MTU 下一般是 order 0，也就是一个 4K 页。申请成功后，通过 <code>dma_map_page_attrs()</code> 做 DMA 映射，方向是 <code>DMA_FROM_DEVICE</code>，表示后续数据是网卡写到内存。映射失败就释放 page 并记录失败次数；映射成功后，把 <code>dma</code>、<code>page</code> 和 <code>page_offset</code> 保存到 <code>bi</code> 中。<strong>最后通过 <code>page_ref_add(page, USHRT_MAX - 1)</code> 和 <code>pagecnt_bias = USHRT_MAX</code> 一次性预加很多引用计数，让驱动后续用本地 <code>pagecnt_bias</code> 记账，减少频繁操作 page 引用计数的开销，这是 <code>igb</code> 复用 <code>page</code> 的关键。</strong></p>
+<h3 id="igb-request-irq"><a href="#igb-request-irq" class="headerlink" title="igb_request_irq"></a><code>igb_request_irq</code></h3><p>回到<code>igb_open</code>中，调用<code>igb_configure</code>完成硬件的的配置后，会调用<code>igb_request_irq</code>注册中断处理函数，具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">igb_request_irq</span><span class="params">(<span class="keyword">struct</span> igb_adapter *adapter)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">netdev</span> =</span> adapter-&gt;netdev;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">pci_dev</span> *<span class="title">pdev</span> =</span> adapter-&gt;pdev;</span><br><span class="line">	<span class="type">int</span> err = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//MSIX中断的处理逻辑</span></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;flags &amp; IGB_FLAG_HAS_MSIX) &#123;</span><br><span class="line">		err = igb_request_msix(adapter);</span><br><span class="line">		<span class="comment">//返回0 直接 goto done</span></span><br><span class="line">		<span class="keyword">if</span> (!err)</span><br><span class="line">			<span class="keyword">goto</span> request_done;</span><br><span class="line">		<span class="comment">/* fall back to MSI */</span></span><br><span class="line">		igb_free_all_tx_resources(adapter);</span><br><span class="line">		igb_free_all_rx_resources(adapter);</span><br><span class="line"></span><br><span class="line">		igb_clear_interrupt_scheme(adapter);</span><br><span class="line">		err = igb_init_interrupt_scheme(adapter, <span class="literal">false</span>);</span><br><span class="line">		<span class="keyword">if</span> (err)</span><br><span class="line">			<span class="keyword">goto</span> request_done;</span><br><span class="line"></span><br><span class="line">		igb_setup_all_tx_resources(adapter);</span><br><span class="line">		igb_setup_all_rx_resources(adapter);</span><br><span class="line">		igb_configure(adapter);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	igb_assign_vector(adapter-&gt;q_vector[<span class="number">0</span>], <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;flags &amp; IGB_FLAG_HAS_MSI) &#123;</span><br><span class="line">		err = request_irq(pdev-&gt;irq, igb_intr_msi, <span class="number">0</span>,</span><br><span class="line">				  netdev-&gt;name, adapter);</span><br><span class="line">		<span class="keyword">if</span> (!err)</span><br><span class="line">			<span class="keyword">goto</span> request_done;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* fall back to legacy interrupts */</span></span><br><span class="line">		igb_reset_interrupt_capability(adapter);</span><br><span class="line">		adapter-&gt;flags &amp;= ~IGB_FLAG_HAS_MSI;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	err = request_irq(pdev-&gt;irq, igb_intr, IRQF_SHARED,</span><br><span class="line">			  netdev-&gt;name, adapter);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		dev_err(&amp;pdev-&gt;dev, <span class="string">&quot;Error %d getting interrupt\n&quot;</span>,</span><br><span class="line">			err);</span><br><span class="line"></span><br><span class="line">request_done:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>igb_request_irq()</code> 是 <code>igb</code> 申请（注册）中断的统一入口，按 <strong>MSI-X → MSI → legacy INTx</strong> 的顺序尝试。优先走 MSI-X 时，会调用 <code>igb_request_msix()</code>失败降级到 MSI；MSI 再失败则使用传统共享中断 <code>igb_intr()</code>。</p>
+<h3 id="igb-request-msix"><a href="#igb-request-msix" class="headerlink" title="igb_request_msix"></a><strong><code>igb_request_msix</code></strong></h3><p><code>igb_request_msix</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">igb_request_msix</span><span class="params">(<span class="keyword">struct</span> igb_adapter *adapter)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> num_q_vectors = adapter-&gt;num_q_vectors;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">netdev</span> =</span> adapter-&gt;netdev;</span><br><span class="line">	<span class="type">int</span> i, err = <span class="number">0</span>, <span class="built_in">vector</span> = <span class="number">0</span>, free_vector = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//注册一个IRQ handler 这里的vector 是probe时候申请的</span></span><br><span class="line">	err = request_irq(adapter-&gt;msix_entries[<span class="built_in">vector</span>].<span class="built_in">vector</span>,</span><br><span class="line">			  igb_msix_other, <span class="number">0</span>, netdev-&gt;name, adapter);</span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		<span class="keyword">goto</span> err_out;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (num_q_vectors &gt; MAX_Q_VECTORS) &#123;</span><br><span class="line">		num_q_vectors = MAX_Q_VECTORS;</span><br><span class="line">		dev_warn(&amp;adapter-&gt;pdev-&gt;dev,</span><br><span class="line">			 <span class="string">&quot;The number of queue vectors (%d) is higher than max allowed (%d)\n&quot;</span>,</span><br><span class="line">			 adapter-&gt;num_q_vectors, MAX_Q_VECTORS);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//给每个 q_vector 注册一个 MSI-X 中断</span></span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; num_q_vectors; i++) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">igb_q_vector</span> *<span class="title">q_vector</span> =</span> adapter-&gt;q_vector[i];</span><br><span class="line"></span><br><span class="line">		<span class="built_in">vector</span>++;<span class="comment">//从1开始</span></span><br><span class="line">		<span class="comment">//中断节流寄存器，控制中断的频率的</span></span><br><span class="line">		q_vector-&gt;itr_register = adapter-&gt;io_addr + E1000_EITR(<span class="built_in">vector</span>);</span><br><span class="line">		<span class="comment">//给这个 IRQ 起名字</span></span><br><span class="line">		<span class="keyword">if</span> (q_vector-&gt;rx.ring &amp;&amp; q_vector-&gt;tx.ring)</span><br><span class="line">			<span class="built_in">sprintf</span>(q_vector-&gt;name, <span class="string">&quot;%s-TxRx-%u&quot;</span>, netdev-&gt;name,</span><br><span class="line">				q_vector-&gt;rx.ring-&gt;queue_index);</span><br><span class="line">		<span class="keyword">else</span> <span class="keyword">if</span> (q_vector-&gt;tx.ring)</span><br><span class="line">			<span class="built_in">sprintf</span>(q_vector-&gt;name, <span class="string">&quot;%s-tx-%u&quot;</span>, netdev-&gt;name,</span><br><span class="line">				q_vector-&gt;tx.ring-&gt;queue_index);</span><br><span class="line">		<span class="keyword">else</span> <span class="keyword">if</span> (q_vector-&gt;rx.ring)</span><br><span class="line">			<span class="built_in">sprintf</span>(q_vector-&gt;name, <span class="string">&quot;%s-rx-%u&quot;</span>, netdev-&gt;name,</span><br><span class="line">				q_vector-&gt;rx.ring-&gt;queue_index);</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			<span class="built_in">sprintf</span>(q_vector-&gt;name, <span class="string">&quot;%s-unused&quot;</span>, netdev-&gt;name);</span><br><span class="line">		<span class="comment">//注册队列中断处理函数</span></span><br><span class="line">		err = request_irq(adapter-&gt;msix_entries[<span class="built_in">vector</span>].<span class="built_in">vector</span>,</span><br><span class="line">				  igb_msix_ring, <span class="number">0</span>, q_vector-&gt;name,</span><br><span class="line">				  q_vector);</span><br><span class="line">		<span class="keyword">if</span> (err)</span><br><span class="line">			<span class="keyword">goto</span> err_free;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//配置硬件 MSI-X 把队列和 MSI-X vector 建立硬件映射</span></span><br><span class="line">	<span class="comment">//是把 igb 的 MSI-X 中断映射写进网卡硬件</span></span><br><span class="line">	igb_configure_msix(adapter);</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">err_free:</span><br><span class="line">	<span class="comment">/* free already assigned IRQs */</span></span><br><span class="line">	free_irq(adapter-&gt;msix_entries[free_vector++].<span class="built_in">vector</span>, adapter);</span><br><span class="line"></span><br><span class="line">	<span class="built_in">vector</span>--;</span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; <span class="built_in">vector</span>; i++) &#123;</span><br><span class="line">		free_irq(adapter-&gt;msix_entries[free_vector++].<span class="built_in">vector</span>,</span><br><span class="line">			 adapter-&gt;q_vector[i]);</span><br><span class="line">	&#125;</span><br><span class="line">err_out:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>igb_request_msix()</code> 的作用是<strong>在 MSI-X 模式下为 igb 注册各个 IRQ handler，并完成硬件 MSI-X 映射配置</strong>。它先使用 <code>msix_entries[0]</code> 申请一个中断，handler 是 <code>igb_msix_other()</code>，用于处理链路变化、reset、mailbox、时间戳等非收发队列事件；然后从 <code>vector = 1</code> 开始，遍历每个 <code>q_vector</code>，给它设置对应的 <code>EITR</code> 中断节流寄存器地址，生成一个用于 <code>/proc/interrupts</code> 显示的中断名字，再调用 <code>request_irq()</code> 把该 MSI-X vector 绑定到 <code>igb_msix_ring()</code>，用于 RX&#x2F;TX 队列中断并调度 NAPI。所有队列中断申请成功后，调用 <code>igb_configure_msix()</code> 把 other 事件和各个 RX&#x2F;TX 队列映射到对应的 MSI-X vector 上。</p>
+<p><code>igb_msix_other</code>具体实现如下所示:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">irqreturn_t</span> <span class="title function_">igb_msix_other</span><span class="params">(<span class="type">int</span> irq, <span class="type">void</span> *data)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">igb_adapter</span> *<span class="title">adapter</span> =</span> data;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">e1000_hw</span> *<span class="title">hw</span> =</span> &amp;adapter-&gt;hw;</span><br><span class="line">	u32 icr = rd32(E1000_ICR);</span><br><span class="line">	<span class="comment">/* reading ICR causes bit 31 of EICR to be cleared */</span></span><br><span class="line">	<span class="comment">//硬件reset事件</span></span><br><span class="line">	<span class="keyword">if</span> (icr &amp; E1000_ICR_DRSTA)</span><br><span class="line">		schedule_work(&amp;adapter-&gt;reset_task);</span><br><span class="line">	<span class="comment">//可能存在 spoof行为</span></span><br><span class="line">	<span class="keyword">if</span> (icr &amp; E1000_ICR_DOUTSYNC) &#123;</span><br><span class="line">		<span class="comment">/* HW is reporting DMA is out of sync */</span></span><br><span class="line">		adapter-&gt;stats.doosync++;</span><br><span class="line">		<span class="comment">/* The DMA Out of Sync is also indication of a spoof event</span></span><br><span class="line"><span class="comment">		 * in IOV mode. Check the Wrong VM Behavior register to</span></span><br><span class="line"><span class="comment">		 * see if it is really a spoof event.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		igb_check_wvbr(adapter);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Check for a mailbox event */</span></span><br><span class="line">	<span class="comment">//mail box事件</span></span><br><span class="line">	<span class="keyword">if</span> (icr &amp; E1000_ICR_VMMB)</span><br><span class="line">			igb_msg_task(adapter);</span><br><span class="line">	<span class="comment">//最常见的情况，表示link状态变化</span></span><br><span class="line">	<span class="keyword">if</span> (icr &amp; E1000_ICR_LSC) &#123;</span><br><span class="line">		<span class="comment">//表示链路状态需要重新检测</span></span><br><span class="line">		hw-&gt;mac.get_link_status = <span class="number">1</span>;</span><br><span class="line">		<span class="comment">/* guard against interrupt when we&#x27;re going down */</span></span><br><span class="line">		<span class="comment">//快速调度看门狗任务检查link状态</span></span><br><span class="line">		<span class="keyword">if</span> (!test_bit(__IGB_DOWN, &amp;adapter-&gt;state))</span><br><span class="line">			mod_timer(&amp;adapter-&gt;watchdog_timer, jiffies + <span class="number">1</span>);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//PTP相关</span></span><br><span class="line">	<span class="keyword">if</span> (icr &amp; E1000_ICR_TS)</span><br><span class="line">		igb_tsync_interrupt(adapter);</span><br><span class="line"></span><br><span class="line">	wr32(E1000_EIMS, adapter-&gt;eims_other);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> IRQ_HANDLED;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>igb_msix_other()</code> 是 <strong>MSI-X 的非队列中断处理函数</strong>，不负责收发包。它读取 <code>E1000_ICR</code> 判断中断原因：如果是 reset，就调度 <code>reset_task</code>；如果是 DMA 异常，就统计并检查是否有 VF spoof；如果是 mailbox，就处理 VF 消息；如果是链路变化，就标记需要重新检测 link，并马上触发 watchdog；如果是 PTP 时间戳事件，就处理时间戳。最后重新使能 other 中断。</p>
+<p><code>igb_msix_ring</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">irqreturn_t</span> <span class="title function_">igb_msix_ring</span><span class="params">(<span class="type">int</span> irq, <span class="type">void</span> *data)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">igb_q_vector</span> *<span class="title">q_vector</span> =</span> data;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Write the ITR value calculated from the previous interrupt. */</span></span><br><span class="line">	<span class="comment">//更新 MSI-X 队列中断的节流时间</span></span><br><span class="line">	igb_write_itr(q_vector);</span><br><span class="line">	<span class="comment">//NAPI 加入软中断轮询队列</span></span><br><span class="line">	napi_schedule(&amp;q_vector-&gt;napi);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> IRQ_HANDLED;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>igb_msix_ring()</code> 是 <strong>MSI-X 队列中断处理函数</strong>，负责 RX&#x2F;TX 队列中断。它拿到当前中断对应的 <code>q_vector</code> 后，先调用 <code>igb_write_itr()</code> 更新这个队列 vector 的中断节流时间，然后调用 <code>napi_schedule()</code> 把对应的 NAPI 加入软中断轮询队列。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" rel="tag"># 网卡驱动</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/06/25/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/" rel="prev" title="IGB 网卡启动流程-igb_open（六）">
+      <i class="fa fa-chevron-left"></i> IGB 网卡启动流程-igb_open（六）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#igb-alloc-rx-buffers"><span class="nav-number">1.</span> <span class="nav-text">igb_alloc_rx_buffers</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#igb-request-irq"><span class="nav-number">2.</span> <span class="nav-text">igb_request_irq</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#igb-request-msix"><span class="nav-number">3.</span> <span class="nav-text">igb_request_msix</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">140</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">30</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

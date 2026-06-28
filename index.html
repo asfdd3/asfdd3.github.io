@@ -193,7 +193,7 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%83%EF%BC%89/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="image" content="/images/avatar.gif">
@@ -207,7 +207,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/" class="post-title-link" itemprop="url">IGB网卡驱动初始化（六）</a>
+            <a href="/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%83%EF%BC%89/" class="post-title-link" itemprop="url">IGB 网卡启动流程-igb_open（七）</a>
         </h2>
 
         <div class="post-meta">
@@ -218,7 +218,7 @@
               <span class="post-meta-item-text">发表于</span>
               
 
-              <time title="创建时间：2026-06-28 22:00:00 / 修改时间：19:03:01" itemprop="dateCreated datePublished" datetime="2026-06-28T22:00:00+08:00">2026-06-28</time>
+              <time title="创建时间：2026-06-28 22:00:00 / 修改时间：23:56:15" itemprop="dateCreated datePublished" datetime="2026-06-28T22:00:00+08:00">2026-06-28</time>
             </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -239,8 +239,112 @@
       </span>
       <span class="post-meta-item-text">Valine：</span>
     
-    <a title="valine" href="/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/" itemprop="commentCount"></span>
+    <a title="valine" href="/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%83%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%83%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h3 id="igb-alloc-rx-buffers"><a href="#igb-alloc-rx-buffers" class="headerlink" title="igb_alloc_rx_buffers"></a><code>igb_alloc_rx_buffers</code></h3><p>在 RX ring 初始化或 NAPI 清理完已使用的接收描述符后，驱动需要把这些空出来的描述符重新挂上可 DMA 的接收缓冲区，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">igb_alloc_rx_buffers</span><span class="params">(<span class="keyword">struct</span> igb_ring *rx_ring, u16 cleaned_count)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">union</span> <span class="title">e1000_adv_rx_desc</span> *<span class="title">rx_desc</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">igb_rx_buffer</span> *<span class="title">bi</span>;</span></span><br><span class="line">	u16 i = rx_ring-&gt;next_to_use;<span class="comment">//下一个要填填描述符的位置</span></span><br><span class="line">	u16 bufsz;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* nothing to do */</span></span><br><span class="line">	<span class="keyword">if</span> (!cleaned_count)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line">	<span class="comment">//下一个待填写的描述符</span></span><br><span class="line">	rx_desc = IGB_RX_DESC(rx_ring, i);</span><br><span class="line">	<span class="comment">//软件维护的buffer</span></span><br><span class="line">	bi = &amp;rx_ring-&gt;rx_buffer_info[i];</span><br><span class="line">	<span class="comment">//下面等于0的时候 便于用于判断是否回绕</span></span><br><span class="line">	i -= rx_ring-&gt;count;</span><br><span class="line">	<span class="comment">//通常返回1536</span></span><br><span class="line">	bufsz = igb_rx_bufsz(rx_ring);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">do</span> &#123;</span><br><span class="line">		<span class="comment">//申请一个page，并且进行dma映射</span></span><br><span class="line">		<span class="keyword">if</span> (!igb_alloc_mapped_page(rx_ring, bi))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* sync the buffer for use by the device */</span></span><br><span class="line">		<span class="comment">//同步给设备让设备可以看见</span></span><br><span class="line">		dma_sync_single_range_for_device(rx_ring-&gt;dev, bi-&gt;dma,</span><br><span class="line">						 bi-&gt;page_offset, bufsz,</span><br><span class="line">						 DMA_FROM_DEVICE);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Refresh the desc even if buffer_addrs didn&#x27;t change</span></span><br><span class="line"><span class="comment">		 * because each write-back erases this info.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//写到描述符里</span></span><br><span class="line">		rx_desc-&gt;read.pkt_addr = cpu_to_le64(bi-&gt;dma + bi-&gt;page_offset);</span><br><span class="line">		<span class="comment">//更新索引</span></span><br><span class="line">		rx_desc++;</span><br><span class="line">		bi++;</span><br><span class="line">		i++;</span><br><span class="line">		<span class="keyword">if</span> (unlikely(!i)) &#123;</span><br><span class="line">			rx_desc = IGB_RX_DESC(rx_ring, <span class="number">0</span>);</span><br><span class="line">			bi = rx_ring-&gt;rx_buffer_info;</span><br><span class="line">			i -= rx_ring-&gt;count;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* clear the length for the next_to_use descriptor */</span></span><br><span class="line">		<span class="comment">//数据包长度清0</span></span><br><span class="line">		rx_desc-&gt;wb.upper.length = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">		cleaned_count--;</span><br><span class="line">	&#125; <span class="keyword">while</span> (cleaned_count);</span><br><span class="line">	<span class="comment">//恢复成正常的下标</span></span><br><span class="line">	i += rx_ring-&gt;count;</span><br><span class="line">	<span class="comment">//填了新的描述符</span></span><br><span class="line">	<span class="keyword">if</span> (rx_ring-&gt;next_to_use != i) &#123;</span><br><span class="line">		<span class="comment">/* record the next descriptor to use */</span></span><br><span class="line">		rx_ring-&gt;next_to_use = i;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* update next to alloc since we have filled the ring */</span></span><br><span class="line">		rx_ring-&gt;next_to_alloc = i;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* Force memory writes to complete before letting h/w</span></span><br><span class="line"><span class="comment">		 * know there are new descriptors to fetch.  (Only</span></span><br><span class="line"><span class="comment">		 * applicable for weak-ordered memory model archs,</span></span><br><span class="line"><span class="comment">		 * such as IA-64).</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		dma_wmb();</span><br><span class="line">		<span class="comment">//通知硬件填写到哪了</span></span><br><span class="line">		writel(i, rx_ring-&gt;tail);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>igb_alloc_rx_buffers()</code> 先从 <code>next_to_use</code> 指向的位置开始，找到对应的 RX 描述符 <code>rx_desc</code> ，然后循环补充 <code>cleaned_count</code> 个描述符。每补一个位置，就先通过 <code>igb_alloc_mapped_page()</code> 确保这个 <code>bi</code> 里有可用的 page，接着把这段 buffer 同步给设备使用；然后把 <code>bi-&gt;dma + bi-&gt;page_offset</code> 写入 RX 描述符的 <code>pkt_addr</code>，告诉网卡后续可以把收到的数据 DMA 到这里。写完一个描述符后，软件指针往后推进，循环结束后，如果确实补了新的描述符，就更新 <code>next_to_use</code> 和 <code>next_to_alloc</code>，再通过 <code>dma_wmb()</code> 保证前面对描述符的写入先完成，最后 <code>writel(i, rx_ring-&gt;tail)</code> 把新的 tail 写给硬件。</p>
+<p>上述<code>igb_alloc_mapped_page</code>具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">bool</span> <span class="title function_">igb_alloc_mapped_page</span><span class="params">(<span class="keyword">struct</span> igb_ring *rx_ring,</span></span><br><span class="line"><span class="params">				  <span class="keyword">struct</span> igb_rx_buffer *bi)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">page</span> *<span class="title">page</span> =</span> bi-&gt;page;</span><br><span class="line">	<span class="type">dma_addr_t</span> dma;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* since we are recycling buffers we should seldom need to alloc */</span></span><br><span class="line">	<span class="comment">//page已经存在，复用的逻辑，大概率可以复用</span></span><br><span class="line">	<span class="keyword">if</span> (likely(page))</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* alloc new page for storage */</span></span><br><span class="line">	<span class="comment">//申请page，第二个参数表示申请几个连续页，这里大概率是0</span></span><br><span class="line">	page = dev_alloc_pages(igb_rx_pg_order(rx_ring));</span><br><span class="line">	<span class="keyword">if</span> (unlikely(!page)) &#123;</span><br><span class="line">		rx_ring-&gt;rx_stats.alloc_failed++;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* map page for use */</span></span><br><span class="line">	<span class="comment">//DMA 映射</span></span><br><span class="line">	dma = dma_map_page_attrs(rx_ring-&gt;dev, page, <span class="number">0</span>,</span><br><span class="line">				 igb_rx_pg_size(rx_ring),</span><br><span class="line">				 DMA_FROM_DEVICE,</span><br><span class="line">				 IGB_RX_DMA_ATTR);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* if mapping failed free memory back to system since</span></span><br><span class="line"><span class="comment">	 * there isn&#x27;t much point in holding memory we can&#x27;t use</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//映射失败的处理</span></span><br><span class="line">	<span class="keyword">if</span> (dma_mapping_error(rx_ring-&gt;dev, dma)) &#123;</span><br><span class="line">		__free_pages(page, igb_rx_pg_order(rx_ring));</span><br><span class="line"></span><br><span class="line">		rx_ring-&gt;rx_stats.alloc_failed++;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//保存dma地址</span></span><br><span class="line">	bi-&gt;dma = dma;</span><br><span class="line">	<span class="comment">//这个page</span></span><br><span class="line">	bi-&gt;page = page;</span><br><span class="line">	<span class="comment">//192左右</span></span><br><span class="line">	bi-&gt;page_offset = igb_rx_offset(rx_ring);</span><br><span class="line">	<span class="comment">//一次性给 page 加一个很大的引用计数，然后驱动自己用 pagecnt_bias 在本地记账</span></span><br><span class="line">	<span class="comment">//这里很关键，这里是复用page的关键</span></span><br><span class="line">	<span class="comment">//dev_alloc_pages() 返回的 page 本身已经有 1 个引用</span></span><br><span class="line">	page_ref_add(page, USHRT_MAX - <span class="number">1</span>);</span><br><span class="line">	bi-&gt;pagecnt_bias = USHRT_MAX;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>igb_alloc_mapped_page()</code> 的作用就是<strong>确保当前 <code>bi</code> 有一块网卡可 DMA 写入的 page</strong>。如果 <code>bi-&gt;page</code> 已经存在，说明这个 buffer 可以复用，直接返回；如果没有，就申请新的 page，普通 MTU 下一般是 order 0，也就是一个 4K 页。申请成功后，通过 <code>dma_map_page_attrs()</code> 做 DMA 映射，方向是 <code>DMA_FROM_DEVICE</code>，表示后续数据是网卡写到内存。映射失败就释放 page 并记录失败次数；映射成功后，把 <code>dma</code>、<code>page</code> 和 <code>page_offset</code> 保存到 <code>bi</code> 中。<strong>最后通过 <code>page_ref_add(page, USHRT_MAX - 1)</code> 和 <code>pagecnt_bias = USHRT_MAX</code> 一次性预加很多引用计数，让驱动后续用本地 <code>pagecnt_bias</code> 记账，减少频繁操作 page 引用计数的开销，这是 <code>igb</code> 复用 <code>page</code> 的关键。</strong></p>
+<h3 id="igb-request-irq"><a href="#igb-request-irq" class="headerlink" title="igb_request_irq"></a><code>igb_request_irq</code></h3><p>回到<code>igb_open</code>中，调用<code>igb_configure</code>完成硬件的的配置后，会调用<code>igb_request_irq</code>注册中断处理函数，具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">igb_request_irq</span><span class="params">(<span class="keyword">struct</span> igb_adapter *adapter)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">netdev</span> =</span> adapter-&gt;netdev;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">pci_dev</span> *<span class="title">pdev</span> =</span> adapter-&gt;pdev;</span><br><span class="line">	<span class="type">int</span> err = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//MSIX中断的处理逻辑</span></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;flags &amp; IGB_FLAG_HAS_MSIX) &#123;</span><br><span class="line">		err = igb_request_msix(adapter);</span><br><span class="line">		<span class="comment">//返回0 直接 goto done</span></span><br><span class="line">		<span class="keyword">if</span> (!err)</span><br><span class="line">			<span class="keyword">goto</span> request_done;</span><br><span class="line">		<span class="comment">/* fall back to MSI */</span></span><br><span class="line">		igb_free_all_tx_resources(adapter);</span><br><span class="line">		igb_free_all_rx_resources(adapter);</span><br><span class="line"></span><br><span class="line">		igb_clear_interrupt_scheme(adapter);</span><br><span class="line">		err = igb_init_interrupt_scheme(adapter, <span class="literal">false</span>);</span><br><span class="line">		<span class="keyword">if</span> (err)</span><br><span class="line">			<span class="keyword">goto</span> request_done;</span><br><span class="line"></span><br><span class="line">		igb_setup_all_tx_resources(adapter);</span><br><span class="line">		igb_setup_all_rx_resources(adapter);</span><br><span class="line">		igb_configure(adapter);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	igb_assign_vector(adapter-&gt;q_vector[<span class="number">0</span>], <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;flags &amp; IGB_FLAG_HAS_MSI) &#123;</span><br><span class="line">		err = request_irq(pdev-&gt;irq, igb_intr_msi, <span class="number">0</span>,</span><br><span class="line">				  netdev-&gt;name, adapter);</span><br><span class="line">		<span class="keyword">if</span> (!err)</span><br><span class="line">			<span class="keyword">goto</span> request_done;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* fall back to legacy interrupts */</span></span><br><span class="line">		igb_reset_interrupt_capability(adapter);</span><br><span class="line">		adapter-&gt;flags &amp;= ~IGB_FLAG_HAS_MSI;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	err = request_irq(pdev-&gt;irq, igb_intr, IRQF_SHARED,</span><br><span class="line">			  netdev-&gt;name, adapter);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (err)</span><br><span class="line">		dev_err(&amp;pdev-&gt;dev, <span class="string">&quot;Error %d getting interrupt\n&quot;</span>,</span><br><span class="line">			err);</span><br><span class="line"></span><br><span class="line">request_done:</span><br><span class="line">	<span class="keyword">return</span> err;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%83%EF%BC%89/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/06/25/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2026/06/25/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/" class="post-title-link" itemprop="url">IGB 网卡启动流程-igb_open（六）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-06-25 22:00:00" itemprop="dateCreated datePublished" datetime="2026-06-25T22:00:00+08:00">2026-06-25</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-06-28 23:56:05" itemprop="dateModified" datetime="2026-06-28T23:56:05+08:00">2026-06-28</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" itemprop="url" rel="index"><span itemprop="name">IGB网卡驱动</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/06/25/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/06/25/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/" itemprop="commentCount"></span>
     </a>
   </span>
   
@@ -266,7 +370,7 @@
 <figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> *  igb_setup_mrqc - configure the multiple receive queue control registers</span></span><br><span class="line"><span class="comment"> *  @adapter: Board private structure</span></span><br><span class="line"><span class="comment"> **/</span></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">igb_setup_mrqc</span><span class="params">(<span class="keyword">struct</span> igb_adapter *adapter)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">e1000_hw</span> *<span class="title">hw</span> =</span> &amp;adapter-&gt;hw;</span><br><span class="line">	u32 mrqc, rxcsum;</span><br><span class="line">	u32 j, num_rx_queues;</span><br><span class="line">	u32 rss_key[<span class="number">10</span>];</span><br><span class="line">	<span class="comment">//RSS hash 需要一个随机 key，从内核拿到一组rss key </span></span><br><span class="line">	netdev_rss_key_fill(rss_key, <span class="keyword">sizeof</span>(rss_key));</span><br><span class="line">	<span class="comment">//写到硬件寄存器</span></span><br><span class="line">	<span class="keyword">for</span> (j = <span class="number">0</span>; j &lt; <span class="number">10</span>; j++)</span><br><span class="line">		wr32(E1000_RSSRK(j), rss_key[j]);</span><br><span class="line">	<span class="comment">//拿到队列数量</span></span><br><span class="line">	num_rx_queues = adapter-&gt;rss_queues;</span><br><span class="line">	<span class="comment">//特殊处理</span></span><br><span class="line">	<span class="keyword">switch</span> (hw-&gt;mac.type) &#123;</span><br><span class="line">	<span class="keyword">case</span> e1000_82576:</span><br><span class="line">		<span class="comment">/* 82576 supports 2 RSS queues for SR-IOV */</span></span><br><span class="line">		<span class="keyword">if</span> (adapter-&gt;vfs_allocated_count)</span><br><span class="line">			num_rx_queues = <span class="number">2</span>;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//rss重定向表后续会hash到128个entry 每个enty指向一个队列</span></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;rss_indir_tbl_init != num_rx_queues) &#123;</span><br><span class="line">		<span class="keyword">for</span> (j = <span class="number">0</span>; j &lt; IGB_RETA_SIZE; j++)</span><br><span class="line">			adapter-&gt;rss_indir_tbl[j] =</span><br><span class="line">			(j * num_rx_queues) / IGB_RETA_SIZE;</span><br><span class="line">		adapter-&gt;rss_indir_tbl_init = num_rx_queues;</span><br><span class="line">	&#125;<span class="comment">//把这个软件表写进硬件 RETA 寄存器</span></span><br><span class="line">	igb_write_rss_indir_tbl(adapter);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Disable raw packet checksumming so that RSS hash is placed in</span></span><br><span class="line"><span class="comment">	 * descriptor on writeback.  No need to enable TCP/UDP/IP checksum</span></span><br><span class="line"><span class="comment">	 * offloads as they are enabled by default</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//配置 RXCSUM，让 RSS hash 写回 descriptor!</span></span><br><span class="line">	rxcsum = rd32(E1000_RXCSUM);</span><br><span class="line">	rxcsum |= E1000_RXCSUM_PCSD;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;hw.mac.type &gt;= e1000_82576)</span><br><span class="line">		<span class="comment">/* Enable Receive Checksum Offload for SCTP */</span></span><br><span class="line">		rxcsum |= E1000_RXCSUM_CRCOFL;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Don&#x27;t need to set TUOFL or IPOFL, they default to 1 */</span></span><br><span class="line">	wr32(E1000_RXCSUM, rxcsum);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Generate RSS hash based on packet types, TCP/UDP</span></span><br><span class="line"><span class="comment">	 * port numbers and/or IPv4/v6 src and dst addresses</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//选择哪些字段参与 RSS hash</span></span><br><span class="line">	mrqc = E1000_MRQC_RSS_FIELD_IPV4 |</span><br><span class="line">	       E1000_MRQC_RSS_FIELD_IPV4_TCP |</span><br><span class="line">	       E1000_MRQC_RSS_FIELD_IPV6 |</span><br><span class="line">	       E1000_MRQC_RSS_FIELD_IPV6_TCP |</span><br><span class="line">	       E1000_MRQC_RSS_FIELD_IPV6_TCP_EX;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;flags &amp; IGB_FLAG_RSS_FIELD_IPV4_UDP)</span><br><span class="line">		mrqc |= E1000_MRQC_RSS_FIELD_IPV4_UDP;</span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;flags &amp; IGB_FLAG_RSS_FIELD_IPV6_UDP)</span><br><span class="line">		mrqc |= E1000_MRQC_RSS_FIELD_IPV6_UDP;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* If VMDq is enabled then we set the appropriate mode for that, else</span></span><br><span class="line"><span class="comment">	 * we default to RSS so that an RSS hash is calculated per packet even</span></span><br><span class="line"><span class="comment">	 * if we are only using one queue</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//如果有vf</span></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;vfs_allocated_count) &#123;</span><br><span class="line">		<span class="keyword">if</span> (hw-&gt;mac.type &gt; e1000_82575) &#123;</span><br><span class="line">			<span class="comment">/* Set the default pool for the PF&#x27;s first queue */</span></span><br><span class="line">			u32 vtctl = rd32(E1000_VT_CTL);</span><br><span class="line"></span><br><span class="line">			vtctl &amp;= ~(E1000_VT_CTL_DEFAULT_POOL_MASK |</span><br><span class="line">				   E1000_VT_CTL_DISABLE_DEF_POOL);</span><br><span class="line">			vtctl |= adapter-&gt;vfs_allocated_count &lt;&lt;</span><br><span class="line">				E1000_VT_CTL_DEFAULT_POOL_SHIFT;</span><br><span class="line">			wr32(E1000_VT_CTL, vtctl);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">if</span> (adapter-&gt;rss_queues &gt; <span class="number">1</span>)</span><br><span class="line">			mrqc |= E1000_MRQC_ENABLE_VMDQ_RSS_MQ;</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			mrqc |= E1000_MRQC_ENABLE_VMDQ;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		mrqc |= E1000_MRQC_ENABLE_RSS_MQ;</span><br><span class="line">	&#125;</span><br><span class="line">	igb_vmm_control(adapter);</span><br><span class="line">	<span class="comment">//写mrqc寄存器</span></span><br><span class="line">	wr32(E1000_MRQC, mrqc);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
           <!--noindex-->
             <div class="post-button">
-              <a class="btn" href="/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/#more" rel="contents">
+              <a class="btn" href="/2026/06/25/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/#more" rel="contents">
                 阅读全文 &raquo;
               </a>
             </div>
@@ -304,7 +408,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2026/06/23/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%BA%94%EF%BC%89/" class="post-title-link" itemprop="url">IGB网卡驱动初始化（五）</a>
+            <a href="/2026/06/23/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%BA%94%EF%BC%89/" class="post-title-link" itemprop="url">IGB 网卡启动流程-igb_open（五）</a>
         </h2>
 
         <div class="post-meta">
@@ -313,10 +417,16 @@
                 <i class="far fa-calendar"></i>
               </span>
               <span class="post-meta-item-text">发表于</span>
-              
 
-              <time title="创建时间：2026-06-23 22:00:00 / 修改时间：23:48:40" itemprop="dateCreated datePublished" datetime="2026-06-23T22:00:00+08:00">2026-06-23</time>
+              <time title="创建时间：2026-06-23 22:00:00" itemprop="dateCreated datePublished" datetime="2026-06-23T22:00:00+08:00">2026-06-23</time>
             </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-06-28 23:55:58" itemprop="dateModified" datetime="2026-06-28T23:55:58+08:00">2026-06-28</time>
+              </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
                 <i class="far fa-folder"></i>
@@ -401,7 +511,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2026/06/21/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%9B%9B%EF%BC%89/" class="post-title-link" itemprop="url">IGB网卡驱动初始化（四）</a>
+            <a href="/2026/06/21/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%9B%9B%EF%BC%89/" class="post-title-link" itemprop="url">igb 网卡初始化-igb_probe（四）</a>
         </h2>
 
         <div class="post-meta">
@@ -410,10 +520,16 @@
                 <i class="far fa-calendar"></i>
               </span>
               <span class="post-meta-item-text">发表于</span>
-              
 
-              <time title="创建时间：2026-06-21 22:00:00 / 修改时间：16:07:10" itemprop="dateCreated datePublished" datetime="2026-06-21T22:00:00+08:00">2026-06-21</time>
+              <time title="创建时间：2026-06-21 22:00:00" itemprop="dateCreated datePublished" datetime="2026-06-21T22:00:00+08:00">2026-06-21</time>
             </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-06-28 23:55:11" itemprop="dateModified" datetime="2026-06-28T23:55:11+08:00">2026-06-28</time>
+              </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
                 <i class="far fa-folder"></i>
@@ -502,7 +618,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2026/06/17/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%89%EF%BC%89/" class="post-title-link" itemprop="url">IGB网卡驱动初始化（三）</a>
+            <a href="/2026/06/17/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%89%EF%BC%89/" class="post-title-link" itemprop="url">igb 网卡初始化-igb_probe（三）</a>
         </h2>
 
         <div class="post-meta">
@@ -519,7 +635,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2026-06-21 15:41:04" itemprop="dateModified" datetime="2026-06-21T15:41:04+08:00">2026-06-21</time>
+                <time title="修改时间：2026-06-28 23:55:17" itemprop="dateModified" datetime="2026-06-28T23:55:17+08:00">2026-06-28</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -606,7 +722,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2026/06/14/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%EF%BC%88%E4%B8%80%EF%BC%89/" class="post-title-link" itemprop="url">IGB网卡驱动初始化（二）</a>
+            <a href="/2026/06/14/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%EF%BC%88%E4%B8%80%EF%BC%89/" class="post-title-link" itemprop="url">igb 网卡初始化-igb_probe（二）</a>
         </h2>
 
         <div class="post-meta">
@@ -623,7 +739,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2026-06-17 20:59:26" itemprop="dateModified" datetime="2026-06-17T20:59:26+08:00">2026-06-17</time>
+                <time title="修改时间：2026-06-28 23:54:16" itemprop="dateModified" datetime="2026-06-28T23:54:16+08:00">2026-06-28</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -712,7 +828,7 @@
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
           
-            <a href="/2026/06/12/IGB/" class="post-title-link" itemprop="url">IGB网卡驱动初始化（一）</a>
+            <a href="/2026/06/12/IGB/" class="post-title-link" itemprop="url">igb 网卡初始化-igb_probe（一）</a>
         </h2>
 
         <div class="post-meta">
@@ -729,7 +845,7 @@
                   <i class="far fa-calendar-check"></i>
                 </span>
                 <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2026-06-17 20:59:19" itemprop="dateModified" datetime="2026-06-17T20:59:19+08:00">2026-06-17</time>
+                <time title="修改时间：2026-06-28 23:54:20" itemprop="dateModified" datetime="2026-06-28T23:54:20+08:00">2026-06-28</time>
               </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
@@ -1110,117 +1226,6 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2026/05/26/VFIO(%E5%9B%9B)/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2026/05/26/VFIO(%E5%9B%9B)/" class="post-title-link" itemprop="url">vfio_iommu_type1（二）</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2026-05-26 22:00:00" itemprop="dateCreated datePublished" datetime="2026-05-26T22:00:00+08:00">2026-05-26</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2026-05-25 23:11:22" itemprop="dateModified" datetime="2026-05-25T23:11:22+08:00">2026-05-25</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/VFIO/" itemprop="url" rel="index"><span itemprop="name">VFIO</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2026/05/26/VFIO(%E5%9B%9B)/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2026/05/26/VFIO(%E5%9B%9B)/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <p>上面文章介绍完关键<code>vfio_iommu_type1</code>关键的数据结构后，本文就从 <code>vfio_iommu_driver_ops_type1</code> 这张回调函数集开始，分析 <code>vfio-iommu-type1</code> 是如何注册、如何在用户执行 <code>VFIO_SET_IOMMU</code> 时被选中、如何 attach group，以及后续如何通过 <code>VFIO_IOMMU_MAP_DMA</code> 建立 DMA 映射关系的。</p>
-<p><strong><code>vfio-iommu-type1</code> 本质上是 VFIO core 的一个 IOMMU 后端实现。它并不是用户态直接打开的设备文件，而是作为一个内核模块，把自己的一组回调函数注册到 VFIO框架中，在<code>VFIO_SET_IOMMU</code>会遍历注册的后端，这时如果用户指定了<code>vfio-iommu-type1</code>就会和对应的<code>container</code>关联起来。</strong></p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> __init <span class="title function_">vfio_iommu_type1_init</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="keyword">return</span> vfio_register_iommu_driver(&amp;vfio_iommu_driver_ops_type1);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> __exit <span class="title function_">vfio_iommu_type1_cleanup</span><span class="params">(<span class="type">void</span>)</span></span><br><span class="line">&#123;</span><br><span class="line">	vfio_unregister_iommu_driver(&amp;vfio_iommu_driver_ops_type1);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">module_init(vfio_iommu_type1_init);</span><br><span class="line">module_exit(vfio_iommu_type1_cleanup);</span><br></pre></td></tr></table></figure>
-
-<p>这里最重要的是 <code>vfio_register_iommu_driver()</code>。它会把 <code>vfio_iommu_driver_ops_type1</code> 注册到 VFIO core 维护的 IOMMU 后端驱动链表中，具体代码所示</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">vfio_register_iommu_driver</span><span class="params">(<span class="type">const</span> <span class="keyword">struct</span> vfio_iommu_driver_ops *ops)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">vfio_iommu_driver</span> *<span class="title">driver</span>, *<span class="title">tmp</span>;</span></span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (WARN_ON(!ops-&gt;register_device != !ops-&gt;unregister_device))</span><br><span class="line">		<span class="keyword">return</span> -EINVAL;</span><br><span class="line">	<span class="comment">//申请一个driver</span></span><br><span class="line">	driver = kzalloc(<span class="keyword">sizeof</span>(*driver), GFP_KERNEL);</span><br><span class="line">	<span class="keyword">if</span> (!driver)</span><br><span class="line">		<span class="keyword">return</span> -ENOMEM;</span><br><span class="line">	<span class="comment">//设置ops</span></span><br><span class="line">	driver-&gt;ops = ops;</span><br><span class="line"></span><br><span class="line">	mutex_lock(&amp;vfio.iommu_drivers_lock);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Check for duplicates */</span></span><br><span class="line">	list_for_each_entry(tmp, &amp;vfio.iommu_drivers_list, vfio_next) &#123;</span><br><span class="line">		<span class="keyword">if</span> (tmp-&gt;ops == ops) &#123;</span><br><span class="line">			mutex_unlock(&amp;vfio.iommu_drivers_lock);</span><br><span class="line">			kfree(driver);</span><br><span class="line">			<span class="keyword">return</span> -EINVAL;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//挂到iommu_drivers_list vfio_ioctl_set_iommu会遍历这个list</span></span><br><span class="line">	list_add(&amp;driver-&gt;vfio_next, &amp;vfio.iommu_drivers_list);</span><br><span class="line"></span><br><span class="line">	mutex_unlock(&amp;vfio.iommu_drivers_lock);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
-
-<p><code>vfio_register_iommu_driver()</code> 的作用就是<strong>把某个 IOMMU 后端驱动的回调表 <code>ops</code> 封装成 <code>vfio_iommu_driver</code>，检查不能重复注册后，挂到 VFIO 全局的 <code>iommu_drivers_list</code> 链表里，后面用户执行 <code>VFIO_SET_IOMMU</code> 时，VFIO core 就会遍历这个链表找到合适的 IOMMU 后端。</strong></p>
-<p>对于<code>vfio_iommu_type1</code>来说注册给 VFIO core 的回调函数集如下：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">vfio_iommu_driver_ops</span> <span class="title">vfio_iommu_driver_ops_type1</span> =</span> &#123;</span><br><span class="line">	.name			= <span class="string">&quot;vfio-iommu-type1&quot;</span>,</span><br><span class="line">	.owner			= THIS_MODULE,</span><br><span class="line">	.open			= vfio_iommu_type1_open, 		 <span class="comment">//用户对 container 执行 VFIO_SET_IOMMU 时调用，创建并初始化 vfio_iommu 私有结构</span></span><br><span class="line">	.release		= vfio_iommu_type1_release,</span><br><span class="line">	.ioctl			= vfio_iommu_type1_ioctl,			<span class="comment">//处理 VFIO IOMMU 相关 ioctl，比如 DMA_MAP、DMA_UNMAP、GET_INFO 等</span></span><br><span class="line">	.attach_group		= vfio_iommu_type1_attach_group, <span class="comment">//将一个 VFIO group 绑定到 type1 IOMMU 后端，通常会创建或者复用 iommu_domain 并 attach 到 IOMMU group</span></span><br><span class="line">	.detach_group		= vfio_iommu_type1_detach_group,</span><br><span class="line">	.pin_pages		= vfio_iommu_type1_pin_pages,</span><br><span class="line">	.unpin_pages		= vfio_iommu_type1_unpin_pages,</span><br><span class="line">	.register_device	= vfio_iommu_type1_register_device,</span><br><span class="line">	.unregister_device	= vfio_iommu_type1_unregister_device,</span><br><span class="line">	.dma_rw			= vfio_iommu_type1_dma_rw,</span><br><span class="line">	.group_iommu_domain	= vfio_iommu_type1_group_iommu_domain, <span class="comment">//查询某个 group 当前绑定的 iommu_domain</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
-
-<ul>
-<li>用户态设置 container 的 IOMMU 类型时，会走到 <code>.open</code>；</li>
-<li>group 加入 container 后，需要绑定到 IOMMU 后端时，会走到 <code>.attach_group</code>；</li>
-<li>用户态执行 <code>VFIO_IOMMU_MAP_DMA</code> 或 <code>VFIO_IOMMU_UNMAP_DMA</code> 时，会走到 <code>.ioctl</code>；</li>
-</ul>
-<p>接下来主要围绕上述三个关键接口进行介绍</p>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2026/05/26/VFIO(%E5%9B%9B)/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
@@ -1290,7 +1295,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">139</span>
+          <span class="site-state-item-count">140</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>

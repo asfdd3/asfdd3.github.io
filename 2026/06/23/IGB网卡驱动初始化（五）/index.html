@@ -22,13 +22,13 @@
 
   <meta name="description" content="igb_open在前面分析 igb_probe 的时候，已经知道 igb 驱动是如何被 PCI 子系统匹配到、如何分配并初始化 net_device，最后通过 register_netdev() 把网卡注册到内核网络子系统中的。但是probe 完成并不代表网卡已经真正开始收发数据。此时驱动只是把设备“注册好了”，用户态能够看到这个网卡设备，例如通过 ip link 或 ifconfig -a 查看">
 <meta property="og:type" content="article">
-<meta property="og:title" content="IGB网卡驱动初始化（五）">
+<meta property="og:title" content="IGB 网卡启动流程-igb_open（五）">
 <meta property="og:url" content="http://example.com/2026/06/23/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%BA%94%EF%BC%89/index.html">
 <meta property="og:site_name" content="日拱一卒">
 <meta property="og:description" content="igb_open在前面分析 igb_probe 的时候，已经知道 igb 驱动是如何被 PCI 子系统匹配到、如何分配并初始化 net_device，最后通过 register_netdev() 把网卡注册到内核网络子系统中的。但是probe 完成并不代表网卡已经真正开始收发数据。此时驱动只是把设备“注册好了”，用户态能够看到这个网卡设备，例如通过 ip link 或 ifconfig -a 查看">
 <meta property="og:locale" content="zh_CN">
 <meta property="article:published_time" content="2026-06-23T14:00:00.000Z">
-<meta property="article:modified_time" content="2026-06-23T15:48:40.094Z">
+<meta property="article:modified_time" content="2026-06-28T15:55:58.284Z">
 <meta property="article:author" content="zhangm">
 <meta property="article:tag" content="网卡驱动">
 <meta name="twitter:card" content="summary">
@@ -46,7 +46,7 @@
   };
 </script>
 
-  <title>IGB网卡驱动初始化（五） | 日拱一卒</title>
+  <title>IGB 网卡启动流程-igb_open（五） | 日拱一卒</title>
   
 
 
@@ -209,7 +209,7 @@
     </span>
       <header class="post-header">
         <h1 class="post-title" itemprop="name headline">
-          IGB网卡驱动初始化（五）
+          IGB 网卡启动流程-igb_open（五）
         </h1>
 
         <div class="post-meta">
@@ -218,10 +218,16 @@
                 <i class="far fa-calendar"></i>
               </span>
               <span class="post-meta-item-text">发表于</span>
-              
 
-              <time title="创建时间：2026-06-23 22:00:00 / 修改时间：23:48:40" itemprop="dateCreated datePublished" datetime="2026-06-23T22:00:00+08:00">2026-06-23</time>
+              <time title="创建时间：2026-06-23 22:00:00" itemprop="dateCreated datePublished" datetime="2026-06-23T22:00:00+08:00">2026-06-23</time>
             </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-06-28 23:55:58" itemprop="dateModified" datetime="2026-06-28T23:55:58+08:00">2026-06-28</time>
+              </span>
             <span class="post-meta-item">
               <span class="post-meta-item-icon">
                 <i class="far fa-folder"></i>
@@ -298,12 +304,12 @@
         
     <div class="post-nav">
       <div class="post-nav-item">
-    <a href="/2026/06/21/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%9B%9B%EF%BC%89/" rel="prev" title="IGB网卡驱动初始化（四）">
-      <i class="fa fa-chevron-left"></i> IGB网卡驱动初始化（四）
+    <a href="/2026/06/21/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%9B%9B%EF%BC%89/" rel="prev" title="igb 网卡初始化-igb_probe（四）">
+      <i class="fa fa-chevron-left"></i> igb 网卡初始化-igb_probe（四）
     </a></div>
       <div class="post-nav-item">
-    <a href="/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/" rel="next" title="IGB网卡驱动初始化（六）">
-      IGB网卡驱动初始化（六） <i class="fa fa-chevron-right"></i>
+    <a href="/2026/06/25/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/" rel="next" title="IGB 网卡启动流程-igb_open（六）">
+      IGB 网卡启动流程-igb_open（六） <i class="fa fa-chevron-right"></i>
     </a></div>
     </div>
       </footer>
@@ -378,7 +384,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">139</span>
+          <span class="site-state-item-count">140</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
