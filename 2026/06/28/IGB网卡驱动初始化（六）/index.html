@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="igb_set_rx_modeigb_configure() 中会调用 igb_set_rx_mode(netdev)，用于根据当前网卡的接收模式配置硬件接收过滤规则，比如混杂模式、多播过滤、单播地址表、VLAN 过滤等。具体实现如下所示： 1234567891011121314151617181920212223242526272829303132333435363738394041424344">
+<meta property="og:type" content="article">
+<meta property="og:title" content="IGB网卡驱动初始化（六）">
+<meta property="og:url" content="http://example.com/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="igb_set_rx_modeigb_configure() 中会调用 igb_set_rx_mode(netdev)，用于根据当前网卡的接收模式配置硬件接收过滤规则，比如混杂模式、多播过滤、单播地址表、VLAN 过滤等。具体实现如下所示： 1234567891011121314151617181920212223242526272829303132333435363738394041424344">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-06-28T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-06-28T11:03:01.865Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="网卡驱动">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>IGB网卡驱动初始化（六） | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          IGB网卡驱动初始化（六）
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+              
+
+              <time title="创建时间：2026-06-28 22:00:00 / 修改时间：19:03:01" itemprop="dateCreated datePublished" datetime="2026-06-28T22:00:00+08:00">2026-06-28</time>
+            </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" itemprop="url" rel="index"><span itemprop="name">IGB网卡驱动</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E5%85%AD%EF%BC%89/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h3 id="igb-set-rx-mode"><a href="#igb-set-rx-mode" class="headerlink" title="igb_set_rx_mode"></a><strong>igb_set_rx_mode</strong></h3><p><code>igb_configure()</code> 中会调用 <code>igb_set_rx_mode(netdev)</code>，用于根据当前网卡的接收模式配置硬件接收过滤规则，比如混杂模式、多播过滤、单播地址表、VLAN 过滤等。具体实现如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">igb_set_rx_mode</span><span class="params">(<span class="keyword">struct</span> net_device *netdev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">igb_adapter</span> *<span class="title">adapter</span> =</span> netdev_priv(netdev);</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">e1000_hw</span> *<span class="title">hw</span> =</span> &amp;adapter-&gt;hw;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> vfn = adapter-&gt;vfs_allocated_count;</span><br><span class="line">	u32 rctl = <span class="number">0</span>, vmolr = <span class="number">0</span>, rlpml = MAX_JUMBO_FRAME_SIZE;</span><br><span class="line">	<span class="type">int</span> count;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Check for Promiscuous and All Multicast modes */</span></span><br><span class="line">	<span class="comment">//混杂模式</span></span><br><span class="line">	<span class="keyword">if</span> (netdev-&gt;flags &amp; IFF_PROMISC) &#123;</span><br><span class="line">		<span class="comment">//单播混杂使能 组播混杂使能</span></span><br><span class="line">		rctl |= E1000_RCTL_UPE | E1000_RCTL_MPE;</span><br><span class="line">		<span class="comment">//让这个 pool 也能接收组播混杂流量 vmqd sriov相关</span></span><br><span class="line">		vmolr |= E1000_VMOLR_MPME;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* enable use of UTA filter to force packets to default pool */</span></span><br><span class="line">		<span class="comment">//82576特殊处理</span></span><br><span class="line">		<span class="keyword">if</span> (hw-&gt;mac.type == e1000_82576)</span><br><span class="line">			vmolr |= E1000_VMOLR_ROPE;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;<span class="comment">//不是混杂模式</span></span><br><span class="line">		<span class="keyword">if</span> (netdev-&gt;flags &amp; IFF_ALLMULTI) &#123; <span class="comment">//接收多播报文</span></span><br><span class="line">			rctl |= E1000_RCTL_MPE; <span class="comment">//组播混杂使能</span></span><br><span class="line">			vmolr |= E1000_VMOLR_MPME;</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123; <span class="comment">//没开混杂，也没开 ALLMULTI</span></span><br><span class="line">			<span class="comment">/* Write addresses to the MTA, if the attempt fails</span></span><br><span class="line"><span class="comment">			 * then we should just turn on promiscuous mode so</span></span><br><span class="line"><span class="comment">			 * that we can at least receive multicast traffic</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="comment">//把 netdev 当前维护的组播 MAC 地址列表写到网卡硬件组播过滤表里</span></span><br><span class="line">			<span class="comment">//返回配置成功的数量</span></span><br><span class="line">			count = igb_write_mc_addr_list(netdev);</span><br><span class="line">			<span class="keyword">if</span> (count &lt; <span class="number">0</span>) &#123;</span><br><span class="line">				rctl |= E1000_RCTL_MPE;</span><br><span class="line">				vmolr |= E1000_VMOLR_MPME;</span><br><span class="line">			&#125; <span class="keyword">else</span> <span class="keyword">if</span> (count) &#123;</span><br><span class="line">				vmolr |= E1000_VMOLR_ROMPE;</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Write addresses to available RAR registers, if there is not</span></span><br><span class="line"><span class="comment">	 * sufficient space to store all the addresses then enable</span></span><br><span class="line"><span class="comment">	 * unicast promiscuous mode</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//把 netdev 里的单播地址同步到硬件过滤表</span></span><br><span class="line">	<span class="comment">//igb_uc_sync() 会尝试把 MAC 地址写到硬件的 RAR的表里</span></span><br><span class="line">	<span class="comment">//如果同步失败，说明硬件过滤表不够用了，比如 RAR 表放不下所有 MAC 地址</span></span><br><span class="line">	<span class="comment">//就开启单播混杂</span></span><br><span class="line">	<span class="keyword">if</span> (__dev_uc_sync(netdev, igb_uc_sync, igb_uc_unsync)) &#123;</span><br><span class="line">		rctl |= E1000_RCTL_UPE; <span class="comment">//单播混杂</span></span><br><span class="line">		vmolr |= E1000_VMOLR_ROPE;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* enable VLAN filtering by default */</span></span><br><span class="line">	<span class="comment">//默认开启 VLAN filtering</span></span><br><span class="line">	rctl |= E1000_RCTL_VFE;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* disable VLAN filtering for modes that require it */</span></span><br><span class="line">	<span class="comment">//混杂模式下处理 VLAN 过滤</span></span><br><span class="line">	<span class="comment">//混杂模式下，如果 VLAN filtering 还开着，可能仍然收不到某些 VLAN 包</span></span><br><span class="line">	<span class="keyword">if</span> ((netdev-&gt;flags &amp; IFF_PROMISC) ||</span><br><span class="line">	    (netdev-&gt;features &amp; NETIF_F_RXALL)) &#123;</span><br><span class="line">		<span class="comment">/* if we fail to set all rules then just clear VFE */</span></span><br><span class="line">		<span class="keyword">if</span> (igb_vlan_promisc_enable(adapter))</span><br><span class="line">			rctl &amp;= ~E1000_RCTL_VFE;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		igb_vlan_promisc_disable(adapter);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* update state of unicast, multicast, and VLAN filtering modes */</span></span><br><span class="line">	<span class="comment">//更新 RCTL，只改 UPE/MPE/VFE 三个位 单播多播VLAN	</span></span><br><span class="line">	rctl |= rd32(E1000_RCTL) &amp; ~(E1000_RCTL_UPE | E1000_RCTL_MPE |</span><br><span class="line">				     E1000_RCTL_VFE);</span><br><span class="line">	wr32(E1000_RCTL, rctl);</span><br><span class="line">	<span class="comment">//设置全局最大接收长度</span></span><br><span class="line"><span class="meta">#<span class="keyword">if</span> (PAGE_SIZE &lt; 8192)</span></span><br><span class="line">	<span class="keyword">if</span> (!adapter-&gt;vfs_allocated_count) &#123;</span><br><span class="line">		<span class="keyword">if</span> (adapter-&gt;max_frame_size &lt;= IGB_MAX_FRAME_BUILD_SKB)</span><br><span class="line">			rlpml = IGB_MAX_FRAME_BUILD_SKB; <span class="comment">//1536</span></span><br><span class="line">	&#125;</span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">	wr32(E1000_RLPML, rlpml);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* In order to support SR-IOV and eventually VMDq it is necessary to set</span></span><br><span class="line"><span class="comment">	 * the VMOLR to enable the appropriate modes.  Without this workaround</span></span><br><span class="line"><span class="comment">	 * we will have issues with VLAN tag stripping not being done for frames</span></span><br><span class="line"><span class="comment">	 * that are only arriving because we are the default pool</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//不是 82576 到 i350 之间的芯片，直接返回</span></span><br><span class="line">	<span class="keyword">if</span> ((hw-&gt;mac.type &lt; e1000_82576) || (hw-&gt;mac.type &gt; e1000_i350))</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* set UTA to appropriate mode */</span></span><br><span class="line">	<span class="comment">//下面是SRIOV和vmdq相关</span></span><br><span class="line">	igb_set_uta(adapter, !!(vmolr &amp; E1000_VMOLR_ROPE));</span><br><span class="line"></span><br><span class="line">	vmolr |= rd32(E1000_VMOLR(vfn)) &amp;</span><br><span class="line">		 ~(E1000_VMOLR_ROPE | E1000_VMOLR_MPME | E1000_VMOLR_ROMPE);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* enable Rx jumbo frames, restrict as needed to support build_skb */</span></span><br><span class="line">	vmolr &amp;= ~E1000_VMOLR_RLPML_MASK;</span><br><span class="line"><span class="meta">#<span class="keyword">if</span> (PAGE_SIZE &lt; 8192)</span></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;max_frame_size &lt;= IGB_MAX_FRAME_BUILD_SKB)</span><br><span class="line">		vmolr |= IGB_MAX_FRAME_BUILD_SKB;</span><br><span class="line">	<span class="keyword">else</span></span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">		vmolr |= MAX_JUMBO_FRAME_SIZE;</span><br><span class="line">	vmolr |= E1000_VMOLR_LPE;</span><br><span class="line"></span><br><span class="line">	wr32(E1000_VMOLR(vfn), vmolr);</span><br><span class="line"></span><br><span class="line">	igb_restore_vf_multicasts(adapter);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>igb_set_rx_mode()</code> 主要负责配置网卡的接收过滤模式。函数首先根据 <code>netdev-&gt;flags</code> 判断网卡是否开启了混杂模式 <code>IFF_PROMISC</code> 或全多播模式 <code>IFF_ALLMULTI</code>，如果开启混杂模式，就设置 <code>RCTL.UPE/MPE</code>，允许接收所有单播和多播报文；如果只是全多播模式，则只打开多播混杂。否则驱动会把协议栈维护的多播地址列表写入硬件 MTA 表，把单播地址列表同步到 RAR 表，如果硬件表空间不足，就退化为对应的混杂接收模式。随后函数默认打开 VLAN 过滤 <code>RCTL.VFE</code>，但在混杂模式或 <code>NETIF_F_RXALL</code> 场景下会尝试放宽 VLAN 过滤，避免因为 VLAN 规则限制导致某些报文收不到。最后函数把这些模式写入 <code>E1000_RCTL</code> 寄存器，并配置最大接收包长 <code>RLPML</code>。</p>
+<h3 id="igb-setup-tctl"><a href="#igb-setup-tctl" class="headerlink" title="igb_setup_tctl"></a><strong>igb_setup_tctl</strong></h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">igb_setup_tctl</span><span class="params">(<span class="keyword">struct</span> igb_adapter *adapter)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">e1000_hw</span> *<span class="title">hw</span> =</span> &amp;adapter-&gt;hw;</span><br><span class="line">	u32 tctl;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* disable queue 0 which is enabled by default on 82575 and 82576 */</span></span><br><span class="line">	<span class="comment">//先关闭 Tx queue 0</span></span><br><span class="line">	wr32(E1000_TXDCTL(<span class="number">0</span>), <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Program the Transmit Control Register */</span></span><br><span class="line">	<span class="comment">//读全局发送控制寄存器</span></span><br><span class="line">	tctl = rd32(E1000_TCTL);</span><br><span class="line">	<span class="comment">//清bit</span></span><br><span class="line">	tctl &amp;= ~E1000_TCTL_CT;</span><br><span class="line">	<span class="comment">//以太网帧最小帧长是 64 字节，包括 FCS。</span></span><br><span class="line">	<span class="comment">//让硬件自动补短包 E1000_TCTL_PSP</span></span><br><span class="line">	tctl |= E1000_TCTL_PSP | E1000_TCTL_RTLC |</span><br><span class="line">		(E1000_COLLISION_THRESHOLD &lt;&lt; E1000_CT_SHIFT);</span><br><span class="line"></span><br><span class="line">	igb_config_collision_dist(hw);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Enable transmits */</span></span><br><span class="line">	<span class="comment">//全局发送使能</span></span><br><span class="line">	tctl |= E1000_TCTL_EN;</span><br><span class="line"></span><br><span class="line">	wr32(E1000_TCTL, tctl);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>igb_setup_tctl()</code> 主要是在初始化 igb 网卡的<strong>全局发送控制寄存器 <code>TCTL</code></strong>。它先把默认可能开启的 <code>Tx queue 0</code> 关掉，避免旧状态影响后续队列配置；然后读取 <code>E1000_TCTL</code>，配置发送相关控制位，比如 <code>PSP</code> 让硬件自动给小于以太网最小帧长的报文补齐 padding。</p>
+<h3 id="igb-setup-mrqc"><a href="#igb-setup-mrqc" class="headerlink" title="igb_setup_mrqc"></a><strong>igb_setup_mrqc</strong></h3><p>负责配置 igb 网卡的 <strong>RSS 接收分流能力</strong>，主要是写入 RSS hash key、配置 RETA 重定向表，并设置 <code>MRQC</code> 寄存器，让硬件可以根据报文 hash 把流量分散到不同的 RX 队列。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> *  igb_setup_mrqc - configure the multiple receive queue control registers</span></span><br><span class="line"><span class="comment"> *  @adapter: Board private structure</span></span><br><span class="line"><span class="comment"> **/</span></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">igb_setup_mrqc</span><span class="params">(<span class="keyword">struct</span> igb_adapter *adapter)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">e1000_hw</span> *<span class="title">hw</span> =</span> &amp;adapter-&gt;hw;</span><br><span class="line">	u32 mrqc, rxcsum;</span><br><span class="line">	u32 j, num_rx_queues;</span><br><span class="line">	u32 rss_key[<span class="number">10</span>];</span><br><span class="line">	<span class="comment">//RSS hash 需要一个随机 key，从内核拿到一组rss key </span></span><br><span class="line">	netdev_rss_key_fill(rss_key, <span class="keyword">sizeof</span>(rss_key));</span><br><span class="line">	<span class="comment">//写到硬件寄存器</span></span><br><span class="line">	<span class="keyword">for</span> (j = <span class="number">0</span>; j &lt; <span class="number">10</span>; j++)</span><br><span class="line">		wr32(E1000_RSSRK(j), rss_key[j]);</span><br><span class="line">	<span class="comment">//拿到队列数量</span></span><br><span class="line">	num_rx_queues = adapter-&gt;rss_queues;</span><br><span class="line">	<span class="comment">//特殊处理</span></span><br><span class="line">	<span class="keyword">switch</span> (hw-&gt;mac.type) &#123;</span><br><span class="line">	<span class="keyword">case</span> e1000_82576:</span><br><span class="line">		<span class="comment">/* 82576 supports 2 RSS queues for SR-IOV */</span></span><br><span class="line">		<span class="keyword">if</span> (adapter-&gt;vfs_allocated_count)</span><br><span class="line">			num_rx_queues = <span class="number">2</span>;</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//rss重定向表后续会hash到128个entry 每个enty指向一个队列</span></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;rss_indir_tbl_init != num_rx_queues) &#123;</span><br><span class="line">		<span class="keyword">for</span> (j = <span class="number">0</span>; j &lt; IGB_RETA_SIZE; j++)</span><br><span class="line">			adapter-&gt;rss_indir_tbl[j] =</span><br><span class="line">			(j * num_rx_queues) / IGB_RETA_SIZE;</span><br><span class="line">		adapter-&gt;rss_indir_tbl_init = num_rx_queues;</span><br><span class="line">	&#125;<span class="comment">//把这个软件表写进硬件 RETA 寄存器</span></span><br><span class="line">	igb_write_rss_indir_tbl(adapter);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Disable raw packet checksumming so that RSS hash is placed in</span></span><br><span class="line"><span class="comment">	 * descriptor on writeback.  No need to enable TCP/UDP/IP checksum</span></span><br><span class="line"><span class="comment">	 * offloads as they are enabled by default</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//配置 RXCSUM，让 RSS hash 写回 descriptor!</span></span><br><span class="line">	rxcsum = rd32(E1000_RXCSUM);</span><br><span class="line">	rxcsum |= E1000_RXCSUM_PCSD;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;hw.mac.type &gt;= e1000_82576)</span><br><span class="line">		<span class="comment">/* Enable Receive Checksum Offload for SCTP */</span></span><br><span class="line">		rxcsum |= E1000_RXCSUM_CRCOFL;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Don&#x27;t need to set TUOFL or IPOFL, they default to 1 */</span></span><br><span class="line">	wr32(E1000_RXCSUM, rxcsum);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Generate RSS hash based on packet types, TCP/UDP</span></span><br><span class="line"><span class="comment">	 * port numbers and/or IPv4/v6 src and dst addresses</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//选择哪些字段参与 RSS hash</span></span><br><span class="line">	mrqc = E1000_MRQC_RSS_FIELD_IPV4 |</span><br><span class="line">	       E1000_MRQC_RSS_FIELD_IPV4_TCP |</span><br><span class="line">	       E1000_MRQC_RSS_FIELD_IPV6 |</span><br><span class="line">	       E1000_MRQC_RSS_FIELD_IPV6_TCP |</span><br><span class="line">	       E1000_MRQC_RSS_FIELD_IPV6_TCP_EX;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;flags &amp; IGB_FLAG_RSS_FIELD_IPV4_UDP)</span><br><span class="line">		mrqc |= E1000_MRQC_RSS_FIELD_IPV4_UDP;</span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;flags &amp; IGB_FLAG_RSS_FIELD_IPV6_UDP)</span><br><span class="line">		mrqc |= E1000_MRQC_RSS_FIELD_IPV6_UDP;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* If VMDq is enabled then we set the appropriate mode for that, else</span></span><br><span class="line"><span class="comment">	 * we default to RSS so that an RSS hash is calculated per packet even</span></span><br><span class="line"><span class="comment">	 * if we are only using one queue</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//如果有vf</span></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;vfs_allocated_count) &#123;</span><br><span class="line">		<span class="keyword">if</span> (hw-&gt;mac.type &gt; e1000_82575) &#123;</span><br><span class="line">			<span class="comment">/* Set the default pool for the PF&#x27;s first queue */</span></span><br><span class="line">			u32 vtctl = rd32(E1000_VT_CTL);</span><br><span class="line"></span><br><span class="line">			vtctl &amp;= ~(E1000_VT_CTL_DEFAULT_POOL_MASK |</span><br><span class="line">				   E1000_VT_CTL_DISABLE_DEF_POOL);</span><br><span class="line">			vtctl |= adapter-&gt;vfs_allocated_count &lt;&lt;</span><br><span class="line">				E1000_VT_CTL_DEFAULT_POOL_SHIFT;</span><br><span class="line">			wr32(E1000_VT_CTL, vtctl);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">if</span> (adapter-&gt;rss_queues &gt; <span class="number">1</span>)</span><br><span class="line">			mrqc |= E1000_MRQC_ENABLE_VMDQ_RSS_MQ;</span><br><span class="line">		<span class="keyword">else</span></span><br><span class="line">			mrqc |= E1000_MRQC_ENABLE_VMDQ;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		mrqc |= E1000_MRQC_ENABLE_RSS_MQ;</span><br><span class="line">	&#125;</span><br><span class="line">	igb_vmm_control(adapter);</span><br><span class="line">	<span class="comment">//写mrqc寄存器</span></span><br><span class="line">	wr32(E1000_MRQC, mrqc);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>igb_setup_mrqc()</code> 主要是在配置 igb 网卡的 <strong>多接收队列&#x2F;RSS 分流逻辑</strong>。它先生成一组 RSS hash key 并写入硬件 <code>RSSRK</code> 寄存器，然后根据当前可用的 RX 队列数初始化 RSS 重定向表 <code>rss_indir_tbl</code>，让 128 个 RETA entry 均匀映射到不同 RX 队列上。接着配置 <code>RXCSUM</code>，让硬件在接收描述符回写时带上 RSS hash 值，并根据 IPv4、IPv6、TCP、UDP 等报文字段选择 RSS hash 的输入字段。</p>
+<h3 id="igb-setup-rctl"><a href="#igb-setup-rctl" class="headerlink" title="igb_setup_rctl"></a><strong>igb_setup_rctl</strong></h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> *  igb_setup_rctl - configure the receive control registers</span></span><br><span class="line"><span class="comment"> *  @adapter: Board private structure</span></span><br><span class="line"><span class="comment"> **/</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">igb_setup_rctl</span><span class="params">(<span class="keyword">struct</span> igb_adapter *adapter)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">e1000_hw</span> *<span class="title">hw</span> =</span> &amp;adapter-&gt;hw;</span><br><span class="line">	u32 rctl;</span><br><span class="line">	<span class="comment">//读当前 RCTL</span></span><br><span class="line">	rctl = rd32(E1000_RCTL);</span><br><span class="line">	<span class="comment">//清掉组播 hash offset 和 loopback 模式</span></span><br><span class="line">	rctl &amp;= ~(<span class="number">3</span> &lt;&lt; E1000_RCTL_MO_SHIFT);</span><br><span class="line">	rctl &amp;= ~(E1000_RCTL_LBM_TCVR | E1000_RCTL_LBM_MAC);</span><br><span class="line">	<span class="comment">//打开接收模块，允许接收广播，设置组播 hash 类型</span></span><br><span class="line">	rctl |= E1000_RCTL_EN | E1000_RCTL_BAM | E1000_RCTL_RDMTS_HALF |</span><br><span class="line">		(hw-&gt;mac.mc_filter_type &lt;&lt; E1000_RCTL_MO_SHIFT);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* enable stripping of CRC. It&#x27;s unlikely this will break BMC</span></span><br><span class="line"><span class="comment">	 * redirection as it did with e1000. Newer features require</span></span><br><span class="line"><span class="comment">	 * that the HW strips the CRC.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	 <span class="comment">//CRC剥离</span></span><br><span class="line">	rctl |= E1000_RCTL_SECRC;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* disable store bad packets and clear size bits. */</span></span><br><span class="line">	<span class="comment">//默认不接收坏包，清掉bit</span></span><br><span class="line">	rctl &amp;= ~(E1000_RCTL_SBP | E1000_RCTL_SZ_256);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* enable LPE to allow for reception of jumbo frames */</span></span><br><span class="line">	<span class="comment">//允许 jumbo frame</span></span><br><span class="line">	rctl |= E1000_RCTL_LPE;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* disable queue 0 to prevent tail write w/o re-config */</span></span><br><span class="line">	wr32(E1000_RXDCTL(<span class="number">0</span>), <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Attention!!!  For SR-IOV PF driver operations you must enable</span></span><br><span class="line"><span class="comment">	 * queue drop for all VF and PF queues to prevent head of line blocking</span></span><br><span class="line"><span class="comment">	 * if an un-trusted VF does not provide descriptors to hardware.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//SRIOV</span></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;vfs_allocated_count) &#123;</span><br><span class="line">		<span class="comment">/* set all queue drop enable bits */</span></span><br><span class="line">		wr32(E1000_QDE, ALL_QUEUES);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* This is useful for sniffing bad packets. */</span></span><br><span class="line">	<span class="comment">//RXALL 模式尽量接收异常包</span></span><br><span class="line">	<span class="keyword">if</span> (adapter-&gt;netdev-&gt;features &amp; NETIF_F_RXALL) &#123;</span><br><span class="line">		<span class="comment">/* UPE and MPE will be handled by normal PROMISC logic</span></span><br><span class="line"><span class="comment">		 * in e1000e_set_rx_mode</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		rctl |= (E1000_RCTL_SBP | <span class="comment">/* Receive bad packets */</span></span><br><span class="line">			 E1000_RCTL_BAM | <span class="comment">/* RX All Bcast Pkts */</span></span><br><span class="line">			 E1000_RCTL_PMCF); <span class="comment">/* RX All MAC Ctrl Pkts */</span></span><br><span class="line"></span><br><span class="line">		rctl &amp;= ~(E1000_RCTL_DPF | <span class="comment">/* Allow filtered pause */</span></span><br><span class="line">			  E1000_RCTL_CFIEN); <span class="comment">/* Dis VLAN CFIEN Filter */</span></span><br><span class="line">		<span class="comment">/* Do not mess with E1000_CTRL_VME, it affects transmit as well,</span></span><br><span class="line"><span class="comment">		 * and that breaks VLANs.</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	wr32(E1000_RCTL, rctl);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>igb_setup_rctl()</code> 负责配置 igb 网卡的全局接收控制寄存器 <code>RCTL</code>。它会打开硬件接收功能，允许接收广播包，设置多播 hash 类型，开启 CRC 剥离和 jumbo frame 支持，同时默认不接收坏包。函数还会先关闭默认的 RX queue 0，避免队列未重新配置就被使用；如果开启 SR-IOV，则打开队列 drop，防止 VF 不提供描述符导致阻塞。</p>
+<h3 id="igb-configure-tx"><a href="#igb-configure-tx" class="headerlink" title="igb_configure_tx"></a><strong>igb_configure_tx</strong></h3><p><code>igb_configure_tx()</code> 负责初始化所有发送队列，把每个 TX ring 的描述符 DMA 地址、长度、head&#x2F;tail 指针和队列控制参数写入硬件寄存器，为后续网卡发包做好准备。具体实现如下所示</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">igb_configure_tx</span><span class="params">(<span class="keyword">struct</span> igb_adapter *adapter)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">e1000_hw</span> *<span class="title">hw</span> =</span> &amp;adapter-&gt;hw;</span><br><span class="line">	<span class="type">int</span> i;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* disable the queues */</span></span><br><span class="line">	<span class="comment">//先disable 队列</span></span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; adapter-&gt;num_tx_queues; i++)</span><br><span class="line">		wr32(E1000_TXDCTL(adapter-&gt;tx_ring[i]-&gt;reg_idx), <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">	wrfl();</span><br><span class="line">	usleep_range(<span class="number">10000</span>, <span class="number">20000</span>);</span><br><span class="line">	<span class="comment">//循环配置每个队列的寄存器</span></span><br><span class="line">	<span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; adapter-&gt;num_tx_queues; i++)</span><br><span class="line">		igb_configure_tx_ring(adapter, adapter-&gt;tx_ring[i]);</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">void</span> <span class="title function_">igb_configure_tx_ring</span><span class="params">(<span class="keyword">struct</span> igb_adapter *adapter,</span></span><br><span class="line"><span class="params">			   <span class="keyword">struct</span> igb_ring *ring)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">e1000_hw</span> *<span class="title">hw</span> =</span> &amp;adapter-&gt;hw;</span><br><span class="line">	u32 txdctl = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">// DMA 地址，硬件通过这个地址访问描述符</span></span><br><span class="line">	u64 tdba = ring-&gt;dma;</span><br><span class="line">	<span class="comment">// 当前软件 ring 对应的硬件队列寄存器编号</span></span><br><span class="line">	<span class="type">int</span> reg_idx = ring-&gt;reg_idx;</span><br><span class="line">	<span class="comment">// 设置 Tx descriptor ring 的长度，单位是字节</span></span><br><span class="line">	wr32(E1000_TDLEN(reg_idx),</span><br><span class="line">	     ring-&gt;count * <span class="keyword">sizeof</span>(<span class="keyword">union</span> e1000_adv_tx_desc));</span><br><span class="line">	<span class="comment">// 设置 Tx descriptor ring 的 DMA 基地址低 32 位</span></span><br><span class="line">	wr32(E1000_TDBAL(reg_idx),</span><br><span class="line">	     tdba &amp; <span class="number">0x00000000ffffffffU</span>LL);</span><br><span class="line">	<span class="comment">// 设置 Tx descriptor ring 的 DMA 基地址高 32 位</span></span><br><span class="line">	wr32(E1000_TDBAH(reg_idx), tdba &gt;&gt; <span class="number">32</span>);</span><br><span class="line">	<span class="comment">// 后面发包快路径可以直接 writel(new_tail, ring-&gt;tail) 通知硬件</span></span><br><span class="line">	ring-&gt;tail = adapter-&gt;io_addr + E1000_TDT(reg_idx);</span><br><span class="line">	wr32(E1000_TDH(reg_idx), <span class="number">0</span>);</span><br><span class="line">	<span class="comment">// 初始化 Tx descriptor tail，表示驱动当前还没有提交任何描述符</span></span><br><span class="line">	writel(<span class="number">0</span>, ring-&gt;tail);</span><br><span class="line">	<span class="comment">// 设置 Tx descriptor prefetch threshold</span></span><br><span class="line">	<span class="comment">// 控制硬件预取描述符的阈值</span></span><br><span class="line">	txdctl |= IGB_TX_PTHRESH;</span><br><span class="line">	<span class="comment">// 和硬件从主机内存读取描述符的策略有关</span></span><br><span class="line">	txdctl |= IGB_TX_HTHRESH &lt;&lt; <span class="number">8</span>;</span><br><span class="line">	<span class="comment">// 控制硬件写回描述符完成状态的节奏</span></span><br><span class="line">	txdctl |= IGB_TX_WTHRESH &lt;&lt; <span class="number">16</span>;</span><br><span class="line">	<span class="comment">// 重新清空 tx_buffer_info 软件数组</span></span><br><span class="line">	<span class="comment">// 这个数组是驱动自己用的，用来记录每个 Tx descriptor 对应的 skb、DMA 映射等信息</span></span><br><span class="line">	<span class="built_in">memset</span>(ring-&gt;tx_buffer_info, <span class="number">0</span>,</span><br><span class="line">	       <span class="keyword">sizeof</span>(<span class="keyword">struct</span> igb_tx_buffer) * ring-&gt;count);</span><br><span class="line">	<span class="comment">// 设置 Tx queue enable 位，表示启用当前 Tx 队列</span></span><br><span class="line">	txdctl |= E1000_TXDCTL_QUEUE_ENABLE;</span><br><span class="line">	<span class="comment">// 把 TXDCTL 配置写入硬件，Tx 队列正式启用</span></span><br><span class="line">	wr32(E1000_TXDCTL(reg_idx), txdctl);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>igb_configure_tx()</code> 先把每个 TX queue 的 <code>TXDCTL</code> 清零，确保队列处于关闭状态，然后等待硬件状态稳定，再逐个调用 <code>igb_configure_tx_ring()</code> 配置具体的发送 ring。每个 TX ring 会把描述符环的 DMA 基地址 <code>TDBAL/TDBAH</code>、长度 <code>TDLEN</code>、head&#x2F;tail 指针 <code>TDH/TDT</code> 写到硬件寄存器里，同时保存 <code>ring-&gt;tail</code>，方便后续发包快路径直接更新 tail 通知硬件有新描述符。然后设置 TXDCTL 里的预取、主机读取、写回阈值，清空软件维护的 <code>tx_buffer_info</code>，最后置位 <code>QUEUE_ENABLE</code> 启用该发送队列。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" rel="tag"># 网卡驱动</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/06/23/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%BA%94%EF%BC%89/" rel="prev" title="IGB网卡驱动初始化（五）">
+      <i class="fa fa-chevron-left"></i> IGB网卡驱动初始化（五）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#igb-set-rx-mode"><span class="nav-number">1.</span> <span class="nav-text">igb_set_rx_mode</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#igb-setup-tctl"><span class="nav-number">2.</span> <span class="nav-text">igb_setup_tctl</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#igb-setup-mrqc"><span class="nav-number">3.</span> <span class="nav-text">igb_setup_mrqc</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#igb-setup-rctl"><span class="nav-number">4.</span> <span class="nav-text">igb_setup_rctl</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#igb-configure-tx"><span class="nav-number">5.</span> <span class="nav-text">igb_configure_tx</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">139</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">30</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>
