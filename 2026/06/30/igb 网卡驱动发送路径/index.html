@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":true,"show_result":true,"style":"mac"},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":true,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":true,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}},"path":"search.json"};
+  </script>
+
+  <meta name="description" content="前面已经分析了 igb 网卡驱动的初始化流程，包括设备探测、资源申请、队列初始化以及 open 阶段对硬件寄存器的配置。网卡完成初始化之后，真正的数据发送入口就是 ndo_start_xmit 回调。在 igb 驱动中，这个回调对应的是 igb_xmit_frame() 函数。协议栈在需要发送数据包时，会把构造好的 skb 交给该函数，由驱动完成 TX 队列选择、描述符填充、DMA 映射以及通知硬">
+<meta property="og:type" content="article">
+<meta property="og:title" content="igb 网卡驱动发送路径">
+<meta property="og:url" content="http://example.com/2026/06/30/igb%20%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%8F%91%E9%80%81%E8%B7%AF%E5%BE%84/index.html">
+<meta property="og:site_name" content="日拱一卒">
+<meta property="og:description" content="前面已经分析了 igb 网卡驱动的初始化流程，包括设备探测、资源申请、队列初始化以及 open 阶段对硬件寄存器的配置。网卡完成初始化之后，真正的数据发送入口就是 ndo_start_xmit 回调。在 igb 驱动中，这个回调对应的是 igb_xmit_frame() 函数。协议栈在需要发送数据包时，会把构造好的 skb 交给该函数，由驱动完成 TX 队列选择、描述符填充、DMA 映射以及通知硬">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-06-30T14:00:00.000Z">
+<meta property="article:modified_time" content="2026-06-29T14:49:51.063Z">
+<meta property="article:author" content="zhangm">
+<meta property="article:tag" content="网卡驱动">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/2026/06/30/igb%20%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%8F%91%E9%80%81%E8%B7%AF%E5%BE%84/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>igb 网卡驱动发送路径 | 日拱一卒</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">日拱一卒</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+        <i class="fa fa-search fa-fw fa-lg"></i>
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-categories">
+
+    <a href="/categories/" rel="section"><i class="fa fa-th fa-fw"></i>分类</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+      <li class="menu-item menu-item-search">
+        <a role="button" class="popup-trigger"><i class="fa fa-search fa-fw"></i>搜索
+        </a>
+      </li>
+  </ul>
+</nav>
+
+
+
+  <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+  <span class="search-icon">
+    <i class="fa fa-search"></i>
+  </span>
+  <div class="search-input-container">
+    <input autocomplete="off" autocapitalize="off"
+           placeholder="搜索..." spellcheck="false"
+           type="search" class="search-input">
+  </div>
+  <span class="popup-btn-close">
+    <i class="fa fa-times-circle"></i>
+  </span>
+</div>
+<div id="search-result">
+  <div id="no-result">
+    <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+  </div>
+</div>
+
+    </div>
+  </div>
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+  <div class="reading-progress-bar"></div>
+  <a role="button" class="book-mark-link book-mark-link-fixed"></a>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/06/30/igb%20%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%8F%91%E9%80%81%E8%B7%AF%E5%BE%84/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          igb 网卡驱动发送路径
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-06-30 22:00:00" itemprop="dateCreated datePublished" datetime="2026-06-30T22:00:00+08:00">2026-06-30</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-06-29 22:49:51" itemprop="dateModified" datetime="2026-06-29T22:49:51+08:00">2026-06-29</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" itemprop="url" rel="index"><span itemprop="name">IGB网卡驱动</span></a>
+                </span>
+            </span>
+
+          
+            <span class="post-meta-item" title="阅读次数" id="busuanzi_container_page_pv" style="display: none;">
+              <span class="post-meta-item-icon">
+                <i class="fa fa-eye"></i>
+              </span>
+              <span class="post-meta-item-text">阅读次数：</span>
+              <span id="busuanzi_value_page_pv"></span>
+            </span>
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/06/30/igb%20%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%8F%91%E9%80%81%E8%B7%AF%E5%BE%84/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/06/30/igb%20%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%8F%91%E9%80%81%E8%B7%AF%E5%BE%84/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <p>前面已经分析了 <code>igb</code> 网卡驱动的初始化流程，包括设备探测、资源申请、队列初始化以及 open 阶段对硬件寄存器的配置。网卡完成初始化之后，真正的数据发送入口就是 <code>ndo_start_xmit</code> 回调。在 <code>igb</code> 驱动中，这个回调对应的是 <code>igb_xmit_frame()</code> 函数。协议栈在需要发送数据包时，会把构造好的 <code>skb</code> 交给该函数，由驱动完成 TX 队列选择、描述符填充、DMA 映射以及通知硬件发送等工作。本文从 <code>igb_xmit_frame</code> 这一入口开始，梳理 <code>igb</code> 网卡驱动的发送路径。</p>
+<h3 id="igb-xmit-frame"><a href="#igb-xmit-frame" class="headerlink" title="igb_xmit_frame"></a><code>igb_xmit_frame</code></h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">netdev_tx_t</span> <span class="title function_">igb_xmit_frame</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">				  <span class="keyword">struct</span> net_device *netdev)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">igb_adapter</span> *<span class="title">adapter</span> =</span> netdev_priv(netdev);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* The minimum packet size with TCTL.PSP set is 17 so pad the skb</span></span><br><span class="line"><span class="comment">	 * in order to meet this minimum size requirement.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//如果数据包的长度小于17字节，则进行填充</span></span><br><span class="line">	<span class="keyword">if</span> (skb_put_padto(skb, <span class="number">17</span>))</span><br><span class="line">		<span class="keyword">return</span> NETDEV_TX_OK;</span><br><span class="line">		<span class="comment">//传如skb的硬件队列的索引</span></span><br><span class="line">	<span class="keyword">return</span> igb_xmit_frame_ring(skb, igb_tx_queue_mapping(adapter, skb));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这段代码就是 <strong><code>igb</code> 驱动的发包总入口</strong>：先从 <code>netdev</code> 找到网卡私有结构 <code>adapter</code>，然后确保待发送的 <code>skb</code> 至少有 17 字节，满足硬件最小发送长度要求，最后根据 <code>skb</code> 选择对应的 TX 队列，并交给 <code>igb_xmit_frame_ring()</code> 继续完成 DMA 映射、TX 描述符填充和通知硬件发送。</p>
+<h3 id="igb-xmit-frame-ring"><a href="#igb-xmit-frame-ring" class="headerlink" title="igb_xmit_frame_ring"></a><code>igb_xmit_frame_ring</code></h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">netdev_tx_t</span> <span class="title function_">igb_xmit_frame_ring</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb,</span></span><br><span class="line"><span class="params">				<span class="keyword">struct</span> igb_ring *tx_ring)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">igb_tx_buffer</span> *<span class="title">first</span>;</span></span><br><span class="line">	<span class="type">int</span> tso;</span><br><span class="line">	u32 tx_flags = <span class="number">0</span>;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">short</span> f;</span><br><span class="line">	<span class="comment">//计算线性部分所需要的描述符数量</span></span><br><span class="line">	u16 count = TXD_USE_COUNT(skb_headlen(skb));</span><br><span class="line">	__be16 protocol = vlan_get_protocol(skb);</span><br><span class="line">	u8 hdr_len = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* need: 1 descriptor per page * PAGE_SIZE/IGB_MAX_DATA_PER_TXD,</span></span><br><span class="line"><span class="comment">	 *       + 1 desc for skb_headlen/IGB_MAX_DATA_PER_TXD,</span></span><br><span class="line"><span class="comment">	 *       + 2 desc gap to keep tail from touching head,</span></span><br><span class="line"><span class="comment">	 *       + 1 desc for context descriptor,</span></span><br><span class="line"><span class="comment">	 * otherwise try next time</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//计算非线性部分所需要的描述符的数量</span></span><br><span class="line">	<span class="keyword">for</span> (f = <span class="number">0</span>; f &lt; skb_shinfo(skb)-&gt;nr_frags; f++)</span><br><span class="line">		count += TXD_USE_COUNT(skb_frag_size(</span><br><span class="line">						&amp;skb_shinfo(skb)-&gt;frags[f]));</span><br><span class="line">	<span class="comment">//通知协议栈，并且可能调度tx方向软中断</span></span><br><span class="line">	<span class="keyword">if</span> (igb_maybe_stop_tx(tx_ring, count + <span class="number">3</span>)) &#123;</span><br><span class="line">		<span class="comment">/* this is a hard error */</span></span><br><span class="line">		<span class="keyword">return</span> NETDEV_TX_BUSY;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* record the location of the first descriptor for this packet */</span></span><br><span class="line">	<span class="comment">//记录数据包的信息到软件维护的buffer中</span></span><br><span class="line">	first = &amp;tx_ring-&gt;tx_buffer_info[tx_ring-&gt;next_to_use];</span><br><span class="line">	first-&gt;type = IGB_TYPE_SKB;</span><br><span class="line">	first-&gt;skb = skb;</span><br><span class="line">	first-&gt;bytecount = skb-&gt;len;</span><br><span class="line">	first-&gt;gso_segs = <span class="number">1</span>;</span><br><span class="line">	<span class="comment">//ptp的处理</span></span><br><span class="line">	<span class="keyword">if</span> (unlikely(skb_shinfo(skb)-&gt;tx_flags &amp; SKBTX_HW_TSTAMP)) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">igb_adapter</span> *<span class="title">adapter</span> =</span> netdev_priv(tx_ring-&gt;netdev);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (adapter-&gt;tstamp_config.tx_type == HWTSTAMP_TX_ON &amp;&amp;</span><br><span class="line">		    !test_and_set_bit_lock(__IGB_PTP_TX_IN_PROGRESS,</span><br><span class="line">					   &amp;adapter-&gt;state)) &#123;</span><br><span class="line">			skb_shinfo(skb)-&gt;tx_flags |= SKBTX_IN_PROGRESS;</span><br><span class="line">			tx_flags |= IGB_TX_FLAGS_TSTAMP;</span><br><span class="line"></span><br><span class="line">			adapter-&gt;ptp_tx_skb = skb_get(skb);</span><br><span class="line">			adapter-&gt;ptp_tx_start = jiffies;</span><br><span class="line">			<span class="keyword">if</span> (adapter-&gt;hw.mac.type == e1000_82576)</span><br><span class="line">				schedule_work(&amp;adapter-&gt;ptp_tx_work);</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			adapter-&gt;tx_hwtstamp_skipped++;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//提取vlan信息</span></span><br><span class="line">	<span class="keyword">if</span> (skb_vlan_tag_present(skb)) &#123;</span><br><span class="line">		tx_flags |= IGB_TX_FLAGS_VLAN;</span><br><span class="line">		tx_flags |= (skb_vlan_tag_get(skb) &lt;&lt; IGB_TX_FLAGS_VLAN_SHIFT);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* record initial flags and protocol */</span></span><br><span class="line">	first-&gt;tx_flags = tx_flags;</span><br><span class="line">	first-&gt;protocol = protocol;</span><br><span class="line">	<span class="comment">//1表示是tso 0 表示不是tso </span></span><br><span class="line">	tso = igb_tso(tx_ring, first, &amp;hdr_len);</span><br><span class="line">	<span class="keyword">if</span> (tso &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">goto</span> out_drop;</span><br><span class="line">	<span class="keyword">else</span> <span class="keyword">if</span> (!tso)</span><br><span class="line">	<span class="comment">//处理非tso但是校验和卸载的情况</span></span><br><span class="line">		igb_tx_csum(tx_ring, first);</span><br><span class="line">	<span class="comment">//dma映射，交给硬件发送</span></span><br><span class="line">	<span class="keyword">if</span> (igb_tx_map(tx_ring, first, hdr_len))</span><br><span class="line">		<span class="keyword">goto</span> cleanup_tx_tstamp;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> NETDEV_TX_OK;</span><br><span class="line"></span><br><span class="line">out_drop:</span><br><span class="line">	dev_kfree_skb_any(first-&gt;skb);</span><br><span class="line">	first-&gt;skb = <span class="literal">NULL</span>;</span><br><span class="line">cleanup_tx_tstamp:</span><br><span class="line">	<span class="keyword">if</span> (unlikely(tx_flags &amp; IGB_TX_FLAGS_TSTAMP)) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">igb_adapter</span> *<span class="title">adapter</span> =</span> netdev_priv(tx_ring-&gt;netdev);</span><br><span class="line"></span><br><span class="line">		dev_kfree_skb_any(adapter-&gt;ptp_tx_skb);</span><br><span class="line">		adapter-&gt;ptp_tx_skb = <span class="literal">NULL</span>;</span><br><span class="line">		<span class="keyword">if</span> (adapter-&gt;hw.mac.type == e1000_82576)</span><br><span class="line">			cancel_work_sync(&amp;adapter-&gt;ptp_tx_work);</span><br><span class="line">		clear_bit_unlock(__IGB_PTP_TX_IN_PROGRESS, &amp;adapter-&gt;state);</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> NETDEV_TX_OK;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>igb_xmit_frame_ring()</code> 是 <code>igb</code> 驱动真正处理单个发送包的核心函数。它首先根据 <code>skb</code> 的线性区和分片数量计算本次发送大概需要多少个 TX 描述符，并通过 <code>igb_maybe_stop_tx()</code> 判断发送环是否还有足够空间；如果空间不足，就暂时停止发送队列并返回 <code>NETDEV_TX_BUSY</code>。如果空间足够，驱动会在 <code>tx_buffer_info[next_to_use]</code> 中记录这个 <code>skb</code> 的软件发送上下文，包括长度、协议类型、TSO&#x2F;VLAN&#x2F;PTP 时间戳等信息。随后根据 <code>skb</code> 的特性分别处理硬件时间戳、VLAN tag、TSO 分段卸载或者普通校验和卸载，最后调用 <code>igb_tx_map()</code> 把 <code>skb</code> 的数据区 DMA 映射成 TX 描述符，并更新 tail 通知硬件开始发送</p>
+<p>上述代码会通过调用<code>igb_maybe_stop_tx</code>判断环是否还有足够的空间具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="keyword">inline</span> <span class="type">int</span> <span class="title function_">igb_maybe_stop_tx</span><span class="params">(<span class="keyword">struct</span> igb_ring *tx_ring, <span class="type">const</span> u16 size)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">//计算描述符数量</span></span><br><span class="line">	<span class="keyword">if</span> (igb_desc_unused(tx_ring) &gt;= size)</span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//通知协议栈，并且可能调度tx方向软中断</span></span><br><span class="line">	<span class="keyword">return</span> __igb_maybe_stop_tx(tx_ring, size);</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">static</span> <span class="type">int</span> __igb_maybe_stop_tx(<span class="keyword">struct</span> igb_ring *tx_ring, <span class="type">const</span> u16 size)</span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">net_device</span> *<span class="title">netdev</span> =</span> tx_ring-&gt;netdev;</span><br><span class="line">	<span class="comment">//设置__QUEUE_STATE_DRV_XOFF 标志位</span></span><br><span class="line">	netif_stop_subqueue(netdev, tx_ring-&gt;queue_index);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Herbert&#x27;s original patch had:</span></span><br><span class="line"><span class="comment">	 *  smp_mb__after_netif_stop_queue();</span></span><br><span class="line"><span class="comment">	 * but since that doesn&#x27;t exist yet, just open code it.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	smp_mb();</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* We need to check again in a case another CPU has just</span></span><br><span class="line"><span class="comment">	 * made room available.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//重新计算可用描述符的数量，另一个cpu是不是已经清了</span></span><br><span class="line">	<span class="keyword">if</span> (igb_desc_unused(tx_ring) &lt; size)</span><br><span class="line">		<span class="keyword">return</span> -EBUSY;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* A reprieve! */</span></span><br><span class="line">	<span class="comment">//调度tx软中断</span></span><br><span class="line">	netif_wake_subqueue(netdev, tx_ring-&gt;queue_index);</span><br><span class="line">	<span class="comment">//更新统计信息</span></span><br><span class="line">	u64_stats_update_begin(&amp;tx_ring-&gt;tx_syncp2);</span><br><span class="line">	tx_ring-&gt;tx_stats.restart_queue2++;</span><br><span class="line">	u64_stats_update_end(&amp;tx_ring-&gt;tx_syncp2);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>igb_maybe_stop_tx()</code> 用来检查 TX ring 中剩余的描述符是否够本次发包使用。如果空间足够，就继续发送；如果空间不足，就通过 <code>netif_stop_subqueue()</code> 暂停对应的发送队列，避免协议栈继续给 skb。</p>
+<p>回到<code>igb_xmit_frame_ring</code>中，进行<code>dma</code>映射之前，会调用<code>igb_tso</code>和<code>igb_tx_csum</code>判断是否需要<code>tso</code>或者校验和卸载，具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">igb_tso</span><span class="params">(<span class="keyword">struct</span> igb_ring *tx_ring,</span></span><br><span class="line"><span class="params">		   <span class="keyword">struct</span> igb_tx_buffer *first,</span></span><br><span class="line"><span class="params">		   u8 *hdr_len)</span></span><br><span class="line">&#123;</span><br><span class="line">	u32 vlan_macip_lens, type_tucmd, mss_l4len_idx;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span> =</span> first-&gt;skb;</span><br><span class="line">	<span class="class"><span class="keyword">union</span> &#123;</span></span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">iphdr</span> *<span class="title">v4</span>;</span></span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">ipv6hdr</span> *<span class="title">v6</span>;</span></span><br><span class="line">		<span class="type">unsigned</span> <span class="type">char</span> *hdr;</span><br><span class="line">	&#125; ip;</span><br><span class="line">	<span class="class"><span class="keyword">union</span> &#123;</span></span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">tcphdr</span> *<span class="title">tcp</span>;</span></span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">udphdr</span> *<span class="title">udp</span>;</span></span><br><span class="line">		<span class="type">unsigned</span> <span class="type">char</span> *hdr;</span><br><span class="line">	&#125; l4;</span><br><span class="line">	u32 paylen, l4_offset;</span><br><span class="line">	<span class="type">int</span> err;</span><br><span class="line">	<span class="comment">//tso的包必须是partial</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;ip_summed != CHECKSUM_PARTIAL)</span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//是否是一个GSO包</span></span><br><span class="line">	<span class="keyword">if</span> (!skb_is_gso(skb))</span><br><span class="line">		<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//确保头部可以被修改</span></span><br><span class="line">	err = skb_cow_head(skb, <span class="number">0</span>);</span><br><span class="line">	<span class="keyword">if</span> (err &lt; <span class="number">0</span>)</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line">	<span class="comment">//获取ip头和传输层头部指针</span></span><br><span class="line">	ip.hdr = skb_network_header(skb);</span><br><span class="line">	l4.hdr = skb_checksum_start(skb);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* ADV DTYP TUCMD MKRLOC/ISCSIHEDLEN */</span></span><br><span class="line">	<span class="comment">//根据 GSO 类型决定是 TCP 还是 UDP</span></span><br><span class="line">	type_tucmd = (skb_shinfo(skb)-&gt;gso_type &amp; SKB_GSO_UDP_L4) ?</span><br><span class="line">		      E1000_ADVTXD_TUCMD_L4T_UDP : E1000_ADVTXD_TUCMD_L4T_TCP;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* initialize outer IP header fields */</span></span><br><span class="line">	<span class="comment">//处理 IP 头部，IP头长度字段先清掉</span></span><br><span class="line">	<span class="keyword">if</span> (ip.v4-&gt;version == <span class="number">4</span>) &#123;</span><br><span class="line">		<span class="type">unsigned</span> <span class="type">char</span> *csum_start = skb_checksum_start(skb);</span><br><span class="line">		<span class="type">unsigned</span> <span class="type">char</span> *trans_start = ip.hdr + (ip.v4-&gt;ihl * <span class="number">4</span>);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* IP header will have to cancel out any data that</span></span><br><span class="line"><span class="comment">		 * is not a part of the outer IP header</span></span><br><span class="line"><span class="comment">		 */</span></span><br><span class="line">		<span class="comment">//将 IP 校验和字段置 0</span></span><br><span class="line">		ip.v4-&gt;check = csum_fold(csum_partial(trans_start,</span><br><span class="line">						      csum_start - trans_start,</span><br><span class="line">						      <span class="number">0</span>));</span><br><span class="line">		type_tucmd |= E1000_ADVTXD_TUCMD_IPV4;</span><br><span class="line">		<span class="comment">//长度置为0</span></span><br><span class="line">		ip.v4-&gt;tot_len = <span class="number">0</span>;</span><br><span class="line">		<span class="comment">//填描述符</span></span><br><span class="line">		first-&gt;tx_flags |= IGB_TX_FLAGS_TSO |</span><br><span class="line">				   IGB_TX_FLAGS_CSUM |</span><br><span class="line">				   IGB_TX_FLAGS_IPV4;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;<span class="comment">//ipv6没有校验和</span></span><br><span class="line">		ip.v6-&gt;payload_len = <span class="number">0</span>;</span><br><span class="line">		first-&gt;tx_flags |= IGB_TX_FLAGS_TSO |</span><br><span class="line">				   IGB_TX_FLAGS_CSUM;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* determine offset of inner transport header */</span></span><br><span class="line">	<span class="comment">//L4 头部在数据包中的偏移</span></span><br><span class="line">	l4_offset = l4.hdr - skb-&gt;data;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* remove payload length from inner checksum */</span></span><br><span class="line">	<span class="comment">//整个包从 L4 头部开始到末尾的总长度</span></span><br><span class="line">	paylen = skb-&gt;len - l4_offset;</span><br><span class="line">	<span class="keyword">if</span> (type_tucmd &amp; E1000_ADVTXD_TUCMD_L4T_TCP) &#123;</span><br><span class="line">		<span class="comment">/* compute length of segmentation header */</span></span><br><span class="line">		*hdr_len = (l4.tcp-&gt;doff * <span class="number">4</span>) + l4_offset;<span class="comment">//整个包头长度</span></span><br><span class="line">		csum_replace_by_diff(&amp;l4.tcp-&gt;check,<span class="comment">//将 TCP 校验和减去原始数据包的总长度 因为 TCP 校验和包含伪头部</span></span><br><span class="line">			(__force __wsum)htonl(paylen));</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		<span class="comment">/* compute length of segmentation header */</span></span><br><span class="line">		*hdr_len = <span class="keyword">sizeof</span>(*l4.udp) + l4_offset;</span><br><span class="line">		csum_replace_by_diff(&amp;l4.udp-&gt;check,</span><br><span class="line">				     (__force __wsum)htonl(paylen));</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* update gso size and bytecount with header size */</span></span><br><span class="line">	first-&gt;gso_segs = skb_shinfo(skb)-&gt;gso_segs;<span class="comment">//记录分段数量（由上层 GSO 计算得出）</span></span><br><span class="line">	first-&gt;bytecount += (first-&gt;gso_segs - <span class="number">1</span>) * *hdr_len;<span class="comment">//每个段带上一个头部长度</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* MSS L4LEN IDX */</span></span><br><span class="line">	<span class="comment">//用于构造上下文描述符</span></span><br><span class="line">	mss_l4len_idx = (*hdr_len - l4_offset) &lt;&lt; E1000_ADVTXD_L4LEN_SHIFT;<span class="comment">//L4 头长度</span></span><br><span class="line">	mss_l4len_idx |= skb_shinfo(skb)-&gt;gso_size &lt;&lt; E1000_ADVTXD_MSS_SHIFT; <span class="comment">//最大分段大小</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">/* VLAN MACLEN IPLEN */</span></span><br><span class="line">	<span class="comment">//计算 MAC 头长度、IP 头长度</span></span><br><span class="line">	vlan_macip_lens = l4.hdr - ip.hdr;</span><br><span class="line">	vlan_macip_lens |= (ip.hdr - skb-&gt;data) &lt;&lt; E1000_ADVTXD_MACLEN_SHIFT;</span><br><span class="line">	vlan_macip_lens |= first-&gt;tx_flags &amp; IGB_TX_FLAGS_VLAN_MASK;</span><br><span class="line">	<span class="comment">//消费一个额外的描述符，把上面的信息给硬件</span></span><br><span class="line">	igb_tx_ctxtdesc(tx_ring, first, vlan_macip_lens,</span><br><span class="line">			type_tucmd, mss_l4len_idx);</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">igb_tx_csum</span><span class="params">(<span class="keyword">struct</span> igb_ring *tx_ring, <span class="keyword">struct</span> igb_tx_buffer *first)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span> =</span> first-&gt;skb;</span><br><span class="line">	u32 vlan_macip_lens = <span class="number">0</span>;</span><br><span class="line">	u32 type_tucmd = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//不需要硬件算一部分的情况</span></span><br><span class="line">	<span class="keyword">if</span> (skb-&gt;ip_summed != CHECKSUM_PARTIAL) &#123;</span><br><span class="line">csum_failed:</span><br><span class="line">		<span class="keyword">if</span> (!(first-&gt;tx_flags &amp; IGB_TX_FLAGS_VLAN) &amp;&amp;</span><br><span class="line">		    !tx_ring-&gt;launchtime_enable)</span><br><span class="line">			<span class="keyword">return</span>;</span><br><span class="line">		<span class="keyword">goto</span> no_csum;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//根据协议类型</span></span><br><span class="line">	<span class="keyword">switch</span> (skb-&gt;csum_offset) &#123;</span><br><span class="line">	<span class="keyword">case</span> <span class="title function_">offsetof</span><span class="params">(<span class="keyword">struct</span> tcphdr, check)</span>:</span><br><span class="line">		type_tucmd = E1000_ADVTXD_TUCMD_L4T_TCP;</span><br><span class="line">		fallthrough;</span><br><span class="line">	<span class="keyword">case</span> <span class="title function_">offsetof</span><span class="params">(<span class="keyword">struct</span> udphdr, check)</span>:</span><br><span class="line">		<span class="keyword">break</span>;</span><br><span class="line">	<span class="keyword">case</span> <span class="title function_">offsetof</span><span class="params">(<span class="keyword">struct</span> sctphdr, checksum)</span>:</span><br><span class="line">		<span class="comment">/* validate that this is actually an SCTP request */</span></span><br><span class="line">		<span class="title function_">if</span> <span class="params">(skb_csum_is_sctp(skb))</span> &#123;</span><br><span class="line">			type_tucmd = E1000_ADVTXD_TUCMD_L4T_SCTP;</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		fallthrough;</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		skb_checksum_help(skb);</span><br><span class="line">		<span class="keyword">goto</span> csum_failed;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* update TX checksum flag */</span></span><br><span class="line">	first-&gt;tx_flags |= IGB_TX_FLAGS_CSUM;</span><br><span class="line">	<span class="comment">//ip头部长度</span></span><br><span class="line">	vlan_macip_lens = skb_checksum_start_offset(skb) -</span><br><span class="line">			  skb_network_offset(skb);</span><br><span class="line">no_csum:</span><br><span class="line">	<span class="comment">//mac头长度</span></span><br><span class="line">	vlan_macip_lens |= skb_network_offset(skb) &lt;&lt; E1000_ADVTXD_MACLEN_SHIFT;</span><br><span class="line">	<span class="comment">//vlan信息</span></span><br><span class="line">	vlan_macip_lens |= first-&gt;tx_flags &amp; IGB_TX_FLAGS_VLAN_MASK;</span><br><span class="line">	<span class="comment">//填充额外的描述覆</span></span><br><span class="line">	igb_tx_ctxtdesc(tx_ring, first, vlan_macip_lens, type_tucmd, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p><code>igb_tso()</code> 首先判断当前 <code>skb</code> 是不是 <code>CHECKSUM_PARTIAL</code> 或者是不是 GSO 包，就说明不需要 TSO，直接返回 0。对于真正的 TSO 包，它会先确保 <code>skb</code> 头部可写，然后根据 IPv4&#x2F;IPv6、TCP&#x2F;UDP 类型修改协议头中的长度和校验和字段，把原始大包调整成硬件可以分段处理的格式。接着记录分段数量、修正发送字节统计，并根据 MAC 头长度、IP 头长度、L4 头长度、MSS 等信息构造上下文描述符。</p>
+<p><code>igb_tx_csum()</code> 用来处理非 TSO 场景下的硬件校验和卸载。如果 skb 不需要 <code>CHECKSUM_PARTIAL</code>，并且也没有 VLAN 或 launchtime 这类额外信息，就直接返回。否则它会根据 <code>csum_offset</code> 判断 TCP、UDP 或 SCTP 校验和类型，设置对应的硬件标志；如果硬件无法处理，就退回软件计算。最后通过上下文描述符把 MAC 头长度、IP 头长度、VLAN 和校验和信息交给硬件。</p>
+<h3 id="igb-tx-map"><a href="#igb-tx-map" class="headerlink" title="igb_tx_map"></a><strong>igb_tx_map</strong></h3><p>回到<code>igb_xmit_frame_ring</code>中，<code>igb_tx_map()</code> 是 <code>igb</code> 驱动发送路径中真正把 <code>skb</code> 交给硬件前的最后一步：它把 skb 的线性区和分页片段做 DMA 映射，填充 TX 数据描述符，最后更新 <code>TDT</code> tail 寄存器通知网卡开始 DMA 取数据并发送。具体代码如下所示：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">igb_tx_map</span><span class="params">(<span class="keyword">struct</span> igb_ring *tx_ring,</span></span><br><span class="line"><span class="params">		      <span class="keyword">struct</span> igb_tx_buffer *first,</span></span><br><span class="line"><span class="params">		      <span class="type">const</span> u8 hdr_len)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sk_buff</span> *<span class="title">skb</span> =</span> first-&gt;skb;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">igb_tx_buffer</span> *<span class="title">tx_buffer</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">union</span> <span class="title">e1000_adv_tx_desc</span> *<span class="title">tx_desc</span>;</span></span><br><span class="line">	<span class="type">skb_frag_t</span> *frag;</span><br><span class="line">	<span class="type">dma_addr_t</span> dma;</span><br><span class="line">	<span class="type">unsigned</span> <span class="type">int</span> data_len, size;</span><br><span class="line">	u32 tx_flags = first-&gt;tx_flags;</span><br><span class="line">	u32 cmd_type = igb_tx_cmd_type(skb, tx_flags);<span class="comment">//tso vlan fcs处理</span></span><br><span class="line">	u16 i = tx_ring-&gt;next_to_use;</span><br><span class="line">	<span class="comment">//获取下一个待填的描述符</span></span><br><span class="line">	tx_desc = IGB_TX_DESC(tx_ring, i);</span><br><span class="line">	<span class="comment">//填充发送队列中第一个数据描述符的 olinfo_status 字段</span></span><br><span class="line">	igb_tx_olinfo_status(tx_ring, tx_desc, tx_flags, skb-&gt;len - hdr_len);</span><br><span class="line">	<span class="comment">//计算线性部分的有效长度</span></span><br><span class="line">	size = skb_headlen(skb);</span><br><span class="line">	<span class="comment">//非线性部分的长度</span></span><br><span class="line">	data_len = skb-&gt;data_len;</span><br><span class="line">	<span class="comment">//映射线性部分</span></span><br><span class="line">	dma = dma_map_single(tx_ring-&gt;dev, skb-&gt;data, size, DMA_TO_DEVICE);</span><br><span class="line"></span><br><span class="line">	tx_buffer = first;</span><br><span class="line">	<span class="comment">//循环处理线性+非线性部分</span></span><br><span class="line">	<span class="keyword">for</span> (frag = &amp;skb_shinfo(skb)-&gt;frags[<span class="number">0</span>];; frag++) &#123;</span><br><span class="line">		<span class="keyword">if</span> (dma_mapping_error(tx_ring-&gt;dev, dma))</span><br><span class="line">			<span class="keyword">goto</span> dma_error;</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* record length, and DMA address */</span></span><br><span class="line">		<span class="comment">//把需要解映射的信息先保存起来</span></span><br><span class="line">		dma_unmap_len_set(tx_buffer, len, size);</span><br><span class="line">		dma_unmap_addr_set(tx_buffer, dma, dma);</span><br><span class="line">		<span class="comment">//写道描述符中</span></span><br><span class="line">		tx_desc-&gt;read.buffer_addr = cpu_to_le64(dma);</span><br><span class="line">		<span class="comment">//线性部分超过32k？</span></span><br><span class="line">		<span class="keyword">while</span> (unlikely(size &gt; IGB_MAX_DATA_PER_TXD)) &#123;</span><br><span class="line">			tx_desc-&gt;read.cmd_type_len =</span><br><span class="line">				<span class="comment">//32k长度和控制字段写如描述符</span></span><br><span class="line">				cpu_to_le32(cmd_type ^ IGB_MAX_DATA_PER_TXD);</span><br><span class="line">			<span class="comment">//更新下个描述符</span></span><br><span class="line">			i++;</span><br><span class="line">			tx_desc++;</span><br><span class="line">			<span class="keyword">if</span> (i == tx_ring-&gt;count) &#123;</span><br><span class="line">				tx_desc = IGB_TX_DESC(tx_ring, <span class="number">0</span>);</span><br><span class="line">				i = <span class="number">0</span>;</span><br><span class="line">			&#125;</span><br><span class="line">			tx_desc-&gt;read.olinfo_status = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">			dma += IGB_MAX_DATA_PER_TXD;<span class="comment">//更新dma偏移</span></span><br><span class="line">			size -= IGB_MAX_DATA_PER_TXD;<span class="comment">//更新size</span></span><br><span class="line">			<span class="comment">//dma地址给写到描述符中</span></span><br><span class="line">			tx_desc-&gt;read.buffer_addr = cpu_to_le64(dma);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">//没有线性部分直接break</span></span><br><span class="line">		<span class="keyword">if</span> (likely(!data_len))</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="comment">//填写长度</span></span><br><span class="line">		tx_desc-&gt;read.cmd_type_len = cpu_to_le32(cmd_type ^ size);</span><br><span class="line">		<span class="comment">//取下一个描述符</span></span><br><span class="line">		i++;</span><br><span class="line">		tx_desc++;</span><br><span class="line">		<span class="keyword">if</span> (i == tx_ring-&gt;count) &#123;</span><br><span class="line">			tx_desc = IGB_TX_DESC(tx_ring, <span class="number">0</span>);</span><br><span class="line">			i = <span class="number">0</span>;</span><br><span class="line">		&#125;</span><br><span class="line">		tx_desc-&gt;read.olinfo_status = <span class="number">0</span>;</span><br><span class="line">		<span class="comment">//更新非线性部分的长度</span></span><br><span class="line">		size = skb_frag_size(frag);</span><br><span class="line">		data_len -= size;</span><br><span class="line">		<span class="comment">//映射dma地址</span></span><br><span class="line">		dma = skb_frag_dma_map(tx_ring-&gt;dev, frag, <span class="number">0</span>,</span><br><span class="line">				       size, DMA_TO_DEVICE);</span><br><span class="line">		<span class="comment">//取下一个tx buffer</span></span><br><span class="line">		tx_buffer = &amp;tx_ring-&gt;tx_buffer_info[i];</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* write last descriptor with RS and EOP bits */</span></span><br><span class="line">	<span class="comment">//EOP和最后数据段的长度，合理 注意上面循环退出的时候size还没设置</span></span><br><span class="line">	cmd_type |= size | IGB_TXD_DCMD;</span><br><span class="line">	<span class="comment">//填充控制字段</span></span><br><span class="line">	tx_desc-&gt;read.cmd_type_len = cpu_to_le32(cmd_type);</span><br><span class="line"></span><br><span class="line">	netdev_tx_sent_queue(txring_txq(tx_ring), first-&gt;bytecount);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* set the timestamp */</span></span><br><span class="line">	<span class="comment">//时间戳相关处理</span></span><br><span class="line">	first-&gt;time_stamp = jiffies;</span><br><span class="line"></span><br><span class="line">	skb_tx_timestamp(skb);</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Force memory writes to complete before letting h/w know there</span></span><br><span class="line"><span class="comment">	 * are new descriptors to fetch.  (Only applicable for weak-ordered</span></span><br><span class="line"><span class="comment">	 * memory model archs, such as IA-64).</span></span><br><span class="line"><span class="comment">	 *</span></span><br><span class="line"><span class="comment">	 * We also need this memory barrier to make certain all of the</span></span><br><span class="line"><span class="comment">	 * status bits have been updated before next_to_watch is written.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	dma_wmb();</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* set next_to_watch value indicating a packet is present */</span></span><br><span class="line">	<span class="comment">//需要清到哪里</span></span><br><span class="line">	first-&gt;next_to_watch = tx_desc;</span><br><span class="line"></span><br><span class="line">	i++;</span><br><span class="line">	<span class="keyword">if</span> (i == tx_ring-&gt;count)</span><br><span class="line">		i = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//下个使用的描述符索引</span></span><br><span class="line">	tx_ring-&gt;next_to_use = i;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* Make sure there is space in the ring for the next send. */</span></span><br><span class="line">	<span class="comment">//处理描述符不够的情况</span></span><br><span class="line">	igb_maybe_stop_tx(tx_ring, DESC_NEEDED);</span><br><span class="line">	<span class="comment">//通知硬件，描述符添到第几个了</span></span><br><span class="line">	<span class="keyword">if</span> (netif_xmit_stopped(txring_txq(tx_ring)) || !netdev_xmit_more()) &#123;</span><br><span class="line">		writel(i, tx_ring-&gt;tail);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">dma_error:</span><br><span class="line">	dev_err(tx_ring-&gt;dev, <span class="string">&quot;TX DMA map failed\n&quot;</span>);</span><br><span class="line">	tx_buffer = &amp;tx_ring-&gt;tx_buffer_info[i];</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* clear dma mappings for failed tx_buffer_info map */</span></span><br><span class="line">	<span class="keyword">while</span> (tx_buffer != first) &#123;</span><br><span class="line">		<span class="keyword">if</span> (dma_unmap_len(tx_buffer, len))</span><br><span class="line">			dma_unmap_page(tx_ring-&gt;dev,</span><br><span class="line">				       dma_unmap_addr(tx_buffer, dma),</span><br><span class="line">				       dma_unmap_len(tx_buffer, len),</span><br><span class="line">				       DMA_TO_DEVICE);</span><br><span class="line">		dma_unmap_len_set(tx_buffer, len, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (i-- == <span class="number">0</span>)</span><br><span class="line">			i += tx_ring-&gt;count;</span><br><span class="line">		tx_buffer = &amp;tx_ring-&gt;tx_buffer_info[i];</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> (dma_unmap_len(tx_buffer, len))</span><br><span class="line">		dma_unmap_single(tx_ring-&gt;dev,</span><br><span class="line">				 dma_unmap_addr(tx_buffer, dma),</span><br><span class="line">				 dma_unmap_len(tx_buffer, len),</span><br><span class="line">				 DMA_TO_DEVICE);</span><br><span class="line">	dma_unmap_len_set(tx_buffer, len, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">	dev_kfree_skb_any(tx_buffer-&gt;skb);</span><br><span class="line">	tx_buffer-&gt;skb = <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">	tx_ring-&gt;next_to_use = i;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>igb_tx_map()</code> 先对 <code>skb</code> 的线性区做 DMA 映射，然后依次处理 <code>skb</code> 的分页片段，把每一段数据的 DMA 地址和长度写入 TX 描述符；如果单段数据超过硬件单个描述符支持的最大长度，还会拆成多个描述符。最后一个描述符会设置 <code>EOP</code> 和 <code>RS</code> 等标志，表示一个完整数据包结束并需要硬件回写状态。所有描述符填好后，驱动更新 <code>next_to_use</code>，必要时停止发送队列，并在合适时机写 <code>tail</code> 寄存器通知网卡开始取描述符发送。</p>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8/" rel="tag"># 网卡驱动</a>
+          </div>
+
+        
+
+
+        
+    <div class="post-nav">
+      <div class="post-nav-item">
+    <a href="/2026/06/28/IGB%E7%BD%91%E5%8D%A1%E9%A9%B1%E5%8A%A8%E5%88%9D%E5%A7%8B%E5%8C%96%EF%BC%88%E4%B8%83%EF%BC%89/" rel="prev" title="IGB 网卡启动流程-igb_open（七）">
+      <i class="fa fa-chevron-left"></i> IGB 网卡启动流程-igb_open（七）
+    </a></div>
+      <div class="post-nav-item"></div>
+    </div>
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+    <div class="comments" id="valine-comments"></div>
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#igb-xmit-frame"><span class="nav-number">1.</span> <span class="nav-text">igb_xmit_frame</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#igb-xmit-frame-ring"><span class="nav-number">2.</span> <span class="nav-text">igb_xmit_frame_ring</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#igb-tx-map"><span class="nav-number">3.</span> <span class="nav-text">igb_tx_map</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">zhangm</p>
+  <div class="site-description" itemprop="description">协议栈源码学习</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">141</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-categories">
+            <a href="/categories/">
+          
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">分类</span></a>
+      </div>
+      <div class="site-state-item site-state-tags">
+            <a href="/tags/">
+          
+        <span class="site-state-item-count">30</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2026</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">zhangm</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+<div class="busuanzi-count">
+  <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+    <span class="post-meta-item" id="busuanzi_container_site_uv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-user"></i>
+      </span>
+      <span class="site-uv" title="总访客量">
+        <span id="busuanzi_value_site_uv"></span>
+      </span>
+    </span>
+    <span class="post-meta-divider">|</span>
+    <span class="post-meta-item" id="busuanzi_container_site_pv" style="display: none;">
+      <span class="post-meta-item-icon">
+        <i class="fa fa-eye"></i>
+      </span>
+      <span class="site-pv" title="总访问量">
+        <span id="busuanzi_value_site_pv"></span>
+      </span>
+    </span>
+</div>
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+<script src="/js/bookmark.js"></script>
+
+
+
+
+  
+
+
+
+
+  
+<script src="/js/local-search.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+
+<script>
+NexT.utils.loadComments(document.querySelector('#valine-comments'), () => {
+  NexT.utils.getScript('//unpkg.com/valine/dist/Valine.min.js', () => {
+    var GUEST = ['nick', 'mail', 'link'];
+    var guest = 'nick';
+    guest = guest.split(',').filter(item => {
+      return GUEST.includes(item);
+    });
+    new Valine({
+      el         : '#valine-comments',
+      verify     : false,
+      notify     : true,
+      appId      : '1c6PW2umhmoCGypfQhPNnfLk-gzGzoHsz',
+      appKey     : 'nbVvMAfQXEdOeKD1tmvI3qrQ',
+      placeholder: "畅所欲言!",
+      avatar     : 'mm',
+      meta       : guest,
+      pageSize   : '10' || 10,
+      visitor    : false,
+      lang       : 'zh-cn' || 'zh-cn',
+      path       : location.pathname,
+      recordIP   : false,
+      serverURLs : 'https://1c6pw2um.lc-cn-n1-shared.com'
+    });
+  }, window.Valine);
+});
+</script>
+
+</body>
+</html>

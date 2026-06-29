@@ -193,6 +193,160 @@
   
   
   <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2026/05/06/ARP/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="zhangm">
+      <meta itemprop="description" content="协议栈源码学习">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="日拱一卒">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          
+            <a href="/2026/05/06/ARP/" class="post-title-link" itemprop="url">ARP初始化（一）</a>
+        </h2>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2026-05-06 22:00:00" itemprop="dateCreated datePublished" datetime="2026-05-06T22:00:00+08:00">2026-05-06</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2026-05-08 19:52:33" itemprop="dateModified" datetime="2026-05-08T19:52:33+08:00">2026-05-08</time>
+              </span>
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-folder"></i>
+              </span>
+              <span class="post-meta-item-text">分类于</span>
+                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
+                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
+                </span>
+            </span>
+
+          
+  
+  <span class="post-meta-item">
+    
+      <span class="post-meta-item-icon">
+        <i class="far fa-comment"></i>
+      </span>
+      <span class="post-meta-item-text">Valine：</span>
+    
+    <a title="valine" href="/2026/05/06/ARP/#valine-comments" itemprop="discussionUrl">
+      <span class="post-comments-count valine-comment-count" data-xid="/2026/05/06/ARP/" itemprop="commentCount"></span>
+    </a>
+  </span>
+  
+  
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+          <h2 id="引言"><a href="#引言" class="headerlink" title="引言"></a>引言</h2><p><strong>邻居子系统是网络协议栈中负责下一跳邻居管理的通用框架</strong>，它主要解决的问题是当内核已经知道数据包该从哪个网卡、发给哪个 IP 后，如何进一步找到对应的二层地址（MAC），以及如何维护这些邻居的可达状态。为此，内核实现了一整套通用机制，包括邻居表管理、状态机、定时器、探测重传、缓存队列以及老化回收等功能。<strong>而 ARP 则是这个通用框架在 IPv4 下的具体实现</strong>，负责通过 ARP Request&#x2F;Reply 报文完成 IPv4 地址到 MAC 地址的解析。</p>
+<hr>
+<h2 id="ARP-报文格式"><a href="#ARP-报文格式" class="headerlink" title="ARP 报文格式"></a>ARP 报文格式</h2><figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"> 0                   15 16                  31</span><br><span class="line">+----------------------+----------------------+</span><br><span class="line">|   Hardware Type      |    Protocol Type     |</span><br><span class="line">+----------------------+----------------------+</span><br><span class="line">| HLen | PLen |            Opcode            |</span><br><span class="line">+----------------------+----------------------+</span><br><span class="line">|                                              |</span><br><span class="line">|          Sender MAC Address (6B)             |</span><br><span class="line">|                                              |</span><br><span class="line">+----------------------+----------------------+</span><br><span class="line">|          Sender IP Address (4B)              |</span><br><span class="line">+---------------------------------------------+</span><br><span class="line">|                                              |</span><br><span class="line">|          Target MAC Address (6B)             |</span><br><span class="line">|                                              |</span><br><span class="line">+----------------------+----------------------+</span><br><span class="line">|          Target IP Address (4B)              |</span><br><span class="line">+---------------------------------------------+</span><br></pre></td></tr></table></figure>
+
+<h3 id="字段含义"><a href="#字段含义" class="headerlink" title="字段含义"></a>字段含义</h3><table>
+<thead>
+<tr>
+<th>字段</th>
+<th>含义</th>
+<th>常见值</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Hardware Type</td>
+<td>链路层类型</td>
+<td>1（Ethernet）</td>
+</tr>
+<tr>
+<td>Protocol Type</td>
+<td>上层协议类型</td>
+<td>0x0800（IPv4）</td>
+</tr>
+<tr>
+<td>HLen</td>
+<td>MAC 地址长度</td>
+<td>6</td>
+</tr>
+<tr>
+<td>PLen</td>
+<td>IP 地址长度</td>
+<td>4</td>
+</tr>
+<tr>
+<td>Opcode</td>
+<td>ARP 操作类型</td>
+<td>1&#x3D;Request，2&#x3D;Reply</td>
+</tr>
+<tr>
+<td>Sender MAC</td>
+<td>发送方 MAC</td>
+<td>本机 MAC</td>
+</tr>
+<tr>
+<td>Sender IP</td>
+<td>发送方 IP</td>
+<td>本机 IP</td>
+</tr>
+<tr>
+<td>Target MAC</td>
+<td>目标 MAC</td>
+<td>Request 中通常为全0</td>
+</tr>
+<tr>
+<td>Target IP</td>
+<td>目标 IP</td>
+<td>要解析的 IP</td>
+</tr>
+</tbody></table>
+<h2 id="初始化"><a href="#初始化" class="headerlink" title="初始化"></a>初始化</h2><p><code>arp_init()</code> 是 Linux 内核 ARP 模块的初始化入口，它主要完成 ARP 与整个网络协议栈的注册和关联。首先通过 <code>neigh_table_init()</code> 将 <code>arp_tbl</code> 注册到通用邻居子系统中。随后通过 <code>dev_add_pack()</code> 注册 ARP 报文接收入口 <code>arp_packet_type</code>，这样网卡收到以太网类型为 <code>0x0806</code> 的 ARP 报文就会进入 <code>arp_rcv()</code> 处理流程。接着 <code>register_pernet_subsys()</code> 会为每个网络命名空间创建对应的 ARP 相关数据结构和 <code>proc/sysctl</code> 接口，使不同 namespace 之间的 ARP 配置和邻居表能够互相隔离。<code>neigh_sysctl_register()</code> 则用于注册邻居子系统相关的 <code>sysctl</code> 参数，方便用户动态调整邻居行为。最后通过 <code>register_netdevice_notifier()</code> 注册网卡事件通知链，这样当网卡 <code>up/down</code>、地址变化或设备注销时，ARP 模块也能同步更新对应的邻居状态和 ARP 表项。</p>
+<p><code>arp_init</code>具体代码如下所示：</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2026/05/06/ARP/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+      <footer class="post-footer">
+        <div class="post-eof"></div>
+      </footer>
+  </article>
+  
+  
+  
+
+      
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
     <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/27/napi_gro_receive%E6%94%B6%E5%8C%85/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1120,114 +1274,10 @@
   
   
 
-      
-  
-  
-  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
-    <link itemprop="mainEntityOfPage" href="http://example.com/2026/04/01/%E8%B7%AF%E7%94%B1%EF%BC%88%E5%9B%9B%EF%BC%89/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="image" content="/images/avatar.gif">
-      <meta itemprop="name" content="zhangm">
-      <meta itemprop="description" content="协议栈源码学习">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="日拱一卒">
-    </span>
-      <header class="post-header">
-        <h2 class="post-title" itemprop="name headline">
-          
-            <a href="/2026/04/01/%E8%B7%AF%E7%94%B1%EF%BC%88%E5%9B%9B%EF%BC%89/" class="post-title-link" itemprop="url">接收方向路由查找</a>
-        </h2>
-
-        <div class="post-meta">
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-calendar"></i>
-              </span>
-              <span class="post-meta-item-text">发表于</span>
-
-              <time title="创建时间：2026-04-01 22:00:00" itemprop="dateCreated datePublished" datetime="2026-04-01T22:00:00+08:00">2026-04-01</time>
-            </span>
-              <span class="post-meta-item">
-                <span class="post-meta-item-icon">
-                  <i class="far fa-calendar-check"></i>
-                </span>
-                <span class="post-meta-item-text">更新于</span>
-                <time title="修改时间：2026-04-02 22:15:10" itemprop="dateModified" datetime="2026-04-02T22:15:10+08:00">2026-04-02</time>
-              </span>
-            <span class="post-meta-item">
-              <span class="post-meta-item-icon">
-                <i class="far fa-folder"></i>
-              </span>
-              <span class="post-meta-item-text">分类于</span>
-                <span itemprop="about" itemscope itemtype="http://schema.org/Thing">
-                  <a href="/categories/%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE%E6%A0%88%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0/" itemprop="url" rel="index"><span itemprop="name">网络协议栈源码学习</span></a>
-                </span>
-            </span>
-
-          
-  
-  <span class="post-meta-item">
-    
-      <span class="post-meta-item-icon">
-        <i class="far fa-comment"></i>
-      </span>
-      <span class="post-meta-item-text">Valine：</span>
-    
-    <a title="valine" href="/2026/04/01/%E8%B7%AF%E7%94%B1%EF%BC%88%E5%9B%9B%EF%BC%89/#valine-comments" itemprop="discussionUrl">
-      <span class="post-comments-count valine-comment-count" data-xid="/2026/04/01/%E8%B7%AF%E7%94%B1%EF%BC%88%E5%9B%9B%EF%BC%89/" itemprop="commentCount"></span>
-    </a>
-  </span>
-  
-  
-
-        </div>
-      </header>
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-          <h2 id="引言"><a href="#引言" class="headerlink" title="引言"></a>引言</h2><p>在 内核网络协议栈中，接收方向的路由查找是数据包处理流程中的关键步骤之一。每一个进入协议栈的 IP 数据包，都需要通过通过路由查找来决定数据是上送本地还是转发。在这个过程中，内核会基于目的 IP，在内部的路由结构中进行匹配，选出最合适的一条路径，并将结果绑定到数据包上。后续无论是本地处理还是转发，都会依赖这个查找结果。</p>
-<h2 id="ip-route-input-rcu"><a href="#ip-route-input-rcu" class="headerlink" title="ip_route_input_rcu"></a><code>ip_route_input_rcu</code></h2><p>内核查路由的过程发生在<code>PRE_ROUTING</code>之后，在<code>ip_rcv_finish_core</code>（前文有分析过）中，如果没有通过早期分流机制拿到路由，则会调用<code>ip_route_input_rcu</code>进行路由查找，具体代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* called with rcu_read_lock held */</span></span><br><span class="line"><span class="type">static</span> <span class="type">int</span> <span class="title function_">ip_route_input_rcu</span><span class="params">(<span class="keyword">struct</span> sk_buff *skb, __be32 daddr, __be32 saddr,</span></span><br><span class="line"><span class="params">			      u8 tos, <span class="keyword">struct</span> net_device *dev, <span class="keyword">struct</span> fib_result *res)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="comment">/* Multicast recognition logic is moved from route cache to here.</span></span><br><span class="line"><span class="comment">	 * The problem was that too many Ethernet cards have broken/missing</span></span><br><span class="line"><span class="comment">	 * hardware multicast filters :-( As result the host on multicasting</span></span><br><span class="line"><span class="comment">	 * network acquires a lot of useless route cache entries, sort of</span></span><br><span class="line"><span class="comment">	 * SDR messages from all the world. Now we try to get rid of them.</span></span><br><span class="line"><span class="comment">	 * Really, provided software IP multicast filter is organized</span></span><br><span class="line"><span class="comment">	 * reasonably (at least, hashed), it does not result in a slowdown</span></span><br><span class="line"><span class="comment">	 * comparing with route cache reject entries.</span></span><br><span class="line"><span class="comment">	 * Note, that multicast routers are not affected, because</span></span><br><span class="line"><span class="comment">	 * route cache entry is created eventually.</span></span><br><span class="line"><span class="comment">	 */</span></span><br><span class="line">	<span class="comment">//目的地址是组播</span></span><br><span class="line">	<span class="keyword">if</span> (ipv4_is_multicast(daddr)) &#123;</span><br><span class="line">		<span class="class"><span class="keyword">struct</span> <span class="title">in_device</span> *<span class="title">in_dev</span> =</span> __in_dev_get_rcu(dev);</span><br><span class="line">		<span class="type">int</span> our = <span class="number">0</span>;</span><br><span class="line">		<span class="type">int</span> err = -EINVAL;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (!in_dev)</span><br><span class="line">			<span class="keyword">return</span> err;</span><br><span class="line">		<span class="comment">//判断这个多播地址是否在netdec 的mclist中!</span></span><br><span class="line">		our = ip_check_mc_rcu(in_dev, daddr, saddr,</span><br><span class="line">				      ip_hdr(skb)-&gt;protocol);</span><br><span class="line"></span><br><span class="line">		<span class="comment">/* check l3 master if no match yet */</span></span><br><span class="line">		<span class="keyword">if</span> (!our &amp;&amp; netif_is_l3_slave(dev)) &#123;</span><br><span class="line">			<span class="class"><span class="keyword">struct</span> <span class="title">in_device</span> *<span class="title">l3_in_dev</span>;</span></span><br><span class="line"></span><br><span class="line">			l3_in_dev = __in_dev_get_rcu(skb-&gt;dev);</span><br><span class="line">			<span class="keyword">if</span> (l3_in_dev)</span><br><span class="line">				our = ip_check_mc_rcu(l3_in_dev, daddr, saddr,</span><br><span class="line">						      ip_hdr(skb)-&gt;protocol);</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> (our</span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> CONFIG_IP_MROUTE</span></span><br><span class="line">			||</span><br><span class="line">		    (!ipv4_is_local_multicast(daddr) &amp;&amp;<span class="comment">//不是224开头的特殊地址</span></span><br><span class="line">		     IN_DEV_MFORWARD(in_dev))<span class="comment">//开启了多播转发</span></span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line">		   ) &#123;</span><br><span class="line">			<span class="comment">//多播查路由的接口</span></span><br><span class="line">			err = ip_route_input_mc(skb, daddr, saddr,</span><br><span class="line">						tos, dev, our);</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">return</span> err;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">//非多播的处理</span></span><br><span class="line">	<span class="keyword">return</span> ip_route_input_slow(skb, daddr, saddr, tos, dev, res);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p><code>ip_route_input_rcu</code>先根据目的地址判断数据包类型，如果是组播包，则调用<code>ip_check_mc_rcu</code>判断该网卡是否加入了这个组播组，或者系统是否开启了组播转发，在确定是本地加入的组播地址或需要转发的情况下，则调用 <code>ip_route_input_mc()</code> 进行组播路由处理(这里先不分析)，否则直接丢弃。</p>
-<p>上述<code>ip_check_mc_rcu</code>判断当前设备是否加入组播的代码如下所示：</p>
-<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* called with rcu_read_lock() */</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">ip_check_mc_rcu</span><span class="params">(<span class="keyword">struct</span> in_device *in_dev, __be32 mc_addr, __be32 src_addr, u8 proto)</span></span><br><span class="line">&#123;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_mc_list</span> *<span class="title">im</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_mc_list</span> __<span class="title">rcu</span> **<span class="title">mc_hash</span>;</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ip_sf_list</span> *<span class="title">psf</span>;</span></span><br><span class="line">	<span class="type">int</span> rv = <span class="number">0</span>;</span><br><span class="line">	<span class="comment">//这个接口有没有加入 mc_addr 这个组，也就是netdev上的mclist有没有这个ip地址</span></span><br><span class="line">	mc_hash = rcu_dereference(in_dev-&gt;mc_hash);</span><br><span class="line">	<span class="keyword">if</span> (mc_hash) &#123;</span><br><span class="line">		u32 hash = hash_32((__force u32)mc_addr, MC_HASH_SZ_LOG);</span><br><span class="line"></span><br><span class="line">		<span class="keyword">for</span> (im = rcu_dereference(mc_hash[hash]);</span><br><span class="line">		     im != <span class="literal">NULL</span>;</span><br><span class="line">		     im = rcu_dereference(im-&gt;next_hash)) &#123;</span><br><span class="line">			<span class="keyword">if</span> (im-&gt;multiaddr == mc_addr)</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;<span class="comment">//如果没哈希表 就遍历 in_dev 上的组播列表</span></span><br><span class="line">		for_each_pmc_rcu(in_dev, im) &#123;</span><br><span class="line">			<span class="keyword">if</span> (im-&gt;multiaddr == mc_addr)</span><br><span class="line">				<span class="keyword">break</span>;</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> (im &amp;&amp; proto == IPPROTO_IGMP) &#123; <span class="comment">//igmp</span></span><br><span class="line">		rv = <span class="number">1</span>;</span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> (im) &#123; <span class="comment">//普通非 IGMP 组播包 检查源过滤</span></span><br><span class="line">		<span class="keyword">if</span> (src_addr) &#123;</span><br><span class="line">			spin_lock_bh(&amp;im-&gt;lock);</span><br><span class="line">			<span class="keyword">for</span> (psf = im-&gt;sources; psf; psf = psf-&gt;sf_next) &#123;</span><br><span class="line">				<span class="keyword">if</span> (psf-&gt;sf_inaddr == src_addr)</span><br><span class="line">					<span class="keyword">break</span>;</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">if</span> (psf)</span><br><span class="line">				rv = psf-&gt;sf_count[MCAST_INCLUDE] ||</span><br><span class="line">					psf-&gt;sf_count[MCAST_EXCLUDE] !=</span><br><span class="line">					im-&gt;sfcount[MCAST_EXCLUDE];</span><br><span class="line">			<span class="keyword">else</span></span><br><span class="line">				rv = im-&gt;sfcount[MCAST_EXCLUDE] != <span class="number">0</span>;</span><br><span class="line">			spin_unlock_bh(&amp;im-&gt;lock);</span><br><span class="line">		&#125; <span class="keyword">else</span></span><br><span class="line">			rv = <span class="number">1</span>; <span class="comment">/* unspecified source; tentatively allow */</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> rv;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<p> <code>ip_check_mc_rcu()</code> 首先在<code>netdev</code>对应的 <code>in_device</code> 组播成员列表里查找有没有加入 <code>mc_addr</code> 这个组播组，如果没加入，直接不处理。如果加入了并且是 IGMP 报文，则直接接收，如果是普通组播数据，则需要进一步检查用户是否配置了组播源过滤，如果配置了则也有可能丢弃这个报文。</p>
-<h2 id="ip-route-input-slow"><a href="#ip-route-input-slow" class="headerlink" title="ip_route_input_slow"></a><code>ip_route_input_slow</code></h2>
-          <!--noindex-->
-            <div class="post-button">
-              <a class="btn" href="/2026/04/01/%E8%B7%AF%E7%94%B1%EF%BC%88%E5%9B%9B%EF%BC%89/#more" rel="contents">
-                阅读全文 &raquo;
-              </a>
-            </div>
-          <!--/noindex-->
-        
-      
-    </div>
-
-    
-    
-    
-      <footer class="post-footer">
-        <div class="post-eof"></div>
-      </footer>
-  </article>
-  
-  
-  
-
 
   
   <nav class="pagination">
-    <a class="extend prev" rel="prev" href="/page/2/"><i class="fa fa-angle-left" aria-label="上一页"></i></a><a class="page-number" href="/">1</a><a class="page-number" href="/page/2/">2</a><span class="page-number current">3</span><a class="page-number" href="/page/4/">4</a><span class="space">&hellip;</span><a class="page-number" href="/page/14/">14</a><a class="extend next" rel="next" href="/page/4/"><i class="fa fa-angle-right" aria-label="下一页"></i></a>
+    <a class="extend prev" rel="prev" href="/page/2/"><i class="fa fa-angle-left" aria-label="上一页"></i></a><a class="page-number" href="/">1</a><a class="page-number" href="/page/2/">2</a><span class="page-number current">3</span><a class="page-number" href="/page/4/">4</a><span class="space">&hellip;</span><a class="page-number" href="/page/15/">15</a><a class="extend next" rel="next" href="/page/4/"><i class="fa fa-angle-right" aria-label="下一页"></i></a>
   </nav>
 
 
@@ -1293,7 +1343,7 @@
       <div class="site-state-item site-state-posts">
           <a href="/archives/">
         
-          <span class="site-state-item-count">140</span>
+          <span class="site-state-item-count">141</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
